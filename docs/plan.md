@@ -7,7 +7,7 @@
 - **対象**: Claude Codeで業務資料作成・開発タスクを行う実務者本人。将来複数プロジェクトを横断利用
 - **制約**（前ターンでユーザー合意済み）:
   - 対象スコープ：複数プロジェクト横断管理（`config/projects.json` でプロジェクトパスを登録・切替）
-  - フレームワーク：Next.js 14 (App Router) + TypeScript + Tailwind CSS + shadcn/ui + Recharts（Streamlit不採用、デザイン自由度優先）
+  - フレームワーク：Next.js (App Router) + TypeScript + Tailwind CSS + shadcn/ui + Recharts（Streamlit不採用、デザイン自由度優先）。`create-next-app@latest` 実行時点の最新版が Next.js 16.2.11 / React 19.2.4 だったためそれを採用（AGENTS.mdの指示に従い `node_modules/next/dist/docs/` で16系のRoute Handler破壊的変更を確認済み）
   - Webアプリ側はCPUモードでは外部API通信なし。ローカルJSON/MDファイルの読み書きのみ
   - GPUモード（Ollama連携によるルール矛盾検出＝機能3／Phase4）は**今回のスコープ外**。導線・型定義のみ用意し、実装は次回タスクとする
   - 初期データは仕様書記載のサンプルJSONをそのまま使用
@@ -56,14 +56,44 @@
 
 ---
 
-## 2周目：弱点を壊す（実装後に追記）
+## 2周目：弱点を壊す
 
-## 3周目：完成形（実装後に追記）
+### 破壊者
 
-## 要確認事項（Auto Mode進行中のため質問せず記録）
+実装物に対して型チェック(`tsc --noEmit`)・ESLint・vitest単体テスト・ブラウザでの実操作を行い、以下の弱点を発見・修正した。
 
-- GPUモード（機能3）を別タスクとして今回スコープ外にした判断の是非
-- `execution_log.json` を配列化した仕様変更の是非
-- ルール無効時に `CLAUDE.md` から本文を除去する同期方式の是非
+1. **【重大】`fileIO.readJsonFile` の共有フォールバック変異バグ**
+   `rules.ts`/`projects.ts` はモジュールスコープの定数（`EMPTY_RULES` / `DEFAULT_PROJECTS`）を `readJsonFile` の fallback 引数として渡していたが、`readJsonFile` はファイル未作成時（ENOENT）にその参照をそのまま返していた。呼び出し側が `rulesFile.rules.push(...)` のように返り値を直接変異させると、モジュール定数そのものが汚染され、**別プロジェクトの初回ルール作成時に前のプロジェクトのルールが混入する**という重大なデータ破損バグだった。
+   vitestで `createRule` を複数回呼ぶテストを書いたところ「削除したはずのルールが3件残る」という形で顕在化。原因を特定し、`readJsonFile` が fallback を返す際に `structuredClone(fallback)` でディープコピーを返すよう修正（[fileIO.ts](../src/lib/fileIO.ts)）。
+2. **base-ui Select の uncontrolled→controlled 警告**
+   `ProjectSwitcher` の `<Select>` に SWR 未読み込み時 `value={selectedProjectId ?? undefined}` を渡していたため、データ取得完了時に制御状態が切り替わり警告が出た。ロード完了かつ `selectedProjectId` が確定するまで `<Select>` 自体をマウントせずプレースホルダーを表示する方式に変更して解消。
+3. **Dialog/Tooltip の `asChild` 非対応**
+   shadcn init のデフォルトプリセットが Radix ではなく `@base-ui/react` ベース（`-d` プリセット既定値）だったため、Radix由来の `asChild` パターンが型エラーになった。base-ui 流の `render` prop に置き換えて解消（`ProjectSwitcher`, `RuleCard`）。
+4. **`react-hooks/set-state-in-effect` ルール違反**
+   `trace/page.tsx`（初回選択タスクの決定）と `RuleFormDialog`（ダイアログ開くたびのフォーム初期化）でuseEffect内の同期的setStateがESLintエラーに。前者は「未選択なら先頭ログを使う」派生値に置き換え、後者は親コンポーネント側で `key` を張り替えてリマウントさせる方式に変更し、どちらもuseEffectを削除。
+5. **execution_log.json のスキーマ後方互換**
+   仕様書どおりの単一オブジェクト形式で書き込まれた場合でも読み込めるよう、`getExecutionLogs` に `{logs:[...]}` / 生配列 / 単一オブジェクトの3形式を吸収するフォールバック処理を実装し、vitestで3パターンとも検証。
+6. **未対応のまま許容した点**
+   Turbopackビルド時に `next.config.ts` 経由で「fileIO.ts の `process.cwd()` 呼び出しがプロジェクト全体をトレースする可能性がある」という警告が出る。本アプリはVercel等へのデプロイを想定しないローカル専用ツールのため実害なしと判断し、対応は見送った。
 
-## 次にClaudeへ頼むべき追加指示（末尾に追記予定）
+### 自己採点：90/100
+（重大バグを実際に検出・修正できた点、型/Lint/テスト/実ブラウザ操作の4系統で検証した点を評価。減点理由はE2Eテストの自動化コードが無く手動確認止まりであること）
+
+## 3周目：完成形
+
+### 仕上げ屋
+
+- `npx tsc --noEmit` / `npx eslint .` / `npx vitest run`（16件）/ `npm run build` すべて成功を確認。
+- ブラウザ実操作で以下を確認済み：ホームのサマリー表示、ルールのトグル→`rules.json`/`CLAUDE.md`同時反映、ルール追加ダイアログ、実行ログの一覧→詳細、合意度メーター・トレードオフ・介入ハイライトの表示、黄金プロンプトの「このルールを保存」→`rules.json`への新規ルール追加。確認後 `sample-data/` は `git checkout` で初期状態へ復元済み。
+- `.claude/launch.json` に `dashboard` 構成（`npm --prefix ClaudeCodeDashboard run dev`, port 3000）を追加し、以後 `preview_start` で起動可能にした。
+- README.md / docs/spec.md を本実装に合わせて更新。
+
+## 次にClaudeへ頼むべき追加指示
+
+1. **機能3（GPUモード）の実装**：Ollama等ローカルLLM接続によるルール矛盾・重複自動検出。`/refactor` ページと導線は用意済み、API・LLM呼び出しロジックは未実装。
+2. **E2Eテストの自動化**：現状はvitestによるlib層のユニットテストのみ。Playwright等でルール追加・トグル・黄金プロンプト保存のE2Eを自動化するとリグレッション検知が強化される。
+3. **執筆時に見送った要検討事項**（実運用しながらユーザーと合意すべき点）：
+   - GPUモードを別タスクとして切り出した判断の是非
+   - `execution_log.json` を配列スキーマに拡張した仕様変更の是非（Claude Code側の出力プロンプトもこの配列形式で書き込むよう合わせる必要がある）
+   - ルール無効時に `CLAUDE.md` から本文を除去する同期方式の是非（除去ではなく取り消し線コメントで残す等の代案もあり得る）
+   - F-2.1-d「成果物骨子（アウトライン）の差分・変化」は `execution_log.json` のデータ構造定義に対応フィールドが無いため今回未実装。必要なら `outline_diff` 相当のフィールドをスキーマに追加してから着手する。

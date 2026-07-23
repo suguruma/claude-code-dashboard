@@ -53,22 +53,26 @@ export function ProjectSwitcher() {
   return (
     <div className="flex items-center gap-2">
       <FolderGit2 className="size-4 text-muted-foreground shrink-0" />
-      <Select
-        value={selectedProjectId ?? undefined}
-        onValueChange={(id) => id && selectProject(id)}
-        disabled={isLoading || projects.length === 0}
-      >
-        <SelectTrigger size="sm" className="w-[180px]">
-          <SelectValue placeholder="プロジェクトを選択" />
-        </SelectTrigger>
-        <SelectContent>
-          {projects.map((p) => (
-            <SelectItem key={p.id} value={p.id}>
-              {p.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      {isLoading || !selectedProjectId ? (
+        <div className="h-7 w-[180px] rounded-md border border-input bg-transparent" />
+      ) : (
+        <Select
+          value={selectedProjectId}
+          onValueChange={(id) => id && selectProject(id)}
+          disabled={projects.length === 0}
+        >
+          <SelectTrigger size="sm" className="w-[180px]">
+            <SelectValue placeholder="プロジェクトを選択" />
+          </SelectTrigger>
+          <SelectContent>
+            {projects.map((p) => (
+              <SelectItem key={p.id} value={p.id}>
+                {p.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogTrigger
