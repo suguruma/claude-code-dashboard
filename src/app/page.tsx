@@ -1,9 +1,10 @@
 "use client"
 
 import Link from "next/link"
-import { ArrowRight, ListChecks, Activity, Cpu } from "lucide-react"
+import { ArrowRight, ListChecks, Sparkles, Activity, Cpu } from "lucide-react"
 import { useProjects } from "@/hooks/useProjects"
 import { useRules } from "@/hooks/useRules"
+import { useSkills } from "@/hooks/useSkills"
 import { useExecutionLogs } from "@/hooks/useExecutionLogs"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -12,6 +13,7 @@ import { Badge } from "@/components/ui/badge"
 export default function HomePage() {
   const { selectedProject, isLoading: projectsLoading } = useProjects()
   const { rules } = useRules(selectedProject?.id ?? null)
+  const { skills } = useSkills(selectedProject?.id ?? null)
   const { logs } = useExecutionLogs(selectedProject?.id ?? null)
 
   const enabledCount = rules.filter((r) => r.enabled).length
@@ -26,7 +28,7 @@ export default function HomePage() {
       <Alert>
         <AlertTitle>プロジェクトが未登録です</AlertTitle>
         <AlertDescription>
-          画面右上の「+」から、rules.json / execution_log.json / CLAUDE.md を配置している
+          画面右上の「+」から、CLAUDE.md（と任意で skills/ ・ execution_log.json）を配置している
           Claude Code プロジェクトのルートパスを登録してください。
         </AlertDescription>
       </Alert>
@@ -40,7 +42,7 @@ export default function HomePage() {
         <p className="text-sm text-muted-foreground mt-1">{selectedProject.path}</p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>有効ルール数</CardDescription>
@@ -48,6 +50,12 @@ export default function HomePage() {
               {enabledCount}
               <span className="text-sm font-normal text-muted-foreground"> / {rules.length}</span>
             </CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>登録スキル数</CardDescription>
+            <CardTitle className="text-2xl">{skills.length}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
@@ -66,14 +74,31 @@ export default function HomePage() {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Link href="/rules">
           <Card className="h-full transition-colors hover:border-primary">
             <CardHeader>
               <ListChecks className="size-5 text-primary" />
-              <CardTitle className="text-base">ルール & スキル管理</CardTitle>
+              <CardTitle className="text-base">ルール管理</CardTitle>
               <CardDescription>
-                CLAUDE.md / rules.json のカテゴリ別表示・トグル・編集
+                CLAUDE.md（## 見出し単位）の表示・トグル・編集
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <span className="inline-flex items-center gap-1 text-sm text-primary">
+                開く <ArrowRight className="size-3.5" />
+              </span>
+            </CardContent>
+          </Card>
+        </Link>
+
+        <Link href="/skills">
+          <Card className="h-full transition-colors hover:border-primary">
+            <CardHeader>
+              <Sparkles className="size-5 text-primary" />
+              <CardTitle className="text-base">スキル管理</CardTitle>
+              <CardDescription>
+                .claude/skills/*/SKILL.md の一覧・追加・編集
               </CardDescription>
             </CardHeader>
             <CardContent>

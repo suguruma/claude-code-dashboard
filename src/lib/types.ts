@@ -1,16 +1,28 @@
 export type RuleCategory = string
 
+/**
+ * CLAUDE.md の `## 見出し` セクションから直接パースされるルール。
+ * id は読み込みのたびに再構築される一時的な識別子（見出し+出現順）で、永続IDではない。
+ * created_at/updated_at は Markdown 本文からは追跡できないため保持しない。
+ */
 export interface Rule {
   id: string
   category: RuleCategory
   content: string
   enabled: boolean
-  created_at: string
-  updated_at: string
 }
 
-export interface RulesFile {
-  rules: Rule[]
+/**
+ * `.claude/skills/<dirName>/SKILL.md` から読み込むスキル定義。
+ * dirName はディレクトリ名（API操作時の識別子）、name/description/argumentSchema は
+ * YAML frontmatter 由来、body はfrontmatter以降のMarkdown本文。
+ */
+export interface SkillMeta {
+  dirName: string
+  name: string
+  description: string
+  argumentSchema?: unknown
+  body: string
 }
 
 export interface TradeOff {

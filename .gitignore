@@ -40,5 +40,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# dashboard: user-specific monitored project registry
+# dashboard: user-specific monitored project registry (contains local absolute paths)
+/config/projects.json
 /config/projects.local.json
+
+# dashboard: real ~/.claude data provided for local testing (contains personal session logs)
+/sample-data-user/

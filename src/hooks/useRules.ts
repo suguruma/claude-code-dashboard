@@ -2,11 +2,15 @@
 
 import useSWR from "swr"
 import { apiMutate, fetcher } from "@/lib/fetcher"
-import { Rule, RulesFile } from "@/lib/types"
+import { Rule } from "@/lib/types"
+
+interface RulesResponse {
+  rules: Rule[]
+}
 
 export function useRules(projectId: string | null) {
   const key = projectId ? `/api/rules?projectId=${encodeURIComponent(projectId)}` : null
-  const { data, error, isLoading, mutate } = useSWR<RulesFile>(key, fetcher)
+  const { data, error, isLoading, mutate } = useSWR<RulesResponse>(key, fetcher)
 
   async function createRule(input: { category: string; content: string; enabled?: boolean }) {
     if (!projectId) throw new Error("プロジェクトが選択されていません")

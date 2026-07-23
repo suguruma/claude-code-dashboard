@@ -50,12 +50,12 @@ export function RuleFormDialog({
         </DialogHeader>
         <div className="grid gap-4 py-2">
           <div className="grid gap-2">
-            <Label htmlFor="rule-category">カテゴリ</Label>
+            <Label htmlFor="rule-category">見出し（CLAUDE.mdの `## `）</Label>
             <Input
               id="rule-category"
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-              placeholder="例: 構成 / トーン / ビジュアル / 禁止事項"
+              placeholder="例: 出力形式 / コード品質 / 自律実行"
             />
           </div>
           <div className="grid gap-2">

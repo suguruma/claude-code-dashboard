@@ -18,59 +18,59 @@ afterEach(async () => {
 })
 
 describe("createRule", () => {
-  it("既存ルールがない場合 rule_001 を採番する", async () => {
+  it("CLAUDE.mdが存在しない場合でも新規作成できる", async () => {
     const project = await makeProject()
     const rule = await createRule(project, { category: "構成", content: "テスト" })
-    expect(rule.id).toBe("rule_001")
+    expect(rule.category).toBe("構成")
+    expect(rule.enabled).toBe(true)
   })
 
-  it("既存の最大連番+1を採番する", async () => {
-    const project = await makeProject()
-    await fs.writeFile(
-      path.join(project.path, "rules.json"),
-      JSON.stringify({
-        rules: [
-          { id: "rule_001", category: "a", content: "a", enabled: true, created_at: "x", updated_at: "x" },
-          { id: "rule_005", category: "a", content: "a", enabled: true, created_at: "x", updated_at: "x" },
-        ],
-      })
-    )
-    const rule = await createRule(project, { category: "構成", content: "テスト" })
-    expect(rule.id).toBe("rule_006")
-  })
-
-  it("作成後 CLAUDE.md にルール内容が反映される", async () => {
+  it("作成後 CLAUDE.md に見出しとルール内容が反映される", async () => {
     const project = await makeProject()
     await createRule(project, { category: "構成", content: "冒頭に結論を書く" })
     const claudeMd = await fs.readFile(path.join(project.path, "CLAUDE.md"), "utf-8")
+    expect(claudeMd).toContain("## 構成")
     expect(claudeMd).toContain("冒頭に結論を書く")
+  })
+
+  it("既存のCLAUDE.mdのpreamble(タイトル等)を保持したまま追記する", async () => {
+    const project = await makeProject()
+    await fs.writeFile(path.join(project.path, "CLAUDE.md"), "# グローバルルール\n\n## 既存ルール\n既存の内容\n")
+    await createRule(project, { category: "新規", content: "新しい内容" })
+
+    const claudeMd = await fs.readFile(path.join(project.path, "CLAUDE.md"), "utf-8")
+    expect(claudeMd).toContain("# グローバルルール")
+    expect(claudeMd).toContain("## 既存ルール")
+    expect(claudeMd).toContain("## 新規")
   })
 })
 
 describe("updateRule / deleteRule", () => {
-  it("enabled を false にすると CLAUDE.md から本文が消える", async () => {
+  it("enabled を false にすると CLAUDE.md 上で CCD:DISABLED コメントに包まれる", async () => {
     const project = await makeProject()
     const rule = await createRule(project, { category: "構成", content: "対象ルール" })
-    let claudeMd = await fs.readFile(path.join(project.path, "CLAUDE.md"), "utf-8")
-    expect(claudeMd).toContain("対象ルール")
 
     await updateRule(project, rule.id, { enabled: false })
-    claudeMd = await fs.readFile(path.join(project.path, "CLAUDE.md"), "utf-8")
-    expect(claudeMd).not.toContain("対象ルール")
+    const claudeMd = await fs.readFile(path.join(project.path, "CLAUDE.md"), "utf-8")
+    expect(claudeMd).toContain("<!-- CCD:DISABLED")
+    expect(claudeMd).toContain("対象ルール")
+
+    const rules = await getRules(project)
+    expect(rules.find((r) => r.category === "構成")?.enabled).toBe(false)
   })
 
   it("存在しないIDを更新しようとするとエラーになる", async () => {
     const project = await makeProject()
-    await expect(updateRule(project, "rule_999", { content: "x" })).rejects.toThrow()
+    await expect(updateRule(project, "sec-999", { content: "x" })).rejects.toThrow()
   })
 
-  it("削除すると rules.json から消え、CLAUDE.md からも消える", async () => {
+  it("削除すると CLAUDE.md から見出しごと消える", async () => {
     const project = await makeProject()
     const rule = await createRule(project, { category: "構成", content: "消えるルール" })
     await deleteRule(project, rule.id)
 
-    const rulesFile = await getRules(project)
-    expect(rulesFile.rules).toHaveLength(0)
+    const rules = await getRules(project)
+    expect(rules).toHaveLength(0)
 
     const claudeMd = await fs.readFile(path.join(project.path, "CLAUDE.md"), "utf-8")
     expect(claudeMd).not.toContain("消えるルール")

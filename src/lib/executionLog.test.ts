@@ -79,15 +79,14 @@ describe("saveSuggestedRulesFromLog", () => {
         ],
       })
     )
-    await fs.writeFile(path.join(project.path, "rules.json"), JSON.stringify({ rules: [] }))
     await fs.writeFile(path.join(project.path, "CLAUDE.md"), "")
 
     const savedCount = await saveSuggestedRulesFromLog(project, "t1")
     expect(savedCount).toBe(1)
 
-    const rulesFile = await getRules(project)
-    expect(rulesFile.rules).toHaveLength(1)
-    expect(rulesFile.rules[0].content).toBe("表形式にする")
+    const rules = await getRules(project)
+    expect(rules).toHaveLength(1)
+    expect(rules[0].content).toBe("表形式にする")
   })
 
   it("存在しない task_id を指定するとエラーになる", async () => {

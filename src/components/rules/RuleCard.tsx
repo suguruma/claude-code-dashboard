@@ -50,7 +50,7 @@ export function RuleCard({ rule, onToggle, onEdit, onDelete }: RuleCardProps) {
   return (
     <Card className={cn(!rule.enabled && "opacity-60")}>
       <CardHeader className="flex flex-row items-start justify-between gap-2 pb-2">
-        <div className="text-xs font-mono text-muted-foreground">{rule.id}</div>
+        <div className="text-sm font-medium">{rule.category}</div>
         <Tooltip>
           <TooltipTrigger render={<div />}>
             <Switch checked={rule.enabled} disabled={busy} onCheckedChange={handleToggle} />
@@ -59,23 +59,20 @@ export function RuleCard({ rule, onToggle, onEdit, onDelete }: RuleCardProps) {
         </Tooltip>
       </CardHeader>
       <CardContent className="space-y-3">
-        <p className="text-sm leading-relaxed">{rule.content}</p>
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span>最終更新: {rule.updated_at}</span>
-          <div className="flex gap-1">
-            <Button variant="ghost" size="icon" className="size-7" onClick={() => onEdit(rule)}>
-              <Pencil className="size-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-7 text-destructive hover:text-destructive"
-              onClick={handleDelete}
-              disabled={busy}
-            >
-              <Trash2 className="size-3.5" />
-            </Button>
-          </div>
+        <p className="whitespace-pre-wrap text-sm leading-relaxed">{rule.content}</p>
+        <div className="flex items-center justify-end gap-1">
+          <Button variant="ghost" size="icon" className="size-7" onClick={() => onEdit(rule)}>
+            <Pencil className="size-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7 text-destructive hover:text-destructive"
+            onClick={handleDelete}
+            disabled={busy}
+          >
+            <Trash2 className="size-3.5" />
+          </Button>
         </div>
       </CardContent>
     </Card>

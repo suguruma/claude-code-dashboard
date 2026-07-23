@@ -7,7 +7,8 @@ import { ProjectSwitcher } from "./ProjectSwitcher"
 
 const NAV_ITEMS = [
   { href: "/", label: "ホーム" },
-  { href: "/rules", label: "ルール & スキル" },
+  { href: "/rules", label: "ルール管理" },
+  { href: "/skills", label: "スキル管理" },
   { href: "/trace", label: "実行ログ" },
   { href: "/refactor", label: "GPUモード", disabled: true },
 ]

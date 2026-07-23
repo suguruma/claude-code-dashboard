@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useState } from "react"
 import { Plus } from "lucide-react"
 import { toast } from "sonner"
 import { useProjects } from "@/hooks/useProjects"
@@ -22,16 +22,6 @@ export default function RulesPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingRule, setEditingRule] = useState<Rule | null>(null)
   const [formKey, setFormKey] = useState(0)
-
-  const grouped = useMemo(() => {
-    const map = new Map<string, Rule[]>()
-    for (const rule of rules) {
-      const list = map.get(rule.category) ?? []
-      list.push(rule)
-      map.set(rule.category, list)
-    }
-    return Array.from(map.entries())
-  }, [rules])
 
   function openCreateDialog() {
     setEditingRule(null)
@@ -80,9 +70,9 @@ export default function RulesPage() {
       <section className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-semibold">ルール & スキル管理</h1>
+            <h1 className="text-xl font-semibold">ルール管理</h1>
             <p className="text-sm text-muted-foreground">
-              {selectedProject.name} の rules.json / CLAUDE.md を管理します
+              {selectedProject.name} の CLAUDE.md（## 見出し単位）を管理します
             </p>
           </div>
           <Button onClick={openCreateDialog}>
@@ -104,29 +94,24 @@ export default function RulesPage() {
           </p>
         )}
 
-        {grouped.map(([category, categoryRules]) => (
-          <div key={category} className="space-y-3">
-            <h2 className="text-sm font-medium text-muted-foreground">【{category}】</h2>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {categoryRules.map((rule) => (
-                <RuleCard
-                  key={rule.id}
-                  rule={rule}
-                  onToggle={(id, enabled) => updateRule(id, { enabled })}
-                  onEdit={openEditDialog}
-                  onDelete={deleteRule}
-                />
-              ))}
-            </div>
-          </div>
-        ))}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {rules.map((rule) => (
+            <RuleCard
+              key={rule.id}
+              rule={rule}
+              onToggle={(id, enabled) => updateRule(id, { enabled })}
+              onEdit={openEditDialog}
+              onDelete={deleteRule}
+            />
+          ))}
+        </div>
       </section>
 
       <section className="space-y-4">
         <div>
-          <h2 className="text-lg font-semibold">獲得スキル</h2>
+          <h2 className="text-lg font-semibold">黄金プロンプト集</h2>
           <p className="text-sm text-muted-foreground">
-            過去タスクで生成された「黄金プロンプト」をSOPとして一覧化しています
+            過去タスクで生成された「次回用の最適化プロンプト」をSOPとして一覧化しています
           </p>
         </div>
         {logs.length === 0 ? (

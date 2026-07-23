@@ -8,8 +8,8 @@ export const dynamic = "force-dynamic"
 export async function GET(req: NextRequest) {
   try {
     const project = await resolveRequestProject(req)
-    const rulesFile = await getRules(project)
-    return NextResponse.json(rulesFile)
+    const rules = await getRules(project)
+    return NextResponse.json({ rules })
   } catch (err) {
     return handleError(err)
   }

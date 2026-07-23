@@ -88,12 +88,88 @@
 - `.claude/launch.json` に `dashboard` 構成（`npm --prefix ClaudeCodeDashboard run dev`, port 3000）を追加し、以後 `preview_start` で起動可能にした。
 - README.md / docs/spec.md を本実装に合わせて更新。
 
-## 次にClaudeへ頼むべき追加指示
+## 次にClaudeへ頼むべき追加指示（ラウンド1時点。ラウンド2で状況が変わったため下記も参照）
 
-1. **機能3（GPUモード）の実装**：Ollama等ローカルLLM接続によるルール矛盾・重複自動検出。`/refactor` ページと導線は用意済み、API・LLM呼び出しロジックは未実装。
+1. ~~機能3（GPUモード）の実装~~：引き続き未着手。
 2. **E2Eテストの自動化**：現状はvitestによるlib層のユニットテストのみ。Playwright等でルール追加・トグル・黄金プロンプト保存のE2Eを自動化するとリグレッション検知が強化される。
 3. **執筆時に見送った要検討事項**（実運用しながらユーザーと合意すべき点）：
    - GPUモードを別タスクとして切り出した判断の是非
-   - `execution_log.json` を配列スキーマに拡張した仕様変更の是非（Claude Code側の出力プロンプトもこの配列形式で書き込むよう合わせる必要がある）
-   - ルール無効時に `CLAUDE.md` から本文を除去する同期方式の是非（除去ではなく取り消し線コメントで残す等の代案もあり得る）
    - F-2.1-d「成果物骨子（アウトライン）の差分・変化」は `execution_log.json` のデータ構造定義に対応フィールドが無いため今回未実装。必要なら `outline_diff` 相当のフィールドをスキーマに追加してから着手する。
+
+---
+
+# ラウンド2：実データ対応（CLAUDE.md直接パース化 + スキル管理機能）
+
+## 背景・方針転換の理由
+
+ユーザーが実際の `~/.claude` フォルダ（`sample-data-user/.claude/`）を提供し確認した結果、**`rules.json` に相当する構造化ファイルは実際には存在しない**ことが判明。実際に存在するのは：
+
+- `CLAUDE.md` — 自由記述のMarkdown（`## 見出し` ごとに1ルールのまとまり）
+- `skills/<name>/SKILL.md` — YAML frontmatter（name/description/argument-schema）+ Markdown本文
+- `settings.json`, `projects/*/*.jsonl`（生会話ログ）, `tasks/*/*.json` 等の運用ファイル
+
+ユーザーへの確認の結果、以下の3点で合意：
+
+1. **機能1のデータソースを `rules.json` から実際の `CLAUDE.md` 直接パース方式に切り替える**（rules.jsonは廃止）
+2. **スキル管理（`.claude/skills/*/SKILL.md` の一覧・追加・編集）を新機能として実装する**
+3. **機能2（実行ログ可視化）は現状維持**（`execution_log.json` の仕組みはそのまま残し、将来Claude Codeが出力する想定を維持）
+
+## 1周目：方向性
+
+### 戦略家
+
+- 当初の仕様書設計（`rules.json` 中心）は「これから育てるメタデータ層」を前提にしていたが、ユーザーの真のニーズは「今あるものをそのまま見せる」こと。実データへの適合を最優先する。
+- CLAUDE.mdは肥大化すると見出しの海になり全体像も有効/無効も把握しづらく、スキルも`.claude/skills/`を都度lsしないと何があるか分からない。これを一覧化・GUI化すること自体がそのまま価値になる。
+
+### 設計者
+
+- **CLAUDE.mdパーサー**：`# `(h1)はタイトルとして読み飛ばし、`## `(h2)を1ルールの境界とする。h2直下から次のh2（またはファイル末尾）までをそのルールのcontentとする。h3以下のネストはcontent内にそのまま保持し過剰パースしない。
+- **無効化の表現**：セクション全体を `<!-- CCD:DISABLED ... -->` でコメントアウトすることで表現する（rules.json時代のようなJSONのenabledフラグではなく、Markdown自体に残す）。
+- **ID割当**：見出しテキスト＋出現順インデックスを組み合わせて生成（永続IDではなく読み込みのたびに再構築するephemeral ID。並び替えは非対応）。
+- **スキル管理**：`skills/<name>/SKILL.md` をディレクトリスキャンで列挙。YAML frontmatterのパースに `js-yaml` を追加。新規作成時はスラッグ化したディレクトリ名をバリデーション。
+- **config/projects.json の個人情報漏洩リスク**：ユーザーが実際に「グローバル設定」として `C:\Users\sugur\.claude` を登録したことで、個人環境依存の絶対パスが `config/projects.json` に書き込まれた。このファイルは今までコミット対象だったため、**`.gitignore` に追加し `git rm --cached` する**（テンプレートは `config/projects.example.json` として別途コミット）。
+- 主な失敗リスク：frontmatterの壊れたYAML→パースエラーをキャッチしエラーバナー表示に留める。スキル名の重複・不正なディレクトリ名文字→バリデーション。
+
+### 生成者：3案比較（CLAUDE.md無効化表現方式）
+
+| 案 | 内容 | 評価 |
+|---|---|---|
+| A. 見出し単位 + HTMLコメントで無効化 | シンプルで人間にも読めるMarkdownのまま、CLAUDE.md自体が唯一の真実源になる | **採用** |
+| B. frontmatterにルールメタデータをJSON埋め込み | enabled等を構造化できるが、CLAUDE.mdは本来frontmatterを持たない自由形式なので互換性・可読性を壊す | 却下 |
+| C. 別ファイル(rules-meta.json)でenabled状態だけ独立管理 | 二重管理に逆戻りし、当初rules.json方式が抱えていた同期漏れ問題を再導入する | 却下 |
+
+→ **案Aを採用**。CLAUDE.md自体をパース・シリアライズし、唯一の真実源とする。
+
+### 自己採点：80/100
+（方針は固まったが、既存 `sample-data/rules.json` 資産の扱い＝完全廃止か移行かの詰めと、スキルCRUD時のディレクトリ名バリデーション設計がまだ粗い）
+
+## 2周目：弱点を壊す
+
+### 破壊者
+
+- **js-yamlのdefault exportが存在しない**：`import yaml from "js-yaml"` は型チェックこそ通るが実行時に `Cannot read properties of undefined` で落ちた（v5系はnamed exportのみ）。`import * as yaml from "js-yaml"` に修正し、vitestで実行時エラーとして検出。
+- **CLAUDE.md直接パース方式の往復変換をユーザーの実データで検証**：`sample-data-user/.claude/CLAUDE.md`（本物のグローバルルール5見出し）と `skills/task/SKILL.md`（argument-schema付き）を読み込ませ、意図どおり5ルール・1スキルとして表示されることを確認。仕様書のダミーデータだけでなく実データで検証したことで、パーサーの見出し境界検出や無効化コメントの往復が実運用に耐えることを確認できた。
+- **本番の`.claude`フォルダへの誤書き込みリスク**：ブラウザ操作で「グローバル設定」プロジェクト（ユーザーの実際の`~/.claude`）が選択された状態のままトグル操作等をテストすると、本物のCLAUDE.mdやSKILL.mdを書き換えてしまう。これに気づき、書き込み系の動作確認は必ず `sample-data` プロジェクトに切り替えてから実施する運用に切り替えた。テスト後は追加した一時ルール・スキルを削除し、`config/projects.json` の選択状態もユーザーが元々選んでいた「グローバル設定」に戻した。
+- **Next.js devサーバーの残留プロセス**：前回ラウンドで起動した `next dev`（PID 42580）が `preview_stop` 後もOSプロセスとして残っており、同一ディレクトリへの新規起動が「Another next dev server is already running」で失敗した。原因プロセスが自セッションで起動したものであることを確認したうえで `Stop-Process -Force` で終了し、起動できることを確認。
+- **未対応のまま許容した点**：ID（`sec-N`）が読み込みのたびに再構築されるephemeralな位置ベースIDのため、外部プロセス（Claude Code本体やユーザーの直接編集）が同時にCLAUDE.mdを編集した場合、フロントが保持する古いIDでPATCH/DELETEすると別ルールを誤操作するリスクが理論上ある。単一ユーザーのローカルツールという前提で許容し、対応は見送った。
+
+### 自己採点：88/100
+（実データでの往復検証、js-yamlの実行時エラー、本番データ誤書き込みリスクの3点は実際に発生・検出して対処できた。減点理由はID衝突リスクを許容のまま残した点と、E2E自動化が引き続き手薄な点）
+
+## 3周目：完成形
+
+### 仕上げ屋
+
+- `npx tsc --noEmit` / `npx eslint .` / `npx vitest run`（31件）/ `npm run build` すべて成功を確認。
+- ブラウザ実操作で以下を確認済み：ホームのサマリー（有効ルール数・登録スキル数・記録済みタスク数・直近1-Shotスコア）表示、実際の`~/.claude`（グローバル設定）でのルール5件・スキル1件の読み取り表示、サンプルプロジェクトでのルールトグル→CLAUDE.mdのCCD:DISABLEDコメント往復、ルール追加、スキル追加。確認後 `sample-data/` と `config/projects.json` の選択状態は元に戻し済み。
+- `sample-data/rules.json` を削除し、`sample-data/CLAUDE.md` を自由記述形式（無効化ルール1件を含む）に作り直した。`sample-data/skills/{summarize,report-writer}/SKILL.md` を新規追加。
+- `config/projects.json` を `.gitignore` に追加し `git rm --cached`。代わりに `config/projects.example.json`（sample-dataのみ登録）をコミット対象のテンプレートとして追加。`sample-data-user/`（ユーザー提供の実`.claude`データ、個人情報含む）も `.gitignore` に追加し、誤コミットを防止。
+- README.md / docs/spec.md をラウンド2の内容に合わせて更新。
+
+## 次にClaudeへ頼むべき追加指示（ラウンド2時点）
+
+1. **機能3（GPUモード）の実装**：引き続き未着手。
+2. **E2Eテストの自動化**：Playwright等でルール追加・トグル・スキルCRUDのE2Eを自動化。
+3. **本番`.claude`への誤操作防止UI**：現状は選択中プロジェクトがユーザーの実`~/.claude`かどうかをUI上で区別していない。書き込み系操作の前に「グローバル設定を編集しようとしています」等の確認ダイアログを出す、または読み取り専用モードを設けることを検討。
+4. **ID位置ベース方式のリスク低減**：CLAUDE.mdを外部（Claude Code本体・エディタ）から同時編集された場合の競合検出（例: 保存前にファイルの現在内容と読み込み時の内容を比較し、不一致ならエラーにする）。
+5. **F-2.1-d「成果物骨子の差分」** は引き続き未実装（データスキーマに対応フィールドなし）。

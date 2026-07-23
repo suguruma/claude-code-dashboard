@@ -1,0 +1,113 @@
+"use client"
+
+import { useState } from "react"
+import { Plus } from "lucide-react"
+import { toast } from "sonner"
+import { useProjects } from "@/hooks/useProjects"
+import { useSkills } from "@/hooks/useSkills"
+import { Button } from "@/components/ui/button"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { SkillListCard } from "@/components/skills/SkillListCard"
+import { SkillFormDialog } from "@/components/skills/SkillFormDialog"
+import { SkillMeta } from "@/lib/types"
+
+export default function SkillsPage() {
+  const { selectedProjectId, selectedProject, isLoading: projectsLoading } = useProjects()
+  const { skills, isLoading, error, createSkill, updateSkill, deleteSkill } =
+    useSkills(selectedProjectId)
+
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingSkill, setEditingSkill] = useState<SkillMeta | null>(null)
+  const [formKey, setFormKey] = useState(0)
+
+  function openCreateDialog() {
+    setEditingSkill(null)
+    setFormKey((k) => k + 1)
+    setDialogOpen(true)
+  }
+
+  function openEditDialog(skill: SkillMeta) {
+    setEditingSkill(skill)
+    setFormKey((k) => k + 1)
+    setDialogOpen(true)
+  }
+
+  async function handleSubmit(input: { dirName: string; description: string; body: string }) {
+    try {
+      if (editingSkill) {
+        await updateSkill(editingSkill.dirName, { description: input.description, body: input.body })
+        toast.success("スキルを更新しました")
+      } else {
+        await createSkill(input)
+        toast.success("スキルを追加しました")
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "保存に失敗しました")
+      throw err
+    }
+  }
+
+  if (projectsLoading) {
+    return <p className="text-sm text-muted-foreground">読み込み中...</p>
+  }
+
+  if (!selectedProject) {
+    return (
+      <Alert>
+        <AlertTitle>プロジェクトが未登録です</AlertTitle>
+        <AlertDescription>
+          画面右上の「+」からプロジェクトを登録してください。
+        </AlertDescription>
+      </Alert>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-semibold">スキル管理</h1>
+          <p className="text-sm text-muted-foreground">
+            {selectedProject.name} の .claude/skills/*/SKILL.md を管理します
+          </p>
+        </div>
+        <Button onClick={openCreateDialog}>
+          <Plus className="size-4" />
+          スキルを追加
+        </Button>
+      </div>
+
+      {error && (
+        <Alert variant="destructive">
+          <AlertTitle>読み込みエラー</AlertTitle>
+          <AlertDescription>{error.message}</AlertDescription>
+        </Alert>
+      )}
+
+      {!isLoading && skills.length === 0 && !error && (
+        <p className="text-sm text-muted-foreground">
+          skills ディレクトリが無いか、まだスキルが登録されていません。
+        </p>
+      )}
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {skills.map((skill) => (
+          <SkillListCard
+            key={skill.dirName}
+            skill={skill}
+            onEdit={openEditDialog}
+            onDelete={deleteSkill}
+          />
+        ))}
+      </div>
+
+      <SkillFormDialog
+        key={formKey}
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        initialSkill={editingSkill}
+        onSubmit={handleSubmit}
+      />
+    </div>
+  )
+}
