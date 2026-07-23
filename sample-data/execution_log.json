@@ -1,0 +1,35 @@
+{
+  "logs": [
+    {
+      "task_id": "task_20260723_001",
+      "task_name": "2026年AI市場動向のプレゼン資料作成",
+      "executed_at": "2026-07-23 10:00:00",
+      "one_shot_score": 75,
+      "summary": "骨子作成からスライド化まで実行。途中データフォーマットに関してユーザー介入あり。",
+      "agents_discussion": {
+        "consensus_rate": 80,
+        "conflict_point": "市場規模推移を結論に置くか、リスク分析を重視するか",
+        "trade_offs": [
+          {
+            "option_a": "結論先出しパターン（作成者推奨：役員承認率高）",
+            "option_b": "ストーリー順パターン（批判者推奨：文脈の理解度高）"
+          }
+        ]
+      },
+      "user_interventions": [
+        {
+          "step": 2,
+          "user_input": "データは文章じゃなくて表形式でまとめて",
+          "cause_analysis": "初期プロンプトにデータ出力形式（Table指定）が含まれていなかったため"
+        }
+      ],
+      "next_golden_prompt": "【目的】2026年AI市場動向に関するプレゼン資料作成\n【必須ルール】冒頭に結論を配置すること。数値データは必ず表形式（Markdown Table）で出力すること。リスク分析セクションを1スライド設けること。",
+      "suggested_new_rules": [
+        {
+          "category": "フォーマット",
+          "content": "数値データや比較データは文章ではなく必ず表形式（Table）で出力する"
+        }
+      ]
+    }
+  ]
+}
