@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { NavBar } from "@/components/layout/NavBar";
+import { SideNav } from "@/components/layout/SideNav";
+import { TopBar } from "@/components/layout/TopBar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -30,12 +31,17 @@ export default function RootLayout({
       lang="ja"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
+      <body className="h-full">
         <TooltipProvider>
-          <NavBar />
-          <main className="flex-1 mx-auto w-full max-w-6xl px-6 py-8">
-            {children}
-          </main>
+          <div className="flex h-full">
+            <SideNav />
+            <div className="flex h-full min-w-0 flex-1 flex-col">
+              <TopBar />
+              <main className="flex-1 overflow-y-auto">
+                <div className="mx-auto w-full max-w-6xl px-6 py-8">{children}</div>
+              </main>
+            </div>
+          </div>
           <Toaster />
         </TooltipProvider>
       </body>

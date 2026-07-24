@@ -22,6 +22,9 @@ Webアプリ側は重い処理を行わず、実際の `.claude/CLAUDE.md` / `.c
 メモリ管理・タスク実行履歴・設定/バックアップ/プラグイン・セッション監視は全て読み取り専用（編集・復元は次回以降のスコープ）。
 移行機能はルール・スキルのみが対象で、settings.jsonの環境変数などは含まない。
 
+ナビゲーションは左サイドバーに「設定管理」「分析・振り返り」「ツール」のカテゴリでグループ化されている。
+サイドバー下部のボタンでアイコンのみの表示に折りたためる。
+
 ## セットアップ
 
 ```bash
@@ -55,7 +58,7 @@ npm run build      # 本番ビルド
 ```
 src/
 ├── app/            # ページ & API Routes (App Router)
-├── components/     # UIコンポーネント (layout / rules / skills / trace / ui / projects / memory / tasks / settings / migrate / sessionMonitor)
+├── components/     # UIコンポーネント (layout[SideNav/TopBar] / rules / skills / trace / ui / projects / memory / tasks / settings / migrate / sessionMonitor)
 ├── hooks/          # SWRベースのデータ取得フック
 └── lib/            # ファイルI/O・CLAUDE.mdパーサー・スキル/実行ログ/メモリ/タスク履歴/設定/バックアップ/プラグイン/移行/セッション監視操作
 config/

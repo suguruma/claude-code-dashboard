@@ -16,7 +16,9 @@ export function ExportPanel({ exportUrl }: ExportPanelProps) {
           現在のプロジェクトのルール（CLAUDE.md）とスキル（skills/*/SKILL.md）を1つのJSONファイルにまとめてダウンロードします。
           settings.jsonの権限モードや環境変数など、個人環境依存の設定は含まれません。
         </p>
-        <Button render={<a href={exportUrl} download />}>エクスポート</Button>
+        <Button nativeButton={false} render={<a href={exportUrl} download />}>
+          エクスポート
+        </Button>
       </CardContent>
     </Card>
   )
