@@ -34,11 +34,22 @@ export interface TradeOff {
  * 進行役がアサインした専門エージェント1件。指示プロンプトによって「AI社長」
  * 「PM」「戦略家」等、進行役や役割の呼び方は変わりうるため、role/reason_for_assignment
  * 自体に固有名詞を持たせず、chain_of_command側で進行役の肩書きを表現する。
- * 既存ログとの後方互換のためoptional。
+ *
+ * persona/memory_context/tools/current_stateは、AIエージェントが保持する4種の情報
+ * （役割・制約／記憶・文脈／ツール・実行権限／現在のステータス・中間思考）に対応する
+ * 任意項目。いずれも既存ログとの後方互換のためoptional。
  */
 export interface AssignedAgent {
   role: string
   reason_for_assignment: string
+  /** 役割・制約（Role & Persona）：このエージェントの行動規範・振る舞いの定義 */
+  persona?: string
+  /** 記憶・文脈（Memory & Context）：参照した長期記憶・短期文脈の要約（例: 参照したCLAUDE.mdのルールやmemory/*.md） */
+  memory_context?: string
+  /** ツール・実行権限（Tools & Capabilities）：このエージェントが実際に使用した/使用可能なツール */
+  tools?: string[]
+  /** 現在のステータス・中間思考（State & Intermediate Thought）：完了時点で到達した結論・最終的な状態 */
+  current_state?: string
 }
 
 /** 試行錯誤・リトライの1ステップ。ツール実行エラーや自律修正の過程を記録する */

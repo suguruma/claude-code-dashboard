@@ -115,6 +115,41 @@ describe("getExecutionLogs 後方互換読み込み", () => {
     expect(logs[0].agents_discussion.assigned_agents).toHaveLength(2)
   })
 
+  it("persona / memory_context / tools / current_state（エージェントが保持する4種の情報）を保持する", async () => {
+    const project = await makeProject()
+    await fs.writeFile(
+      path.join(project.path, "execution_log.json"),
+      JSON.stringify({
+        logs: [
+          {
+            task_id: "t3",
+            agents_discussion: {
+              consensus_rate: 90,
+              conflict_point: "なし",
+              trade_offs: [],
+              assigned_agents: [
+                {
+                  role: "戦略家",
+                  reason_for_assignment: "市場分析",
+                  persona: "論理的かつ厳格に市場性を評価する",
+                  memory_context: "docs/plan.mdの過去ラウンドを参照",
+                  tools: ["WebSearch", "Read"],
+                  current_state: "勝ち筋を1点に絞り込んだ",
+                },
+              ],
+            },
+          },
+        ],
+      })
+    )
+    const logs = await getExecutionLogs(project)
+    const agent = logs[0].agents_discussion.assigned_agents?.[0]
+    expect(agent?.persona).toBe("論理的かつ厳格に市場性を評価する")
+    expect(agent?.memory_context).toBe("docs/plan.mdの過去ラウンドを参照")
+    expect(agent?.tools).toEqual(["WebSearch", "Read"])
+    expect(agent?.current_state).toBe("勝ち筋を1点に絞り込んだ")
+  })
+
   it("これらの新規フィールドが無い旧形式のログもそのまま読み込める（後方互換）", async () => {
     const project = await makeProject()
     await fs.writeFile(

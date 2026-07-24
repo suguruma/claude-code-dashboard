@@ -713,3 +713,38 @@
 1. `task`スキルの次回実行時、実際に`execution_log.json`が想定スキーマで書き出され`/trace`で可視化されるかを確認する。
 2. `TODO.md`優先度「高」の2点（E2Eテスト自動化、誤操作防止UI）が引き続き最優先候補。
 3. 機能3（GPUモード）は引き続き未着手。
+
+---
+
+# ラウンド12：エージェントが保持する4種の情報の可視化
+
+## 背景
+
+ユーザーから、AIエージェントが保持する情報を以下の4種に整理できるという提案を受けた。
+
+1. 役割・制約（Role & Persona / System Prompt）
+2. 記憶・文脈（Memory & Context）：短期記憶（現在の文脈・中間思考）と長期記憶（CLAUDE.md・memory/*.md等）
+3. ツール・実行権限（Tools & Capabilities）
+4. 現在のステータス・中間思考（State & Intermediate Thought）
+
+これらを可視化できるか、可能なら実装した上で実際にコマンド（`task`スキル）を使って動作検証までしてほしいという依頼だった。
+
+## 設計判断
+
+- 4種の情報のうち、長期記憶（CLAUDE.md・memory/*.md）は既に`/rules`・`/memory`ページで、ツールの実行実績（呼び出し回数・エラー数）は既に`/session-monitor`で、進行中タスクの状態は既に`/tasks`（TaskCreate/TaskUpdate）で別途可視化済みであることを確認した。今回追加するのは「1つのタスク実行の中で、各エージェントがそれぞれどういう役割・文脈・ツール・状態だったか」を`/trace`のエージェントカード単位でまとめて振り返れるようにする部分
+- `AssignedAgent`（ラウンド9で新設、role/reason_for_assignmentのみ）に`persona`/`memory_context`/`tools`/`current_state`を追加。4種の情報という粒度が「1エージェントが保持するもの」という単位と一致するため、既存の`assigned_agents`配列の各要素を拡張する設計が自然と判断した
+- 全て任意項目とし、一部の役割だけに設定されていても崩れないレイアウトにした（実際の運用でも全項目を毎回埋められるとは限らないため）
+
+## 実装・検証
+
+- `types.ts`の`AssignedAgent`に4フィールド追加
+- `AgentOrgChart.tsx`のカードを拡張。役割名+アサイン理由の下に、設定されている項目だけを罫線区切りで表示（`persona`=役割・制約、`memory_context`=記憶・文脈はアイコン+説明文、`tools`=ツール・実行権限はBadgeタグの並び、`current_state`=状態はアイコン+説明文）
+- `executionLog.test.ts`に4フィールドの保持を確認するテストを追加（14ファイル・**86件**）
+- `sample-data/execution_log.json`の5役フラットチーム例に、あえて一部の役割にしか4フィールドを設定しないデータを追加（戦略家=persona+memory_context+tools+current_state全部、設計者/生成者/仕上げ屋=toolsとcurrent_stateのみ、破壊者=personaとcurrent_stateのみ）。実運用でも全項目を埋めるとは限らないという想定を実データで裏付けた
+- ブラウザ実操作：`get_page_text`で「役割・制約:」「記憶・文脈:」「状態:」というラベル付きの説明文、ツール名のBadge一覧が意図通り表示され、フィールドが無い役割ではそれらの行自体が出ないことを確認
+- `~/.claude/skills/task/SKILL.md`と`Claude Code AI向け指示プロンプト.txt`の両方に、4フィールドの説明と記載例を追加（`task`スキルは戦略家の1件のみ記載例を示し、他の役割は「省略可」であることを暗に示した）
+- `npx tsc --noEmit` / `npx eslint .` / `npx vitest run` / `npm run build`すべて成功
+
+## 実機検証：`task`スキルを実際に実行
+
+ラウンド11で「未検証」としていた「`task`スキルが実際に`execution_log.json`を書き出すか」を、本ラウンドの4フィールド追加とあわせて実際に検証した。検証内容・結果は本セクションの直後に追記する（`/task`実行後に追記）。

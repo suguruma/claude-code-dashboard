@@ -103,23 +103,35 @@
         "assigned_agents": [
           {
             "role": "戦略家",
-            "reason_for_assignment": "テーマの市場の広さ・具体度・読者の欲望・反論・勝ち筋を分析するため"
+            "reason_for_assignment": "テーマの市場の広さ・具体度・読者の欲望・反論・勝ち筋を分析するため",
+            "persona": "褒めず断定せず、市場性とリスクを冷静に分析する視点で発言する",
+            "memory_context": "過去のdocs/plan.mdの類似ラウンド、CLAUDE.mdの「ビジュアル」ルールを参照",
+            "tools": ["WebSearch", "Read"],
+            "current_state": "勝ち筋を1点に絞り込み、設計者へ引き継いだ"
           },
           {
             "role": "設計者",
-            "reason_for_assignment": "完成までの工程を分解し、必要な情報・作業順・失敗リスクを整理するため"
+            "reason_for_assignment": "完成までの工程を分解し、必要な情報・作業順・失敗リスクを整理するため",
+            "tools": ["Read", "Glob"],
+            "current_state": "3案の比較検討を含む3周構成のタスク分解を完了"
           },
           {
             "role": "生成者",
-            "reason_for_assignment": "1案に絞らず3案出して比較しながら実際の成果物を作るため"
+            "reason_for_assignment": "1案に絞らず3案出して比較しながら実際の成果物を作るため",
+            "tools": ["Write", "Edit"],
+            "current_state": "3案を作成し、案Bを暫定採用として破壊者に引き継いだ"
           },
           {
             "role": "破壊者",
-            "reason_for_assignment": "生成物を褒めずに壊し、退屈な部分・AIっぽさ・弱点・バグの出やすい箇所を指摘するため"
+            "reason_for_assignment": "生成物を褒めずに壊し、退屈な部分・AIっぽさ・弱点・バグの出やすい箇所を指摘するため",
+            "persona": "生成物の弱点・矛盾・AIっぽさを容赦なく指摘する",
+            "current_state": "2件の弱点を指摘、いずれも仕上げ屋フェーズまでに解消済み"
           },
           {
             "role": "仕上げ屋",
-            "reason_for_assignment": "最終成果物を公開・納品できる状態に整えるため"
+            "reason_for_assignment": "最終成果物を公開・納品・投稿できる状態に整えるため",
+            "tools": ["Edit"],
+            "current_state": "公開前チェックリストを満たし完了"
           }
         ]
       },

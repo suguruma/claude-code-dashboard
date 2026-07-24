@@ -1,5 +1,6 @@
-import { Users } from "lucide-react"
+import { BookOpen, Radio, UserCog, Users, Wrench, type LucideIcon } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { AssignedAgent } from "@/lib/types"
 
 interface AgentOrgChartProps {
@@ -31,16 +32,55 @@ export function AgentOrgChart({ agents, chainOfCommand = [] }: AgentOrgChartProp
       ))}
       <div className="flex flex-wrap justify-center gap-3">
         {agents.map((agent, idx) => (
-          <Card key={idx} className="w-56 gap-0 py-3">
-            <CardContent className="space-y-1 px-3">
-              <p className="text-sm font-medium">{agent.role}</p>
-              <p className="text-xs leading-relaxed text-muted-foreground">
-                {agent.reason_for_assignment}
-              </p>
-            </CardContent>
-          </Card>
+          <AgentCard key={idx} agent={agent} />
         ))}
       </div>
+    </div>
+  )
+}
+
+function AgentCard({ agent }: { agent: AssignedAgent }) {
+  const hasDetails = agent.persona || agent.memory_context || agent.tools?.length || agent.current_state
+
+  return (
+    <Card className="w-64 gap-0 py-3">
+      <CardContent className="space-y-2 px-3">
+        <div>
+          <p className="text-sm font-medium">{agent.role}</p>
+          <p className="text-xs leading-relaxed text-muted-foreground">{agent.reason_for_assignment}</p>
+        </div>
+        {hasDetails && (
+          <div className="space-y-1.5 border-t pt-2">
+            {agent.persona && <DetailRow icon={UserCog} label="役割・制約" text={agent.persona} />}
+            {agent.memory_context && <DetailRow icon={BookOpen} label="記憶・文脈" text={agent.memory_context} />}
+            {agent.tools && agent.tools.length > 0 && (
+              <div className="flex items-start gap-1.5">
+                <Wrench className="mt-0.5 size-3 shrink-0 text-muted-foreground" />
+                <div className="flex flex-wrap gap-1">
+                  {agent.tools.map((tool, idx) => (
+                    <Badge key={idx} variant="outline" className="text-[10px]">
+                      {tool}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+            {agent.current_state && <DetailRow icon={Radio} label="状態" text={agent.current_state} />}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function DetailRow({ icon: Icon, label, text }: { icon: LucideIcon; label: string; text: string }) {
+  return (
+    <div className="flex items-start gap-1.5 text-xs">
+      <Icon className="mt-0.5 size-3 shrink-0 text-muted-foreground" />
+      <p className="leading-relaxed text-muted-foreground">
+        <span className="text-foreground/70">{label}: </span>
+        {text}
+      </p>
     </div>
   )
 }

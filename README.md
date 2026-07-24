@@ -54,7 +54,7 @@ npm run dev
 ## テスト・検証
 
 ```bash
-npm test          # vitest によるlib層のユニットテスト（14ファイル・85件）
+npm test          # vitest によるlib層のユニットテスト（14ファイル・86件）
 npx tsc --noEmit  # 型チェック
 npx eslint .       # Lint
 npm run build      # 本番ビルド
