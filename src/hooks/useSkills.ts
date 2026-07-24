@@ -12,13 +12,21 @@ export function useSkills(projectId: string | null) {
   const key = projectId ? `/api/skills?projectId=${encodeURIComponent(projectId)}` : null
   const { data, error, isLoading, mutate } = useSWR<SkillsResponse>(key, fetcher)
 
-  async function createSkill(input: { dirName: string; description: string; body: string }) {
+  async function createSkill(input: {
+    dirName: string
+    description: string
+    body: string
+    category?: string
+  }) {
     if (!projectId) throw new Error("プロジェクトが選択されていません")
     await apiMutate<SkillMeta>(`/api/skills?projectId=${encodeURIComponent(projectId)}`, "POST", input)
     await mutate()
   }
 
-  async function updateSkill(dirName: string, patch: { description?: string; body?: string }) {
+  async function updateSkill(
+    dirName: string,
+    patch: { description?: string; body?: string; category?: string }
+  ) {
     if (!projectId) throw new Error("プロジェクトが選択されていません")
     await apiMutate<SkillMeta>(
       `/api/skills/${dirName}?projectId=${encodeURIComponent(projectId)}`,

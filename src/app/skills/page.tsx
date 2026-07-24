@@ -10,6 +10,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { SkillListCard } from "@/components/skills/SkillListCard"
 import { SkillFormDialog } from "@/components/skills/SkillFormDialog"
 import { SkillMeta } from "@/lib/types"
+import { SKILL_CATEGORIES, UNCATEGORIZED } from "@/lib/skillCategories"
 
 export default function SkillsPage() {
   const { selectedProjectId, selectedProject, isLoading: projectsLoading } = useProjects()
@@ -32,7 +33,12 @@ export default function SkillsPage() {
     setDialogOpen(true)
   }
 
-  async function handleSubmit(input: { dirName: string; description: string; body: string }) {
+  async function handleSubmit(input: {
+    dirName: string
+    description: string
+    body: string
+    category?: string
+  }) {
     try {
       if (editingSkill) {
         let dirName = editingSkill.dirName
@@ -40,7 +46,11 @@ export default function SkillsPage() {
           await renameSkill(editingSkill.dirName, input.dirName)
           dirName = input.dirName
         }
-        await updateSkill(dirName, { description: input.description, body: input.body })
+        await updateSkill(dirName, {
+          description: input.description,
+          body: input.body,
+          category: input.category,
+        })
         toast.success("スキルを更新しました")
       } else {
         await createSkill(input)
@@ -51,6 +61,11 @@ export default function SkillsPage() {
       throw err
     }
   }
+
+  const groupedSkills = [...SKILL_CATEGORIES, UNCATEGORIZED].map((category) => ({
+    category,
+    skills: skills.filter((s) => (s.category ?? "") === category.slug),
+  })).filter((group) => group.skills.length > 0)
 
   if (projectsLoading) {
     return <p className="text-sm text-muted-foreground">読み込み中...</p>
@@ -95,14 +110,23 @@ export default function SkillsPage() {
         </p>
       )}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {skills.map((skill) => (
-          <SkillListCard
-            key={skill.dirName}
-            skill={skill}
-            onEdit={openEditDialog}
-            onDelete={deleteSkill}
-          />
+      <div className="space-y-8">
+        {groupedSkills.map(({ category, skills: groupSkills }) => (
+          <section key={category.slug} className="space-y-3">
+            <h2 className="text-sm font-medium text-muted-foreground">
+              {category.emoji} {category.label}（{groupSkills.length}）
+            </h2>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {groupSkills.map((skill) => (
+                <SkillListCard
+                  key={skill.dirName}
+                  skill={skill}
+                  onEdit={openEditDialog}
+                  onDelete={deleteSkill}
+                />
+              ))}
+            </div>
+          </section>
         ))}
       </div>
 

@@ -94,6 +94,32 @@ describe("createSkill / updateSkill / deleteSkill", () => {
     expect(updated.argumentSchema).toMatchObject({ type: "object" })
   })
 
+  it("categoryを指定して作成し、description更新後もcategoryが保持される", async () => {
+    const project = await makeProject()
+    await createSkill(project, { dirName: "categorized", description: "x", body: "", category: "dev-qa" })
+    const updated = await updateSkill(project, "categorized", { description: "更新後" })
+    expect(updated.category).toBe("dev-qa")
+
+    const content = await fs.readFile(
+      path.join(project.path, "skills", "categorized", "SKILL.md"),
+      "utf-8"
+    )
+    expect(content).toContain("category: dev-qa")
+  })
+
+  it("categoryに空文字を指定すると未分類に戻る", async () => {
+    const project = await makeProject()
+    await createSkill(project, { dirName: "will-clear", description: "x", body: "", category: "career" })
+    const updated = await updateSkill(project, "will-clear", { category: "" })
+    expect(updated.category).toBeUndefined()
+
+    const content = await fs.readFile(
+      path.join(project.path, "skills", "will-clear", "SKILL.md"),
+      "utf-8"
+    )
+    expect(content).not.toContain("category:")
+  })
+
   it("削除するとディレクトリごと消える", async () => {
     const project = await makeProject()
     await createSkill(project, { dirName: "removable", description: "x", body: "" })

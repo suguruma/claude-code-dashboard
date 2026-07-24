@@ -9,7 +9,7 @@ Webアプリ側は重い処理を行わず、実際の `.claude/CLAUDE.md` / `.c
 ## 実装済み機能
 
 - **ルール管理**（`/rules`）— `CLAUDE.md` の `## 見出し` をルールとして直接パース。ON/OFFトグル（`<!-- CCD:DISABLED -->` で無効化）、追加/編集/削除、ドラッグ&ドロップによる表示順（=CLAUDE.mdの記載順）の並び替え、次回用プロンプト集（実行ログ由来）
-- **スキル管理**（`/skills`）— `.claude/skills/*/SKILL.md` の一覧・追加・編集・削除・改名（ディレクトリ名変更。呼び出しコマンドが変わる旨を確認表示）
+- **スキル管理**（`/skills`）— `.claude/skills/*/SKILL.md` の一覧・追加・編集・削除・改名（ディレクトリ名変更。呼び出しコマンドが変わる旨を確認表示）・カテゴリ別グルーピング表示（frontmatterの`category`フィールドに基づく表示上の分類。実ファイルはフラット配置のまま）
 - **メモリ管理**（`/memory`）— `.claude/projects/*/memory/*.md`（AIメモリシステム）の一覧・閲覧。type別（user/feedback/project/reference）フィルタ。読み取り専用
 - **タスク実行履歴**（`/tasks`）— `.claude/tasks/<session-id>/*.json` をセッション別に進捗バー・ステータスアイコン付きで可視化。読み取り専用
 - **設定 & システム情報**（`/settings`）— `settings.json`（権限モード・環境変数・statusLine）/ バックアップ履歴 / ブロック済みプラグイン一覧をTabsで表示。読み取り専用
@@ -54,7 +54,7 @@ npm run dev
 ## テスト・検証
 
 ```bash
-npm test          # vitest によるlib層のユニットテスト（14ファイル・95件）
+npm test          # vitest によるlib層のユニットテスト（14ファイル・97件）
 npx tsc --noEmit  # 型チェック
 npx eslint .       # Lint
 npm run build      # 本番ビルド

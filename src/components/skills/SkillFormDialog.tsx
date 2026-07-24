@@ -13,14 +13,23 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { SkillMeta } from "@/lib/types"
+import { SKILL_CATEGORIES, getCategoryMeta } from "@/lib/skillCategories"
 
 interface SkillFormDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   initialSkill?: SkillMeta | null
-  onSubmit: (input: { dirName: string; description: string; body: string }) => Promise<void>
+  onSubmit: (input: {
+    dirName: string
+    description: string
+    body: string
+    category?: string
+  }) => Promise<void>
 }
+
+const UNCATEGORIZED_VALUE = "__uncategorized__"
 
 export function SkillFormDialog({
   open,
@@ -31,6 +40,7 @@ export function SkillFormDialog({
   const [dirName, setDirName] = useState(initialSkill?.dirName ?? "")
   const [description, setDescription] = useState(initialSkill?.description ?? "")
   const [body, setBody] = useState(initialSkill?.body ?? "")
+  const [category, setCategory] = useState(initialSkill?.category ?? UNCATEGORIZED_VALUE)
   const [submitting, setSubmitting] = useState(false)
 
   const isEditing = Boolean(initialSkill)
@@ -39,7 +49,14 @@ export function SkillFormDialog({
     if (!dirName.trim() || !description.trim()) return
     setSubmitting(true)
     try {
-      await onSubmit({ dirName: dirName.trim(), description: description.trim(), body })
+      await onSubmit({
+        dirName: dirName.trim(),
+        description: description.trim(),
+        body,
+        // 未分類は空文字として送る（JSON化でキー自体が消えるundefinedだと、
+        // 更新時に「変更なし」と区別できず既存カテゴリが残ってしまうため）
+        category: category === UNCATEGORIZED_VALUE ? "" : category,
+      })
       onOpenChange(false)
     } finally {
       setSubmitting(false)
@@ -70,6 +87,27 @@ export function SkillFormDialog({
                 {dirName.trim() || "..."} に変わります
               </p>
             )}
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="skill-category">カテゴリ</Label>
+            <Select value={category} onValueChange={(v) => v && setCategory(v)}>
+              <SelectTrigger id="skill-category" className="w-full">
+                <SelectValue placeholder="カテゴリを選択">
+                  {(value: string) => {
+                    const meta = getCategoryMeta(value === UNCATEGORIZED_VALUE ? undefined : value)
+                    return `${meta.emoji} ${meta.label}`
+                  }}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={UNCATEGORIZED_VALUE}>未分類</SelectItem>
+                {SKILL_CATEGORIES.map((c) => (
+                  <SelectItem key={c.slug} value={c.slug}>
+                    {c.emoji} {c.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="grid gap-2">
             <Label htmlFor="skill-description">説明（description）</Label>

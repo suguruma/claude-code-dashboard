@@ -22,6 +22,7 @@ export interface SkillMeta {
   name: string
   description: string
   argumentSchema?: unknown
+  category?: string
   body: string
 }
 

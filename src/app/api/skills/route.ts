@@ -22,10 +22,11 @@ export async function POST(req: NextRequest) {
     const dirName = typeof body.dirName === "string" ? body.dirName.trim() : ""
     const description = typeof body.description === "string" ? body.description.trim() : ""
     const skillBody = typeof body.body === "string" ? body.body : ""
+    const category = typeof body.category === "string" ? body.category.trim() || undefined : undefined
     if (!dirName || !description) {
       return NextResponse.json({ error: "dirName と description は必須です" }, { status: 400 })
     }
-    const skill = await createSkill(project, { dirName, description, body: skillBody })
+    const skill = await createSkill(project, { dirName, description, body: skillBody, category })
     return NextResponse.json(skill, { status: 201 })
   } catch (err) {
     return handleError(err)

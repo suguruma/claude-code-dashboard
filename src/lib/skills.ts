@@ -24,6 +24,7 @@ async function readSkill(project: ProjectConfig, dirName: string): Promise<Skill
       name: typeof data.name === "string" ? data.name : dirName,
       description: typeof data.description === "string" ? data.description : "",
       argumentSchema: data["argument-schema"],
+      category: typeof data.category === "string" ? data.category : undefined,
       body: body.trim(),
     }
   } catch (err) {
@@ -31,6 +32,13 @@ async function readSkill(project: ProjectConfig, dirName: string): Promise<Skill
     if (nodeErr.code === "ENOENT") return null
     throw new FileIOError(`${dirName}/SKILL.md の読み込みに失敗しました: ${String(err)}`)
   }
+}
+
+function buildFrontmatterData(skill: SkillMeta): Record<string, unknown> {
+  const data: Record<string, unknown> = { name: skill.name, description: skill.description }
+  if (skill.argumentSchema !== undefined) data["argument-schema"] = skill.argumentSchema
+  if (skill.category !== undefined) data.category = skill.category
+  return data
 }
 
 export async function listSkills(project: ProjectConfig): Promise<SkillMeta[]> {
@@ -61,29 +69,30 @@ export function validateSkillDirName(dirName: string): void {
 
 export async function createSkill(
   project: ProjectConfig,
-  input: { dirName: string; description: string; body: string }
+  input: { dirName: string; description: string; body: string; category?: string }
 ): Promise<SkillMeta> {
   validateSkillDirName(input.dirName)
   const existing = await readSkill(project, input.dirName)
   if (existing) throw new Error(`スキル "${input.dirName}" は既に存在します`)
 
-  const content = serializeFrontmatter(
-    { name: input.dirName, description: input.description },
-    input.body
-  )
-  await writeTextFile(skillMdPath(project, input.dirName), content)
-  return {
+  const skill: SkillMeta = {
     dirName: input.dirName,
     name: input.dirName,
     description: input.description,
+    category: input.category || undefined,
     body: input.body.trim(),
   }
+  await writeTextFile(
+    skillMdPath(project, input.dirName),
+    serializeFrontmatter(buildFrontmatterData(skill), skill.body)
+  )
+  return skill
 }
 
 export async function updateSkill(
   project: ProjectConfig,
   dirName: string,
-  patch: { description?: string; body?: string }
+  patch: { description?: string; body?: string; category?: string }
 ): Promise<SkillMeta> {
   const existing = await readSkill(project, dirName)
   if (!existing) throw new Error("スキルが見つかりません")
@@ -92,11 +101,14 @@ export async function updateSkill(
     ...existing,
     description: patch.description ?? existing.description,
     body: patch.body ?? existing.body,
+    // 空文字は「未分類に戻す」明示的な指定として扱う（キー自体が無い場合のみ既存値を維持する）
+    category: patch.category !== undefined ? patch.category || undefined : existing.category,
   }
-  const data: Record<string, unknown> = { name: updated.name, description: updated.description }
-  if (updated.argumentSchema !== undefined) data["argument-schema"] = updated.argumentSchema
 
-  await writeTextFile(skillMdPath(project, dirName), serializeFrontmatter(data, updated.body))
+  await writeTextFile(
+    skillMdPath(project, dirName),
+    serializeFrontmatter(buildFrontmatterData(updated), updated.body)
+  )
   return updated
 }
 
@@ -123,10 +135,11 @@ export async function renameSkill(
   )
 
   const updated: SkillMeta = { ...existing, dirName: newDirName, name: newDirName }
-  const data: Record<string, unknown> = { name: updated.name, description: updated.description }
-  if (updated.argumentSchema !== undefined) data["argument-schema"] = updated.argumentSchema
 
-  await writeTextFile(skillMdPath(project, newDirName), serializeFrontmatter(data, updated.body))
+  await writeTextFile(
+    skillMdPath(project, newDirName),
+    serializeFrontmatter(buildFrontmatterData(updated), updated.body)
+  )
   return updated
 }
 
