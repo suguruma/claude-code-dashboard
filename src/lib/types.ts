@@ -131,3 +131,48 @@ export interface BlockedPlugin {
   reason: string
   text: string
 }
+
+/**
+ * 他PCへの移行用エクスポートバンドル。ルール(CLAUDE.md)とスキル(SKILL.md)のみを対象とし、
+ * settings.jsonの環境変数など個人環境依存の設定は意図的に含めない。
+ */
+export interface ExportedRule {
+  category: string
+  content: string
+  enabled: boolean
+}
+
+export interface ExportedSkill {
+  dirName: string
+  name: string
+  description: string
+  argumentSchema?: unknown
+  body: string
+}
+
+export interface ExportBundle {
+  version: 1
+  exportedAt: string
+  sourceProjectName: string
+  rules: ExportedRule[]
+  skills: ExportedSkill[]
+}
+
+/** インポート差分プレビューの1項目 */
+export type ImportItemStatus = "new" | "changed" | "unchanged" | "invalid"
+
+export interface ImportDiffItem {
+  kind: "rule" | "skill"
+  key: string
+  status: ImportItemStatus
+  before: string | null
+  after: string
+}
+
+export interface ImportDiffResult {
+  items: ImportDiffItem[]
+}
+
+export interface ImportApplyResult {
+  backups: string[]
+}

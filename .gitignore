@@ -46,3 +46,6 @@ next-env.d.ts
 
 # dashboard: real ~/.claude data provided for local testing (contains personal session logs)
 /sample-data-user/
+
+# dashboard: import機能が上書き前に自動生成するバックアップファイル
+*.ccd-backup.*

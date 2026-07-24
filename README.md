@@ -13,11 +13,13 @@ Webアプリ側は重い処理を行わず、実際の `.claude/CLAUDE.md` / `.c
 - **メモリ管理**（`/memory`）— `.claude/projects/*/memory/*.md`（AIメモリシステム）の一覧・閲覧。type別（user/feedback/project/reference）フィルタ。読み取り専用
 - **タスク実行履歴**（`/tasks`）— `.claude/tasks/<session-id>/*.json` をセッション別に進捗バー・ステータスアイコン付きで可視化。読み取り専用
 - **設定 & システム情報**（`/settings`）— `settings.json`（権限モード・環境変数・statusLine）/ バックアップ履歴 / ブロック済みプラグイン一覧をTabsで表示。読み取り専用
+- **移行（エクスポート/インポート）**（`/migrate`）— ルール・スキルを1つのJSONファイルに書き出し、他のPC（別プロジェクト）に差分プレビュー付きで取り込む。上書き前に自動バックアップ
 - **実行ログ & 思考プロセス可視化**（`/trace`）— エージェント議論・合意度メーター・トレードオフ比較・介入ハイライト・黄金プロンプトのワンクリック保存
 - 複数プロジェクトの横断管理（画面右上のプロジェクトスイッチャー。実際の `~/.claude` をプロジェクトとして登録することも可能）
 
 機能3（GPUモードによるルール矛盾・重複自動検出）は未実装（`/refactor` に導線のみ）。
 メモリ管理・タスク実行履歴・設定/バックアップ/プラグインは全て読み取り専用（編集・復元は次回以降のスコープ）。
+移行機能はルール・スキルのみが対象で、settings.jsonの環境変数などは含まない。
 
 ## セットアップ
 
@@ -41,7 +43,7 @@ npm run dev
 ## テスト・検証
 
 ```bash
-npm test          # vitest によるlib層のユニットテスト（11ファイル・55件）
+npm test          # vitest によるlib層のユニットテスト（12ファイル・67件）
 npx tsc --noEmit  # 型チェック
 npx eslint .       # Lint
 npm run build      # 本番ビルド
@@ -52,9 +54,9 @@ npm run build      # 本番ビルド
 ```
 src/
 ├── app/            # ページ & API Routes (App Router)
-├── components/     # UIコンポーネント (layout / rules / skills / trace / ui / projects / memory / tasks / settings)
+├── components/     # UIコンポーネント (layout / rules / skills / trace / ui / projects / memory / tasks / settings / migrate)
 ├── hooks/          # SWRベースのデータ取得フック
-└── lib/            # ファイルI/O・CLAUDE.mdパーサー・スキル/実行ログ/メモリ/タスク履歴/設定/バックアップ/プラグイン操作
+└── lib/            # ファイルI/O・CLAUDE.mdパーサー・スキル/実行ログ/メモリ/タスク履歴/設定/バックアップ/プラグイン/移行操作
 config/
 ├── projects.json          # 監視対象プロジェクトの登録・選択状態（.gitignore対象）
 └── projects.example.json  # コミット対象のテンプレート
