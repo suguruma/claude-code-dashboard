@@ -48,14 +48,14 @@ export function SkillFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="flex max-h-[85vh] w-full max-w-2xl flex-col sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{isEditing ? "スキルを編集" : "スキルを追加"}</DialogTitle>
           <DialogDescription>
             `.claude/skills/&lt;スキル名&gt;/SKILL.md` を{isEditing ? "更新" : "新規作成"}します。
           </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 py-2">
+        <div className="grid gap-4 overflow-y-auto py-2">
           <div className="grid gap-2">
             <Label htmlFor="skill-dirname">スキル名（ディレクトリ名）</Label>
             <Input
@@ -72,7 +72,7 @@ export function SkillFormDialog({
               id="skill-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              rows={2}
+              rows={3}
               placeholder="このスキルが何をするか、いつ使うべきかを記述"
             />
           </div>
@@ -82,7 +82,7 @@ export function SkillFormDialog({
               id="skill-body"
               value={body}
               onChange={(e) => setBody(e.target.value)}
-              rows={10}
+              rows={18}
               className="font-mono text-xs"
               placeholder="# スキルの手順など"
             />

@@ -44,11 +44,11 @@ export function RuleFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="flex max-h-[85vh] w-full max-w-xl flex-col sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>{initialRule ? "ルールを編集" : "ルールを追加"}</DialogTitle>
         </DialogHeader>
-        <div className="grid gap-4 py-2">
+        <div className="grid gap-4 overflow-y-auto py-2">
           <div className="grid gap-2">
             <Label htmlFor="rule-category">見出し（CLAUDE.mdの `## `）</Label>
             <Input
@@ -64,7 +64,7 @@ export function RuleFormDialog({
               id="rule-content"
               value={content}
               onChange={(e) => setContent(e.target.value)}
-              rows={4}
+              rows={10}
               placeholder="例: 結論は必ず冒頭に配置する"
             />
           </div>

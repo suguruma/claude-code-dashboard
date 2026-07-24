@@ -26,6 +26,8 @@ npm run dev
 
 画面右上の「+」から、`CLAUDE.md`（と任意で `skills/`, `execution_log.json`）を配置している任意の Claude Code
 プロジェクト、または実際の `~/.claude` フォルダのルートパスを登録すると、そのプロジェクトを切り替えて管理できる。
+パスはディレクトリツリーを辿って選択でき（フォルダ名クリックで選択、シェブロンクリックでインライン展開）、
+`CLAUDE.md` / `skills` 等の検出対象には自動でバッジが付く。手入力も可能。
 
 > **注意**：`~/.claude` のような実際の設定フォルダを登録すると、本アプリからのトグル/追加/編集/削除がそのまま本番の
 > `CLAUDE.md` / `SKILL.md` に書き込まれる。書き込み系の操作を試す際は `sample-data` プロジェクトに切り替えることを推奨する。
@@ -35,7 +37,7 @@ npm run dev
 ## テスト・検証
 
 ```bash
-npm test          # vitest によるlib層のユニットテスト（31件）
+npm test          # vitest によるlib層のユニットテスト（37件）
 npx tsc --noEmit  # 型チェック
 npx eslint .       # Lint
 npm run build      # 本番ビルド

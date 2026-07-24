@@ -22,7 +22,14 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { DirectoryPicker } from "@/components/projects/DirectoryPicker"
 import { toast } from "sonner"
+
+function suggestNameFromPath(p: string): string {
+  const normalized = p.replace(/[\\/]+$/, "")
+  const segments = normalized.split(/[\\/]/)
+  return segments[segments.length - 1] || normalized
+}
 
 export function ProjectSwitcher() {
   const { projects, selectedProjectId, selectProject, addProject, isLoading } = useProjects()
@@ -30,6 +37,13 @@ export function ProjectSwitcher() {
   const [name, setName] = useState("")
   const [path, setPath] = useState("")
   const [submitting, setSubmitting] = useState(false)
+
+  function handlePickerConfirm(pickedPath: string) {
+    setPath(pickedPath)
+    if (!name.trim()) {
+      setName(suggestNameFromPath(pickedPath))
+    }
+  }
 
   async function handleAdd() {
     if (!name.trim() || !path.trim()) {
@@ -82,23 +96,18 @@ export function ProjectSwitcher() {
             </Button>
           }
         />
-        <DialogContent>
+        <DialogContent className="flex max-h-[85vh] w-full max-w-xl flex-col sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>プロジェクトを追加</DialogTitle>
             <DialogDescription>
-              rules.json / execution_log.json / CLAUDE.md を配置している Claude Code
-              プロジェクトのルートパスを登録します。
+              CLAUDE.md（と任意で skills/ ・ execution_log.json）を配置している Claude Code
+              プロジェクトのルートパスを登録します。下のツリーから辿るか、直接パスを入力してください。
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-2">
+          <div className="grid gap-4 overflow-y-auto py-2">
             <div className="grid gap-2">
-              <Label htmlFor="project-name">プロジェクト名</Label>
-              <Input
-                id="project-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="例: 営業資料自動化プロジェクト"
-              />
+              <Label>フォルダを選択</Label>
+              <DirectoryPicker onConfirm={handlePickerConfirm} />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="project-path">プロジェクトルートパス</Label>
@@ -107,6 +116,15 @@ export function ProjectSwitcher() {
                 value={path}
                 onChange={(e) => setPath(e.target.value)}
                 placeholder="例: C:\\Projects\\my-app"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="project-name">プロジェクト名</Label>
+              <Input
+                id="project-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="例: 営業資料自動化プロジェクト"
               />
             </div>
           </div>
