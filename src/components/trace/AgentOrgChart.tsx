@@ -1,32 +1,34 @@
-import { Crown, User, type LucideIcon } from "lucide-react"
+import { Users } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
-import { cn } from "@/lib/utils"
 import { AssignedAgent } from "@/lib/types"
 
 interface AgentOrgChartProps {
   agents: AssignedAgent[]
+  chainOfCommand?: string[]
 }
 
 /**
- * 「オーナー→AI社長→専門エージェント」の最大2階層ガードレールをそのまま構造化した
- * 固定2階層のフラットな構成図。専門エージェントの中にさらに専門エージェントを持つ
- * 3階層目は、ガードレール上そもそも許容されないためスキーマ・UIとも対応しない。
+ * 指揮系統の肩書き（chainOfCommand）は指示プロンプトによって「AI社長」が
+ * 存在したりしなかったりするため固定文言にせず、無指定ならチーム編成
+ * （assigned_agents）だけをフラットに表示する。
  */
-export function AgentOrgChart({ agents }: AgentOrgChartProps) {
+export function AgentOrgChart({ agents, chainOfCommand = [] }: AgentOrgChartProps) {
   if (agents.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        このタスクでは専門エージェントの追加はありませんでした（AI社長が単独で完結）。
+        このタスクでは専門エージェントの追加はありませんでした（1エージェントで完結）。
       </p>
     )
   }
 
   return (
     <div className="flex flex-col items-center gap-0">
-      <OrgNode icon={User} label="オーナー" />
-      <Connector />
-      <OrgNode icon={Crown} label="AI社長（メインディレクター）" highlight />
-      <Connector />
+      {chainOfCommand.map((label, idx) => (
+        <div key={idx} className="flex flex-col items-center gap-0">
+          <OrgNode label={label} isDirector={idx === chainOfCommand.length - 1} />
+          <Connector />
+        </div>
+      ))}
       <div className="flex flex-wrap justify-center gap-3">
         {agents.map((agent, idx) => (
           <Card key={idx} className="w-56 gap-0 py-3">
@@ -47,23 +49,16 @@ function Connector() {
   return <div className="h-4 w-px bg-border" />
 }
 
-function OrgNode({
-  icon: Icon,
-  label,
-  highlight,
-}: {
-  icon: LucideIcon
-  label: string
-  highlight?: boolean
-}) {
+function OrgNode({ label, isDirector }: { label: string; isDirector: boolean }) {
   return (
     <div
-      className={cn(
-        "flex items-center gap-2 rounded-full border px-4 py-1.5 text-sm",
-        highlight && "border-primary bg-primary/5 font-medium"
-      )}
+      className={
+        isDirector
+          ? "flex items-center gap-2 rounded-full border border-primary bg-primary/5 px-4 py-1.5 text-sm font-medium"
+          : "flex items-center gap-2 rounded-full border px-4 py-1.5 text-sm"
+      }
     >
-      <Icon className="size-4" />
+      <Users className="size-4" />
       {label}
     </div>
   )

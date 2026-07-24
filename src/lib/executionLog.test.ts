@@ -57,7 +57,7 @@ describe("getExecutionLogs 後方互換読み込み", () => {
     expect(logs).toEqual([])
   })
 
-  it("assigned_agents / trial_process / status（マルチエージェント可視化用の新規フィールド）を保持する", async () => {
+  it("assigned_agents / trial_process / status / chain_of_command（マルチエージェント可視化用の新規フィールド）を保持する", async () => {
     const project = await makeProject()
     await fs.writeFile(
       path.join(project.path, "execution_log.json"),
@@ -72,6 +72,7 @@ describe("getExecutionLogs 後方互換読み込み", () => {
               trade_offs: [],
               assigned_agents: [{ role: "検証者", reason_for_assignment: "ハルシネーション防止" }],
               trial_process: [{ step: 1, action: "検索", result: "error", note: "出典が古い" }],
+              chain_of_command: ["オーナー", "AI社長（メインディレクター）"],
             },
           },
         ],
@@ -85,6 +86,33 @@ describe("getExecutionLogs 後方互換読み込み", () => {
     expect(logs[0].agents_discussion.trial_process).toEqual([
       { step: 1, action: "検索", result: "error", note: "出典が古い" },
     ])
+    expect(logs[0].agents_discussion.chain_of_command).toEqual(["オーナー", "AI社長（メインディレクター）"])
+  })
+
+  it("chain_of_commandが無い場合は指揮系統なしのフラットなチームとして扱える", async () => {
+    const project = await makeProject()
+    await fs.writeFile(
+      path.join(project.path, "execution_log.json"),
+      JSON.stringify({
+        logs: [
+          {
+            task_id: "t2",
+            agents_discussion: {
+              consensus_rate: 88,
+              conflict_point: "なし",
+              trade_offs: [],
+              assigned_agents: [
+                { role: "戦略家", reason_for_assignment: "市場分析" },
+                { role: "設計者", reason_for_assignment: "工程分解" },
+              ],
+            },
+          },
+        ],
+      })
+    )
+    const logs = await getExecutionLogs(project)
+    expect(logs[0].agents_discussion.chain_of_command).toBeUndefined()
+    expect(logs[0].agents_discussion.assigned_agents).toHaveLength(2)
   })
 
   it("これらの新規フィールドが無い旧形式のログもそのまま読み込める（後方互換）", async () => {

@@ -31,9 +31,10 @@ export interface TradeOff {
 }
 
 /**
- * AI社長が追加した専門エージェント1件。role/reason_for_assignmentは
- * 「オーナー→AI社長→専門エージェント」の最大2階層ガードレールの一部として
- * アサイン理由の明記を前提とする。既存ログとの後方互換のためoptional。
+ * 進行役がアサインした専門エージェント1件。指示プロンプトによって「AI社長」
+ * 「PM」「戦略家」等、進行役や役割の呼び方は変わりうるため、role/reason_for_assignment
+ * 自体に固有名詞を持たせず、chain_of_command側で進行役の肩書きを表現する。
+ * 既存ログとの後方互換のためoptional。
  */
 export interface AssignedAgent {
   role: string
@@ -54,6 +55,14 @@ export interface AgentsDiscussion {
   trade_offs: TradeOff[]
   assigned_agents?: AssignedAgent[]
   trial_process?: TrialStep[]
+  /**
+   * assigned_agentsの上位にいる指揮系統の肩書きを、末端から遠い順に並べたもの
+   * （例: ["オーナー", "AI社長（メインディレクター）"]）。指示プロンプトによって
+   * 「AI社長」のような役職が存在しない体制（例: 戦略家/設計者/生成者/破壊者/仕上げ屋の
+   * 5役が対等に並ぶチーム編成）もあるため固定文言にせず、無指定なら指揮系統の表示自体を
+   * 省略しassigned_agentsだけをフラットなチームとして表示する。
+   */
+  chain_of_command?: string[]
 }
 
 export interface UserIntervention {

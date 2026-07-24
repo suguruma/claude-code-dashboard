@@ -83,7 +83,10 @@ export default function TracePage() {
 
               <div className="space-y-2">
                 <h3 className="text-sm font-medium">エージェント構成</h3>
-                <AgentOrgChart agents={selectedEntry.agents_discussion.assigned_agents ?? []} />
+                <AgentOrgChart
+                  agents={selectedEntry.agents_discussion.assigned_agents ?? []}
+                  chainOfCommand={selectedEntry.agents_discussion.chain_of_command}
+                />
               </div>
 
               <Separator />
