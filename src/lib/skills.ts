@@ -14,11 +14,36 @@ function skillMdPath(project: ProjectConfig, dirName: string): string {
   return path.join(skillsDir(project), dirName, "SKILL.md")
 }
 
+const SUPPORTING_DIRS = ["references", "scripts", "evals"] as const
+
+/**
+ * 「Skill設計者の最新プラクティス」が推奨するSkill構造（references/scripts/evals）の
+ * 有無を検知する。この可視化のみが目的で、無くても不正なSkillではない。
+ */
+async function detectSupportingDirs(
+  project: ProjectConfig,
+  dirName: string
+): Promise<Pick<SkillMeta, "hasReferences" | "hasScripts" | "hasEvals">> {
+  const base = path.join(skillsDir(project), dirName)
+  const [hasReferences, hasScripts, hasEvals] = await Promise.all(
+    SUPPORTING_DIRS.map(async (sub) => {
+      try {
+        const stat = await fs.stat(path.join(base, sub))
+        return stat.isDirectory()
+      } catch {
+        return false
+      }
+    })
+  )
+  return { hasReferences, hasScripts, hasEvals }
+}
+
 async function readSkill(project: ProjectConfig, dirName: string): Promise<SkillMeta | null> {
   const filePath = skillMdPath(project, dirName)
   try {
     const content = await fs.readFile(filePath, "utf-8")
     const { data, body } = parseFrontmatter(content)
+    const supportingDirs = await detectSupportingDirs(project, dirName)
     return {
       dirName,
       name: typeof data.name === "string" ? data.name : dirName,
@@ -26,6 +51,7 @@ async function readSkill(project: ProjectConfig, dirName: string): Promise<Skill
       argumentSchema: data["argument-schema"],
       category: typeof data.category === "string" ? data.category : undefined,
       body: body.trim(),
+      ...supportingDirs,
     }
   } catch (err) {
     const nodeErr = err as NodeJS.ErrnoException

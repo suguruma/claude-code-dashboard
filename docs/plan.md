@@ -962,3 +962,47 @@ CLAUDE.mdルール vs GPUモードの判断：
 3. 機能3（GPUモード）は引き続き未着手。
 
 **自己採点：90/100**（ユーザーが明示的に求めた「実装前の懸念点申告」に対し、フォルダ階層の非互換・命名衝突・規模軸の3点を的確に指摘し、すべて推奨案どおりの承認を得られた。23件の実データ投入まで一気通貫で完了し、Claude Code側での実際の認識まで確認できた。減点理由：`category`フィールドはこのダッシュボード独自の拡張であり、Claude Code本体の`SKILL.md`公式フォーマットの一部ではないため、将来Claude Code側が`category`相当の概念を公式サポートした場合はフィールド名の衝突・整合性を再確認する必要がある）
+
+---
+
+# ラウンド16：「Skill設計者の最新プラクティス」に基づく既存スキルの監査・改善
+
+## 背景・ユーザー要望
+
+ユーザーが`Skill設計者の最新プラクティス.txt`（Agent Skills設計のベストプラクティス文書、Trigger Router/Intent Compiler/Rule Compiler等の8層設計、公開前チェックリストを含む）を用意し、内容の解読と、ラウンド15で登録した23件のスキルの見直し、修正すべき点の指摘、ダッシュボードの改善提案を依頼された。
+
+## 監査結果
+
+文書の「公開前チェックリスト」（第14章）に照らして23件を評価した。
+
+**良い点**：全件で`name`＝フォルダ名一致、命名規則準拠、SKILL.mdの肥大化なし（500行未満）。
+
+**指摘した不足点**（優先度順）：
+1. **descriptionに「発火してはいけない境界」が皆無**（第4章 Trigger Router）。実際に衝突しうる例として、`code-reviewer`（安全性含む4観点レビュー）と`sec-vulnerability-scanner`（脆弱性専用）の境界不明確、career系3スキル（career-swot-analyzer/work-style-counselor/career-anchor-diagnostician）の重複を具体的に提示した
+2. **ガードレールがHARD GATES／DEFAULTS／PREFERENCESの3段階分離も検証手順もない**（第4章 Rule Compiler、失敗2）
+3. **Verify／Repair／Stop conditionsが存在しない**。ただし全件がLevel 1〜2相当（単発の実務タスク）のため、Level 3向けの完全な8層設計は同文書自身が戒める過剰投資（失敗8「万能Skillを作る」）と判断し、フル実装は推奨しなかった
+4. **trigger-evals／output-evalsが未整備**（第9・10章）
+
+`AskUserQuestion`で3点の対応方針を確認し、いずれも提示した推奨案（境界条件は23件全て・HARD GATE化は機械判定可能な4件のみ・ダッシュボード改善は成熟度バッジのみ）で承認を得た。
+
+## 実装・実データ更新
+
+- `update-skills-boundaries.mjs`スクリプトから`PATCH /api/skills/[dirName]`を23回呼び出し、全件のdescriptionへ「〜には使用しないでください（Xを使用）」という発火境界を追加
+- うち`code-reviewer`/`test-driven-generator`/`sec-vulnerability-scanner`/`db-migration-helper`の4件は、ガードレール節を`## HARD GATE`（不合格条件の列挙）+`## 検証`（具体的な確認手順）に書き直した
+- **成熟度バッジ**：[skills.ts](../src/lib/skills.ts)に`detectSupportingDirs`を追加し、`references`/`scripts`/`evals`サブディレクトリの有無を`fs.stat`で検知。`SkillMeta`（[types.ts](../src/lib/types.ts)）に`hasReferences`/`hasScripts`/`hasEvals`を追加（frontmatterには書き込まない表示専用フィールド）。[SkillListCard.tsx](../src/components/skills/SkillListCard.tsx)で該当フォルダがある場合のみバッジ表示し、無い場合（現状の23件全て）は視覚的ノイズを避けるためバッジを出さない設計にした
+- [skills.test.ts](../src/lib/skills.test.ts)に検知ロジックのテストを追加（14ファイル・**98件**）
+- [help/page.tsx](../src/app/help/page.tsx)の`/skills`説明を改名・カテゴリ・バッジに対応する内容へ更新
+
+## 検証
+
+- `npx tsc --noEmit` / `npx eslint .` / `npx vitest run`（98件）/ `npm run build` すべて成功
+- 実データ更新後、`~/.claude/skills/sec-vulnerability-scanner/SKILL.md`をファイルで直接確認しHARD GATE/検証節が正しく書き込まれていることを確認。Claude Code側の利用可能スキル一覧（システムリマインダー）にも23件全ての新descriptionが反映されていることを確認
+- ブラウザ確認（サンプルプロジェクト）：`report-writer`に一時的に`references/`・`evals/`フォルダを作成し「📎 references」「✅ evals」バッジが表示されること、フォルダの無いスキルにはバッジが出ないことを確認、その後削除して元に戻した
+
+## 次にClaudeへ頼むべき追加指示（ラウンド16時点）
+
+1. 見送ったtrigger-evals／output-evalsの整備は、23件を実際に使ってみて誤発火が起きたものから優先的に着手する（`TODO.md`に追記済み）。
+2. カテゴリ内の類似スキル検出（発火衝突の可視化）、`/trace`実行ログへの発火スキル記録は、いずれも今回スコープ外としたが将来的な`rule-optimizer`スキルとの連携先として`TODO.md`に記録した。
+3. `TODO.md`優先度「高」の2点（E2Eテスト自動化、誤操作防止UI）が引き続き最優先候補。
+
+**自己採点：91/100**（ユーザー提供の外部ベストプラクティス文書を正確に解読し、23件の実データに対して過不足なく（過剰投資を避けつつ）適用できた。機械判定可能な4件を選別してHARD GATE化した判断は、文書自身の「Level別に投資配分する」思想と一致する。減点理由：`## HARD GATE`という新しい見出し構造を導入したが、ダッシュボード側では依然としてSKILL.md本文を単なるMarkdownテキストとして表示するのみで、HARD GATE節を構造化データとして可視化するところまでは実装していない）

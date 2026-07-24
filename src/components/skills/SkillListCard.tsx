@@ -34,7 +34,12 @@ export function SkillListCard({ skill, onEdit, onDelete }: SkillListCardProps) {
     <Card>
       <CardHeader className="flex flex-row items-start justify-between gap-2 pb-2">
         <CardTitle className="text-sm font-mono">{skill.name}</CardTitle>
-        {skill.argumentSchema !== undefined && <Badge variant="outline">引数あり</Badge>}
+        <div className="flex flex-wrap justify-end gap-1">
+          {skill.argumentSchema !== undefined && <Badge variant="outline">引数あり</Badge>}
+          {skill.hasReferences && <Badge variant="secondary">📎 references</Badge>}
+          {skill.hasScripts && <Badge variant="secondary">🔧 scripts</Badge>}
+          {skill.hasEvals && <Badge variant="secondary">✅ evals</Badge>}
+        </div>
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-sm leading-relaxed text-muted-foreground">{skill.description}</p>

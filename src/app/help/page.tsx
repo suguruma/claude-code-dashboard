@@ -121,7 +121,7 @@ const PAGE_GUIDES: PageGuide[] = [
     label: "スキル管理",
     icon: Sparkles,
     description:
-      "SKILL.mdの一覧・作成・編集・削除。スキル名（ディレクトリ名）は半角英数字・ハイフン・アンダースコアのみ使用できる。",
+      "SKILL.mdの一覧・作成・編集・削除・改名。スキル名（ディレクトリ名）は半角英数字・ハイフン・アンダースコアのみ使用できる。frontmatterのcategoryに応じて表示上グルーピングされる（実ファイルはフラット配置のまま）。references/scripts/evalsサブフォルダがあるスキルにはバッジが付く。",
   },
   {
     href: "/settings",

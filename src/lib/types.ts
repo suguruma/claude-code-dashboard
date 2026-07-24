@@ -24,6 +24,10 @@ export interface SkillMeta {
   argumentSchema?: unknown
   category?: string
   body: string
+  /** references/scripts/evals サブディレクトリの有無（表示専用、frontmatterには保存しない） */
+  hasReferences?: boolean
+  hasScripts?: boolean
+  hasEvals?: boolean
 }
 
 export interface TradeOff {

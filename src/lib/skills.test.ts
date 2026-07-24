@@ -120,6 +120,24 @@ describe("createSkill / updateSkill / deleteSkill", () => {
     expect(content).not.toContain("category:")
   })
 
+  it("references/scripts/evalsサブフォルダの有無を検知する", async () => {
+    const project = await makeProject()
+    await createSkill(project, { dirName: "plain", description: "x", body: "" })
+    await createSkill(project, { dirName: "advanced", description: "x", body: "" })
+    await fs.mkdir(path.join(project.path, "skills", "advanced", "references"), { recursive: true })
+    await fs.mkdir(path.join(project.path, "skills", "advanced", "evals"), { recursive: true })
+
+    const plain = await getSkill(project, "plain")
+    expect(plain?.hasReferences).toBe(false)
+    expect(plain?.hasScripts).toBe(false)
+    expect(plain?.hasEvals).toBe(false)
+
+    const advanced = await getSkill(project, "advanced")
+    expect(advanced?.hasReferences).toBe(true)
+    expect(advanced?.hasScripts).toBe(false)
+    expect(advanced?.hasEvals).toBe(true)
+  })
+
   it("削除するとディレクトリごと消える", async () => {
     const project = await makeProject()
     await createSkill(project, { dirName: "removable", description: "x", body: "" })
