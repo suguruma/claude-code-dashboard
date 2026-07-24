@@ -2,6 +2,7 @@
 
 import { Moon, Sun, SunMoon } from "lucide-react"
 import { useTheme } from "next-themes"
+import { useMounted } from "@/hooks/useMounted"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -18,10 +19,10 @@ const OPTIONS = [
 
 export function ThemeToggle() {
   const { theme, setTheme } = useTheme()
+  const mounted = useMounted()
 
-  // themeはマウント前(SSR/初回クライアントレンダー)はundefinedになるため、
-  // その間はnext-themesの既定であるsystemアイコンにフォールバックする
-  const current = OPTIONS.find((o) => o.value === theme) ?? OPTIONS[2]
+  // マウント完了までサーバーと同じsystemアイコンを描画し、Hydration Mismatchを避ける
+  const current = mounted ? (OPTIONS.find((o) => o.value === theme) ?? OPTIONS[2]) : OPTIONS[2]
   const Icon = current.icon
 
   return (
