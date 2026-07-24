@@ -123,6 +123,64 @@ describe("listSessions / getSessionMetrics", () => {
     expect(metrics.toolCalls.find((t) => t.name === "Read")?.isError).toBe(false)
   })
 
+  it("MCPツール呼び出し・スキル呼び出し・サブエージェント呼び出し・出力文字数を集計する", async () => {
+    const lines = [
+      SAMPLE_LINES[0],
+      {
+        type: "assistant",
+        timestamp: "2026-01-01T00:00:01.000Z",
+        message: {
+          usage: { input_tokens: 1, output_tokens: 1 },
+          content: [
+            { type: "tool_use", id: "toolu_mcp", name: "mcp__ccd_session__mark_chapter" },
+            { type: "tool_use", id: "toolu_skill", name: "Skill", input: { skill: "task" } },
+            {
+              type: "tool_use",
+              id: "toolu_agent",
+              name: "Agent",
+              input: { subagent_type: "Explore" },
+            },
+          ],
+        },
+      },
+      {
+        type: "user",
+        timestamp: "2026-01-01T00:00:02.000Z",
+        message: {
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "toolu_mcp",
+              is_error: false,
+              content: [{ type: "text", text: "0123456789" }],
+            },
+            { type: "tool_result", tool_use_id: "toolu_skill", is_error: false, content: "ok" },
+            { type: "tool_result", tool_use_id: "toolu_agent", is_error: false, content: "done" },
+          ],
+        },
+      },
+    ]
+    await writeSession("proj-a", "s1", lines.map(line).join(""))
+    const metrics = await getSessionMetrics("proj-a", "s1")
+
+    expect(metrics.mcpCallCountsByServer).toEqual({ ccd_session: 1 })
+    expect(metrics.skillCallCounts).toEqual({ task: 1 })
+    expect(metrics.subagentCallCounts).toEqual({ Explore: 1 })
+    expect(metrics.toolOutputCharsByName["mcp__ccd_session__mark_chapter"]).toBe(10)
+
+    const mcpCall = metrics.toolCalls.find((t) => t.name === "mcp__ccd_session__mark_chapter")
+    expect(mcpCall?.mcpServer).toBe("ccd_session")
+    expect(mcpCall?.outputChars).toBe(10)
+    const skillCall = metrics.toolCalls.find((t) => t.name === "Skill")
+    expect(skillCall?.skillName).toBe("task")
+    const agentCall = metrics.toolCalls.find((t) => t.name === "Agent")
+    expect(agentCall?.subagentType).toBe("Explore")
+
+    expect(metrics.summary.mcpToolCallCount).toBe(1)
+    expect(metrics.summary.skillCallCount).toBe(1)
+    expect(metrics.summary.totalToolOutputChars).toBe(16)
+  })
+
   it("interrupted:trueを正しくカウントする", async () => {
     const lines = [
       SAMPLE_LINES[0],

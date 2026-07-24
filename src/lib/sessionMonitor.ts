@@ -35,6 +35,32 @@ interface RawContentBlock {
   name?: string
   tool_use_id?: string
   is_error?: boolean
+  input?: unknown
+  content?: unknown
+}
+
+/** `mcp__<server>__<tool>` 形式のツール名からサーバー識別子を取り出す（組み込みツールはnull） */
+function parseMcpServer(name: string): string | null {
+  const prefix = "mcp__"
+  if (!name.startsWith(prefix)) return null
+  const rest = name.slice(prefix.length)
+  const idx = rest.indexOf("__")
+  if (idx === -1) return null
+  return rest.slice(0, idx)
+}
+
+/** tool_resultのcontentから、本文自体は保持せず文字数だけを数える */
+function contentLength(content: unknown): number {
+  if (typeof content === "string") return content.length
+  if (Array.isArray(content)) {
+    return content.reduce((sum: number, part) => {
+      if (part && typeof part === "object" && typeof (part as { text?: unknown }).text === "string") {
+        return sum + (part as { text: string }).text.length
+      }
+      return sum
+    }, 0)
+  }
+  return 0
 }
 
 interface RawLine {
@@ -64,6 +90,10 @@ async function parseSessionFile(filePath: string): Promise<SessionMetrics> {
   const compactions: CompactionEvent[] = []
   const toolCallCountsByName: Record<string, number> = {}
   const toolErrorCountsByName: Record<string, number> = {}
+  const toolOutputCharsByName: Record<string, number> = {}
+  const mcpCallCountsByServer: Record<string, number> = {}
+  const skillCallCounts: Record<string, number> = {}
+  const subagentCallCounts: Record<string, number> = {}
   const effortCounts: Record<string, number> = {}
 
   let startedAt: string | null = null
@@ -127,12 +157,37 @@ async function parseSessionFile(filePath: string): Promise<SessionMetrics> {
           toolNameById.set(block.id, block.name)
           toolCallCountsByName[block.name] = (toolCallCountsByName[block.name] ?? 0) + 1
           if (obj.isSidechain) sidechainToolCallCount++
+
+          const mcpServer = parseMcpServer(block.name)
+          if (mcpServer) {
+            mcpCallCountsByServer[mcpServer] = (mcpCallCountsByServer[mcpServer] ?? 0) + 1
+          }
+
+          const input =
+            block.input && typeof block.input === "object"
+              ? (block.input as Record<string, unknown>)
+              : null
+          let skillName: string | null = null
+          let subagentType: string | null = null
+          if (block.name === "Skill" && input && typeof input.skill === "string") {
+            skillName = input.skill
+            skillCallCounts[skillName] = (skillCallCounts[skillName] ?? 0) + 1
+          }
+          if (block.name === "Agent" && input && typeof input.subagent_type === "string") {
+            subagentType = input.subagent_type
+            subagentCallCounts[subagentType] = (subagentCallCounts[subagentType] ?? 0) + 1
+          }
+
           const event: ToolCallEvent = {
             turnIndex: tokenPoints.length > 0 ? tokenPoints.length - 1 : 0,
             timestamp: obj.timestamp ?? "",
             name: block.name,
             isError: false,
             isSidechain: obj.isSidechain ?? false,
+            outputChars: 0,
+            mcpServer,
+            skillName,
+            subagentType,
           }
           toolCalls.push(event)
           toolCallById.set(block.id, event)
@@ -152,7 +207,12 @@ async function parseSessionFile(filePath: string): Promise<SessionMetrics> {
               toolErrorCountsByName[name] = (toolErrorCountsByName[name] ?? 0) + 1
             }
             const event = toolCallById.get(block.tool_use_id)
-            if (event && block.is_error) event.isError = true
+            if (event) {
+              if (block.is_error) event.isError = true
+              const chars = contentLength(block.content)
+              event.outputChars = chars
+              if (name) toolOutputCharsByName[name] = (toolOutputCharsByName[name] ?? 0) + chars
+            }
           }
         }
       }
@@ -176,6 +236,9 @@ async function parseSessionFile(filePath: string): Promise<SessionMetrics> {
   }
 
   const toolErrorCount = Object.values(toolErrorCountsByName).reduce((a, b) => a + b, 0)
+  const mcpToolCallCount = Object.values(mcpCallCountsByServer).reduce((a, b) => a + b, 0)
+  const skillCallCount = Object.values(skillCallCounts).reduce((a, b) => a + b, 0)
+  const totalToolOutputChars = Object.values(toolOutputCharsByName).reduce((a, b) => a + b, 0)
   const stat = await fs.stat(filePath)
 
   const summary: SessionSummary = {
@@ -193,6 +256,9 @@ async function parseSessionFile(filePath: string): Promise<SessionMetrics> {
     cwd,
     version,
     sizeBytes: stat.size,
+    mcpToolCallCount,
+    skillCallCount,
+    totalToolOutputChars,
   }
 
   return {
@@ -202,6 +268,10 @@ async function parseSessionFile(filePath: string): Promise<SessionMetrics> {
     compactions,
     toolCallCountsByName,
     toolErrorCountsByName,
+    toolOutputCharsByName,
+    mcpCallCountsByServer,
+    skillCallCounts,
+    subagentCallCounts,
     effortCounts,
     sidechainToolCallCount,
     interruptedToolCallCount,

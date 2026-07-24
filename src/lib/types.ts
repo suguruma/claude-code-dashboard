@@ -252,6 +252,9 @@ export interface SessionSummary {
   cwd: string | null
   version: string | null
   sizeBytes: number
+  mcpToolCallCount: number
+  skillCallCount: number
+  totalToolOutputChars: number
 }
 
 /** ターン（assistantメッセージ1件）ごとのトークン消費ポイント */
@@ -265,13 +268,20 @@ export interface TokenPoint {
   effort: string | null
 }
 
-/** ツール呼び出し1件（対応するtool_resultが来た時点でisError等が確定する） */
+/** ツール呼び出し1件（対応するtool_resultが来た時点でisError・outputChars等が確定する） */
 export interface ToolCallEvent {
   turnIndex: number
   timestamp: string
   name: string
   isError: boolean
   isSidechain: boolean
+  outputChars: number
+  /** name が `mcp__<server>__<tool>` 形式の場合のサーバー識別子（組み込みツールならnull） */
+  mcpServer: string | null
+  /** Skillツール呼び出しの場合の呼び出し先スキル名 */
+  skillName: string | null
+  /** Agentツール呼び出しの場合のsubagent_type */
+  subagentType: string | null
 }
 
 /** 自動コンパクション（コンテキスト圧縮）発生イベント */
@@ -290,6 +300,14 @@ export interface SessionMetrics {
   compactions: CompactionEvent[]
   toolCallCountsByName: Record<string, number>
   toolErrorCountsByName: Record<string, number>
+  /** ツール名ごとの出力合計文字数（本文は保持せず、文字数のみ集計） */
+  toolOutputCharsByName: Record<string, number>
+  /** MCPサーバー識別子ごとの呼び出し回数 */
+  mcpCallCountsByServer: Record<string, number>
+  /** 発火したスキル名ごとの呼び出し回数 */
+  skillCallCounts: Record<string, number>
+  /** サブエージェント種別(subagent_type)ごとの呼び出し回数 */
+  subagentCallCounts: Record<string, number>
   effortCounts: Record<string, number>
   sidechainToolCallCount: number
   interruptedToolCallCount: number

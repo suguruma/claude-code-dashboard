@@ -1006,3 +1006,36 @@ CLAUDE.mdルール vs GPUモードの判断：
 3. `TODO.md`優先度「高」の2点（E2Eテスト自動化、誤操作防止UI）が引き続き最優先候補。
 
 **自己採点：91/100**（ユーザー提供の外部ベストプラクティス文書を正確に解読し、23件の実データに対して過不足なく（過剰投資を避けつつ）適用できた。機械判定可能な4件を選別してHARD GATE化した判断は、文書自身の「Level別に投資配分する」思想と一致する。減点理由：`## HARD GATE`という新しい見出し構造を導入したが、ダッシュボード側では依然としてSKILL.md本文を単なるMarkdownテキストとして表示するのみで、HARD GATE節を構造化データとして可視化するところまでは実装していない）
+
+---
+
+# ラウンド17：セッション監視へのMCP・スキル/サブエージェント・ツール出力サイズ可視化
+
+## 背景・ユーザー要望
+
+「MCPの利用状況について可視化できる方がよいと考えましたが、いかがでしょうか？他に可視化するべき内容ありますか？コンテキストやトークンが増える原因を見極める必要があると考えております」という相談を受けた。
+
+## 調査・回答
+
+既存の[sessionMonitor.ts](../src/lib/sessionMonitor.ts)を確認したところ、MCPツールの呼び出し名が`mcp__<サーバー識別子>__<ツール名>`という規約に従っており（このセッション自身の`mcp__ccd_session__mark_chapter`等で確認済み）、既存の`toolCallCountsByName`と同じ仕組みでサーバー別に再集計できることが分かった。これを踏まえ、MCP可視化には賛成しつつ、「コンテキスト・トークン増加の原因を見極める」というユーザーの本来の目的に対しては、MCP呼び出し**回数**よりも**ツール出力サイズ**（1回の呼び出しでどれだけ本文を返したか）の方が説明力が高いという意見を添えて回答した。あわせてスキル呼び出し・サブエージェント呼び出しの検知も候補として提示し、`AskUserQuestion`で「すべて実装する」の承認を得た。
+
+## 実装
+
+- **MCPサーバー別集計**：`parseMcpServer(name)`（[sessionMonitor.ts](../src/lib/sessionMonitor.ts)）が`mcp__`プレフィックスとその次の`__`区切りからサーバー識別子を抽出。`mcpCallCountsByServer`として集計
+- **スキル・サブエージェント検知**：実際のセッションログ（このリポジトリ自身の開発セッション）を`grep`で調査し、`Skill`ツールの`input.skill`、`Agent`ツールの`input.subagent_type`という実際のフィールド名を確認した上で実装。`skillCallCounts`/`subagentCallCounts`として集計
+- **ツール出力サイズ**：`tool_result`ブロックの`content`から`contentLength()`が文字数のみを計算し、本文自体は変数にも保持しない（既存の「会話本文を保持しない」プライバシー方針を維持）。`toolOutputCharsByName`として集計し、`ToolCallEvent`にも個別の`outputChars`を持たせた
+- 型定義（[types.ts](../src/lib/types.ts)）の`ToolCallEvent`に`outputChars`/`mcpServer`/`skillName`/`subagentType`を、`SessionSummary`に`mcpToolCallCount`/`skillCallCount`/`totalToolOutputChars`を追加
+- UI：[McpUsageChart.tsx](../src/components/sessionMonitor/McpUsageChart.tsx)（サーバー別棒グラフ）、[ToolOutputSizeChart.tsx](../src/components/sessionMonitor/ToolOutputSizeChart.tsx)（出力文字数ランキング棒グラフ）、[SkillSubagentUsage.tsx](../src/components/sessionMonitor/SkillSubagentUsage.tsx)（バッジ形式の一覧、既存のツール呼び出し棒グラフと違いカーディナリティが低いため一覧表示を選択）を新規実装し、`/session-monitor`に組み込んだ。[SessionSummaryCards.tsx](../src/components/sessionMonitor/SessionSummaryCards.tsx)にも「MCP呼び出し」「スキル呼び出し」「ツール出力合計」カードを追加
+- [sessionMonitor.test.ts](../src/lib/sessionMonitor.test.ts)に新規集計項目のテストを追加（14ファイル・**99件**）
+
+## 検証
+
+- `npx tsc --noEmit` / `npx eslint .` / `npx vitest run`（99件）/ `npm run build`すべて成功
+- **実データでの確認**：このマシンで実際に稼働している本ダッシュボードの開発セッション自身（ターン数2979・ツール呼び出し1752回）を`/session-monitor`で確認。MCPサーバー別集計で`Claude_Browser`・`ccd_session`が正しく表示され、スキル・サブエージェント発火状況で「task × 1」「Explore × 1」が表示され、ツール出力サイズランキングで`Bash`が他ツールを大きく上回って最大であることを確認した。これにより「MCP呼び出し回数よりツール出力サイズの方がコンテキスト消費の説明力が高い」という回答時の仮説を実データで裏付けられた
+
+## 次にClaudeへ頼むべき追加指示（ラウンド17時点）
+
+1. `Skill`/`Agent`ツールの`input`フィールド名（`skill`/`subagent_type`）はClaude Codeの非公開の内部実装であり、将来のアップデートで変わりうる。パーサーは既にフィールド欠損に寛容な作りだが、実際に集計が0のまま出ない状態になった場合はこのフィールド名の変化を疑うこと。
+2. `TODO.md`優先度「高」の2点（E2Eテスト自動化、誤操作防止UI）が引き続き最優先候補。
+
+**自己採点：93/100**（「MCP可視化に賛成しつつ、より効果の高い代替指標を提案する」という、ユーザーの質問の一歩先を行く回答ができた。実装後に自分自身の開発セッションという実データで検証し、提案時の仮説（ツール出力サイズの説明力の高さ）を裏付けまで行えた。減点理由：MCPサーバー識別子はUUID形式のものがあり人間可読ではない場合がある（例:Dropbox/Notion等のコネクタ）。ログにサーバー名の対応表が無いため、これは現状のログ形式から解決できない制約として残る）

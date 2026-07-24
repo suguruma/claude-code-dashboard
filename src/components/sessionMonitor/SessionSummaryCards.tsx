@@ -16,6 +16,11 @@ function StatCard({ label, value }: { label: string; value: string }) {
   )
 }
 
+function formatChars(chars: number): string {
+  if (chars >= 10000) return `${(chars / 10000).toFixed(1)}万文字`
+  return `${chars.toLocaleString()}文字`
+}
+
 export function SessionSummaryCards({ metrics }: SessionSummaryCardsProps) {
   const { summary } = metrics
   const totalTokens = summary.totalInputTokens + summary.totalOutputTokens
@@ -34,6 +39,9 @@ export function SessionSummaryCards({ metrics }: SessionSummaryCardsProps) {
       <StatCard label="割り込み" value={`${metrics.interruptedToolCallCount}回`} />
       <StatCard label="サブエージェント呼出" value={`${metrics.sidechainToolCallCount}回`} />
       <StatCard label="フック失敗" value={`${metrics.hookErrorCount}回`} />
+      <StatCard label="MCP呼び出し" value={`${summary.mcpToolCallCount}回`} />
+      <StatCard label="スキル呼び出し" value={`${summary.skillCallCount}回`} />
+      <StatCard label="ツール出力合計" value={formatChars(summary.totalToolOutputChars)} />
     </div>
   )
 }

@@ -11,6 +11,9 @@ import { SessionList } from "@/components/sessionMonitor/SessionList"
 import { SessionSummaryCards } from "@/components/sessionMonitor/SessionSummaryCards"
 import { TokenUsageChart } from "@/components/sessionMonitor/TokenUsageChart"
 import { ToolCallChart } from "@/components/sessionMonitor/ToolCallChart"
+import { McpUsageChart } from "@/components/sessionMonitor/McpUsageChart"
+import { ToolOutputSizeChart } from "@/components/sessionMonitor/ToolOutputSizeChart"
+import { SkillSubagentUsage } from "@/components/sessionMonitor/SkillSubagentUsage"
 import { CompactionTimeline } from "@/components/sessionMonitor/CompactionTimeline"
 
 export default function SessionMonitorPage() {
@@ -114,6 +117,38 @@ export default function SessionMonitorPage() {
                       countsByName={metrics.toolCallCountsByName}
                       errorCountsByName={metrics.toolErrorCountsByName}
                     />
+                  </CardContent>
+                </Card>
+
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-sm">MCPサーバー別 呼び出し集計</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <McpUsageChart countsByServer={metrics.mcpCallCountsByServer} />
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-sm">スキル・サブエージェント発火状況</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <SkillSubagentUsage
+                        skillCallCounts={metrics.skillCallCounts}
+                        subagentCallCounts={metrics.subagentCallCounts}
+                      />
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">ツール出力サイズ（文字数）ランキング</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ToolOutputSizeChart charsByName={metrics.toolOutputCharsByName} />
                   </CardContent>
                 </Card>
 
