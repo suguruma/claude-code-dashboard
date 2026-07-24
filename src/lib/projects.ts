@@ -43,6 +43,21 @@ export async function addProject(name: string, projectPath: string): Promise<Pro
   return project
 }
 
+export async function updateProject(
+  id: string,
+  updates: { name?: string; path?: string }
+): Promise<ProjectConfig> {
+  const data = await getProjectsFile()
+  const project = data.projects.find((p) => p.id === id)
+  if (!project) {
+    throw new Error("指定されたプロジェクトが見つかりません")
+  }
+  if (updates.name !== undefined) project.name = updates.name
+  if (updates.path !== undefined) project.path = updates.path
+  await saveProjectsFile(data)
+  return project
+}
+
 export async function removeProject(id: string): Promise<void> {
   const data = await getProjectsFile()
   data.projects = data.projects.filter((p) => p.id !== id)

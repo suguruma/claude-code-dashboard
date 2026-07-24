@@ -628,3 +628,39 @@
 2. 実際にClaude Code（AI社長役）が修正版の指示プロンプトに従って`execution_log.json`を書き出せるかは未検証。ユーザーが実運用に投入した後、想定通りのスキーマで出力されるか確認が必要。
 3. `assigned_agents`が多数（5件以上等）になった場合の`AgentOrgChart`の折り返しレイアウトは未検証。
 4. 機能3（GPUモード）は引き続き未着手。
+
+---
+
+# ラウンド10：プロジェクト登録の編集・削除
+
+## 背景
+
+ユーザーから「右上からプロジェクトフォルダ選んだあと、編集できないね。編集か削除がほしい」という報告を受けた。調査したところ、`lib/projects.ts`には`removeProject`が、`hooks/useProjects.ts`にも`removeProject`が既に実装済みで`DELETE /api/projects/[id]`も存在していたが、**UIから呼び出す手段が一切無かった**（`ProjectSwitcher.tsx`はSelectと追加ボタンのみ）。加えて名前・パスの編集機能自体（lib/API/UI いずれも）が存在しなかった。
+
+## 対応
+
+- `lib/projects.ts`に`updateProject(id, {name?, path?})`を追加。指定フィールドのみ上書きする部分更新
+- `app/api/projects/[id]/route.ts`に`PATCH`を追加（既存の`DELETE`と同居）。空文字は拒否
+- `hooks/useProjects.ts`に`updateProject`を追加（`removeProject`は既存のものをUIから使うだけ）
+- `ProjectSwitcher.tsx`に選択中プロジェクト用の`EditProjectDialog`を追加：鉛筆アイコン→ダイアログ（現在の名前・パスをプリフィル、`DirectoryPicker`で再選択可）→「登録を解除」（destructive、左）と「保存」（右）
+- 確認ダイアログは設けず、`/rules`・`/skills`の削除ボタンと同じ「即時実行+トースト通知」方針に合わせた。理由：`config/projects.json`上の登録エントリを操作するだけで、実際のフォルダ・`CLAUDE.md`等のファイルは一切変更・削除されないため、他の削除操作より低リスク
+- `lib/projects.ts`にこれまで一切テストが無かったことに気づいた。原因は`PROJECTS_CONFIG_PATH`が`process.cwd()`基準でモジュール読み込み時に固定される設計のため、他のlibファイルのように一時ディレクトリでプロジェクトパスを差し替えるテスト手法が使えなかったこと（`os.homedir()`を`vi.spyOn`で差し替える`sessionMonitor.test.ts`の手法も、こちらはモジュールトップレベルで一度だけ評価される定数のため使えない）。`fileIO`の`readJsonFile`/`writeJsonFile`をモックしてメモリ上で完結させる方式で`projects.test.ts`を新規作成し、`updateProject`/`removeProject`/`addProject`/`selectProject`をカバーした
+
+## 検証
+
+- `npx tsc --noEmit` / `npx eslint .` / `npx vitest run`（14ファイル・**84件**、新規7件）/ `npm run build`すべて成功
+- ブラウザ実操作：実際の`~/.claude`系プロジェクトを誤って書き換えないよう、検証は`サンプルプロジェクト`と使い捨てのテスト用プロジェクトに限定した
+  - 編集ダイアログが現在の名前・パスで正しくプリフィルされることを確認
+  - 名前を変更→保存→`PATCH /api/projects/sample`が200を返し実際に`config/projects.json`に反映されることを確認→元の名前に戻して復元
+  - テスト用に追加したプロジェクトを選択→「登録を解除」→一覧から消え、選択中プロジェクトが残りの先頭（サンプルプロジェクト）にフォールバックすることを確認
+- 副次的な発見：`config/projects.json`に、ユーザーの実マシン上で以前登録されたと見られる「グローバル設定」（`~/.claude`）と「本番グローバル設定」（`~/.claude/debug`）の2件が既に存在していた。今回の検証ではこれらの名前・パスを一切変更していない
+
+## 自己採点：91/100
+
+（理由：既存の`removeProject`がUIから到達不可能という「実装済みだが使えない」状態を発見・解消できた点、実データ（グローバル設定）を汚さず使い捨てデータで検証を完結できた点、`lib/projects.ts`の長年のテスト空白を埋められた点を評価。減点理由：削除に確認ダイアログを設けなかった判断について、ユーザーへの事前確認を挟まず既存パターン踏襲のみで押し切った）
+
+## 次にClaudeへ頼むべき追加指示（ラウンド10時点）
+
+1. `TODO.md`優先度「高」の2点（E2Eテスト自動化、誤操作防止UI）が引き続き最優先候補。
+2. 削除に確認ダイアログが無い設計（`/rules`・`/skills`・プロジェクト共通）でユーザーが不満であれば、共通の確認UIパターン導入を検討する。
+3. 機能3（GPUモード）は引き続き未着手。

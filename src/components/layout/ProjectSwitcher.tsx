@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Plus, FolderGit2 } from "lucide-react"
+import { Plus, FolderGit2, Pencil, Trash2 } from "lucide-react"
 import { useProjects } from "@/hooks/useProjects"
 import { Button } from "@/components/ui/button"
 import {
@@ -23,6 +23,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { DirectoryPicker } from "@/components/projects/DirectoryPicker"
+import { ProjectConfig } from "@/lib/types"
 import { toast } from "sonner"
 
 function suggestNameFromPath(p: string): string {
@@ -32,7 +33,16 @@ function suggestNameFromPath(p: string): string {
 }
 
 export function ProjectSwitcher() {
-  const { projects, selectedProjectId, selectProject, addProject, isLoading } = useProjects()
+  const {
+    projects,
+    selectedProjectId,
+    selectedProject,
+    selectProject,
+    addProject,
+    updateProject,
+    removeProject,
+    isLoading,
+  } = useProjects()
   const [open, setOpen] = useState(false)
   const [name, setName] = useState("")
   const [path, setPath] = useState("")
@@ -88,6 +98,14 @@ export function ProjectSwitcher() {
         </Select>
       )}
 
+      {selectedProject && (
+        <EditProjectDialog
+          project={selectedProject}
+          onSave={updateProject}
+          onDelete={removeProject}
+        />
+      )}
+
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogTrigger
           render={
@@ -136,5 +154,105 @@ export function ProjectSwitcher() {
         </DialogContent>
       </Dialog>
     </div>
+  )
+}
+
+interface EditProjectDialogProps {
+  project: ProjectConfig
+  onSave: (id: string, updates: { name: string; path: string }) => Promise<void>
+  onDelete: (id: string) => Promise<void>
+}
+
+function EditProjectDialog({ project, onSave, onDelete }: EditProjectDialogProps) {
+  const [open, setOpen] = useState(false)
+  const [name, setName] = useState(project.name)
+  const [path, setPath] = useState(project.path)
+  const [submitting, setSubmitting] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  function handleOpenChange(next: boolean) {
+    if (next) {
+      setName(project.name)
+      setPath(project.path)
+    }
+    setOpen(next)
+  }
+
+  async function handleSave() {
+    if (!name.trim() || !path.trim()) {
+      toast.error("プロジェクト名とパスを入力してください")
+      return
+    }
+    setSubmitting(true)
+    try {
+      await onSave(project.id, { name: name.trim(), path: path.trim() })
+      toast.success(`プロジェクト「${name.trim()}」を更新しました`)
+      setOpen(false)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "更新に失敗しました")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function handleDelete() {
+    setDeleting(true)
+    try {
+      await onDelete(project.id)
+      toast.success(`プロジェクト「${project.name}」の登録を解除しました`)
+      setOpen(false)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "削除に失敗しました")
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogTrigger
+        render={
+          <Button variant="outline" size="icon" aria-label="プロジェクトを編集">
+            <Pencil className="size-4" />
+          </Button>
+        }
+      />
+      <DialogContent className="flex max-h-[85vh] w-full max-w-xl flex-col sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>プロジェクトを編集</DialogTitle>
+          <DialogDescription>
+            登録名やパスを変更、またはダッシュボードからの登録を解除できます（実際のフォルダやファイルは削除されません）。
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4 overflow-y-auto py-2">
+          <div className="grid gap-2">
+            <Label>フォルダを選び直す</Label>
+            <DirectoryPicker onConfirm={setPath} />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="edit-project-path">プロジェクトルートパス</Label>
+            <Input id="edit-project-path" value={path} onChange={(e) => setPath(e.target.value)} />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="edit-project-name">プロジェクト名</Label>
+            <Input id="edit-project-name" value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+        </div>
+        <DialogFooter className="sm:justify-between">
+          <Button
+            variant="outline"
+            className="text-destructive hover:text-destructive"
+            onClick={handleDelete}
+            disabled={deleting || submitting}
+          >
+            <Trash2 className="size-4" />
+            登録を解除
+          </Button>
+          <Button onClick={handleSave} disabled={submitting || deleting}>
+            保存
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

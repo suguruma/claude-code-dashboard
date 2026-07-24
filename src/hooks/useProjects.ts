@@ -30,6 +30,11 @@ export function useProjects() {
     await mutate()
   }
 
+  async function updateProject(id: string, updates: { name?: string; path?: string }) {
+    await apiMutate<ProjectConfig>(`/api/projects/${id}`, "PATCH", updates)
+    await mutate()
+  }
+
   return {
     projects,
     selectedProjectId,
@@ -39,5 +44,6 @@ export function useProjects() {
     selectProject,
     addProject,
     removeProject,
+    updateProject,
   }
 }
