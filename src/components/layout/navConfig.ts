@@ -3,6 +3,7 @@ import {
   ArrowLeftRight,
   BrainCircuit,
   Cpu,
+  HelpCircle,
   Home,
   LineChart,
   ListChecks,
@@ -59,7 +60,11 @@ export const NAV_GROUPS: NavGroup[] = [
   },
 ]
 
+/** グループ分けされたナビとは別に、サイドバー下部に常時表示するヘルプリンク */
+export const HELP_ITEM: NavItem = { href: "/help", label: "使い方ガイド", icon: HelpCircle }
+
 export function findNavItem(pathname: string): NavItem | null {
+  if (HELP_ITEM.href === pathname) return HELP_ITEM
   for (const group of NAV_GROUPS) {
     const found = group.items.find((item) => item.href === pathname)
     if (found) return found

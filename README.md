@@ -16,7 +16,9 @@ Webアプリ側は重い処理を行わず、実際の `.claude/CLAUDE.md` / `.c
 - **移行（エクスポート/インポート）**（`/migrate`）— ルール・スキルを1つのJSONファイルに書き出し、他のPC（別プロジェクト）に差分プレビュー付きで取り込む。上書き前に自動バックアップ
 - **セッション監視**（`/session-monitor`）— `~/.claude/projects/*/*.jsonl`（Claude Codeの実行ログ）を解析し、トークン消費推移・ツール呼び出し集計・コンテキスト圧縮（コンパクション）履歴を可視化。ダッシュボードのプロジェクト登録とは独立し、このマシンで実行された全セッションが対象。自動更新トグルで3秒間隔のポーリングにも対応。読み取り専用
 - **実行ログ & 思考プロセス可視化**（`/trace`）— エージェント議論・合意度メーター・トレードオフ比較・介入ハイライト・黄金プロンプトのワンクリック保存
+- **使い方ガイド**（`/help`）— 初心者向けの用語集・各ページの使い方・FAQをまとめた解説ページ。サイドバー下部に常時リンクを表示
 - 複数プロジェクトの横断管理（画面右上のプロジェクトスイッチャー。実際の `~/.claude` をプロジェクトとして登録することも可能）
+- ライト/ダーク/システム追従のテーマ切替（TopBar右側）
 
 機能3（GPUモードによるルール矛盾・重複自動検出）は未実装（`/refactor` に導線のみ）。
 メモリ管理・タスク実行履歴・設定/バックアップ/プラグイン・セッション監視は全て読み取り専用（編集・復元は次回以降のスコープ）。
@@ -24,6 +26,8 @@ Webアプリ側は重い処理を行わず、実際の `.claude/CLAUDE.md` / `.c
 
 ナビゲーションは左サイドバーに「設定管理」「分析・振り返り」「ツール」のカテゴリでグループ化されている。
 サイドバー下部のボタンでアイコンのみの表示に折りたためる。
+
+残課題・今後の実装候補は [TODO.md](./TODO.md) を参照。
 
 ## セットアップ
 
@@ -57,8 +61,8 @@ npm run build      # 本番ビルド
 
 ```
 src/
-├── app/            # ページ & API Routes (App Router)
-├── components/     # UIコンポーネント (layout[SideNav/TopBar] / rules / skills / trace / ui / projects / memory / tasks / settings / migrate / sessionMonitor)
+├── app/            # ページ & API Routes (App Router)、help/page.tsx（使い方ガイド）
+├── components/     # UIコンポーネント (layout[SideNav/TopBar/ThemeToggle] / rules / skills / trace / ui / projects / memory / tasks / settings / migrate / sessionMonitor)、theme-provider.tsx
 ├── hooks/          # SWRベースのデータ取得フック
 └── lib/            # ファイルI/O・CLAUDE.mdパーサー・スキル/実行ログ/メモリ/タスク履歴/設定/バックアップ/プラグイン/移行/セッション監視操作
 config/
@@ -66,4 +70,5 @@ config/
 └── projects.example.json  # コミット対象のテンプレート
 sample-data/          # 自由記述形式のCLAUDE.md・サンプルスキル・settings.json・backups・pluginsを含むダミープロジェクト
 docs/                 # plan.md（実装方針・5役3周の記録）, spec.md（仕様詳細・実装版）
+TODO.md               # 優先度別の残課題バックログ
 ```

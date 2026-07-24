@@ -7,7 +7,7 @@ import { PanelLeftClose, PanelLeftOpen } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { NAV_GROUPS, type NavItem } from "./navConfig"
+import { HELP_ITEM, NAV_GROUPS, type NavItem } from "./navConfig"
 
 export function SideNav() {
   const pathname = usePathname()
@@ -45,7 +45,8 @@ export function SideNav() {
         ))}
       </nav>
 
-      <div className={cn("border-t border-sidebar-border p-2", collapsed && "flex justify-center")}>
+      <div className={cn("space-y-1 border-t border-sidebar-border p-2", collapsed && "flex flex-col items-center")}>
+        <NavRow item={HELP_ITEM} active={pathname === HELP_ITEM.href} collapsed={collapsed} />
         <Button
           variant="ghost"
           size="icon"

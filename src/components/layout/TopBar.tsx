@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation"
 import { ProjectSwitcher } from "./ProjectSwitcher"
+import { ThemeToggle } from "./ThemeToggle"
 import { findNavItem } from "./navConfig"
 
 export function TopBar() {
@@ -18,7 +19,10 @@ export function TopBar() {
           </>
         )}
       </div>
-      <ProjectSwitcher />
+      <div className="flex items-center gap-2">
+        <ThemeToggle />
+        <ProjectSwitcher />
+      </div>
     </header>
   )
 }
