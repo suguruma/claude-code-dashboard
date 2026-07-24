@@ -1,0 +1,9 @@
+{
+  "id": "1",
+  "subject": "要件をヒアリングする",
+  "description": "資料の対象読者と目的を確認する",
+  "activeForm": "要件をヒアリング中",
+  "status": "completed",
+  "blocks": ["2"],
+  "blockedBy": []
+}

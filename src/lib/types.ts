@@ -77,3 +77,57 @@ export interface ProjectsFile {
 export interface ApiError {
   error: string
 }
+
+/**
+ * `.claude/projects/<encoded-path>/memory/*.md` から読み込むAIメモリ。
+ * dirName はエンコードされたプロジェクトパス。完全な逆変換ができない場合があるため、
+ * 元のファイルシステムパスへの変換は行わずエンコード名をそのまま識別子として扱う。
+ */
+export interface MemoryProject {
+  dirName: string
+  entryCount: number
+}
+
+export interface MemoryEntry {
+  fileName: string
+  name: string
+  description: string
+  type: string
+  body: string
+}
+
+/** `.claude/tasks/<sessionId>/*.json` から読み込むタスク実行履歴（TaskCreate/TaskUpdateの実データ） */
+export interface TaskRecord {
+  id: string
+  subject: string
+  description: string
+  activeForm?: string
+  status: "pending" | "in_progress" | "completed" | "deleted" | string
+  blocks: string[]
+  blockedBy: string[]
+}
+
+export interface TaskSession {
+  sessionId: string
+  tasks: TaskRecord[]
+}
+
+/** `.claude/settings.json` の読み取り専用ビュー（未知のフィールドも raw として保持） */
+export interface SettingsView {
+  raw: Record<string, unknown>
+}
+
+/** `.claude/backups/*.backup.*` の一覧 */
+export interface BackupEntry {
+  fileName: string
+  timestampMs: number | null
+  sizeBytes: number
+}
+
+/** `.claude/plugins/blocklist.json` */
+export interface BlockedPlugin {
+  plugin: string
+  added_at: string
+  reason: string
+  text: string
+}

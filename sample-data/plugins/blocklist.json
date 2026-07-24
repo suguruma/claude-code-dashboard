@@ -1,0 +1,11 @@
+{
+  "fetchedAt": "2026-07-20T10:00:00.000Z",
+  "plugins": [
+    {
+      "plugin": "example-plugin@example-marketplace",
+      "added_at": "2026-07-18T00:00:00.000Z",
+      "reason": "security",
+      "text": "動作確認用のサンプルブロックエントリ"
+    }
+  ]
+}

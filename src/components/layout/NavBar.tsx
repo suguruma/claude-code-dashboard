@@ -9,6 +9,9 @@ const NAV_ITEMS = [
   { href: "/", label: "ホーム" },
   { href: "/rules", label: "ルール管理" },
   { href: "/skills", label: "スキル管理" },
+  { href: "/memory", label: "メモリ管理" },
+  { href: "/tasks", label: "タスク履歴" },
+  { href: "/settings", label: "設定" },
   { href: "/trace", label: "実行ログ" },
   { href: "/refactor", label: "GPUモード", disabled: true },
 ]

@@ -1,0 +1,9 @@
+{
+  "id": "2",
+  "subject": "資料の骨子を作成する",
+  "description": "結論を冒頭に配置した構成案を作る",
+  "activeForm": "骨子を作成中",
+  "status": "in_progress",
+  "blocks": ["3"],
+  "blockedBy": ["1"]
+}

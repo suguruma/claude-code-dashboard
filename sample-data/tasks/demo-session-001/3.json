@@ -1,0 +1,9 @@
+{
+  "id": "3",
+  "subject": "数値データを表形式に整える",
+  "description": "Markdown Tableで数値データをまとめる",
+  "activeForm": "表形式に整えている",
+  "status": "pending",
+  "blocks": [],
+  "blockedBy": ["2"]
+}
