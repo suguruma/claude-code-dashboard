@@ -176,3 +176,75 @@ export interface ImportDiffResult {
 export interface ImportApplyResult {
   backups: string[]
 }
+
+/**
+ * `~/.claude/projects/<dirName>/` 配下に `*.jsonl`（Claude Codeのセッション実行ログ）を
+ * 持つプロジェクトディレクトリ。dirNameは元パスの独自エンコードで、メモリ機能と同様
+ * 完全な逆変換はできないためそのまま識別子として扱う。
+ */
+export interface SessionProjectSummary {
+  dirName: string
+  sessionCount: number
+  lastActivityAt: string | null
+}
+
+/** 1セッション（1つの`.jsonl`）の集計サマリー */
+export interface SessionSummary {
+  sessionId: string
+  startedAt: string | null
+  endedAt: string | null
+  turnCount: number
+  toolCallCount: number
+  toolErrorCount: number
+  totalInputTokens: number
+  totalOutputTokens: number
+  totalCacheReadTokens: number
+  totalCacheCreationTokens: number
+  compactionCount: number
+  cwd: string | null
+  version: string | null
+  sizeBytes: number
+}
+
+/** ターン（assistantメッセージ1件）ごとのトークン消費ポイント */
+export interface TokenPoint {
+  turnIndex: number
+  timestamp: string
+  inputTokens: number
+  outputTokens: number
+  cacheReadTokens: number
+  cacheCreationTokens: number
+  effort: string | null
+}
+
+/** ツール呼び出し1件（対応するtool_resultが来た時点でisError等が確定する） */
+export interface ToolCallEvent {
+  turnIndex: number
+  timestamp: string
+  name: string
+  isError: boolean
+  isSidechain: boolean
+}
+
+/** 自動コンパクション（コンテキスト圧縮）発生イベント */
+export interface CompactionEvent {
+  timestamp: string
+  trigger: string
+  preTokens: number
+  durationMs: number
+}
+
+/** セッション詳細の全メトリクス */
+export interface SessionMetrics {
+  summary: SessionSummary
+  tokenPoints: TokenPoint[]
+  toolCalls: ToolCallEvent[]
+  compactions: CompactionEvent[]
+  toolCallCountsByName: Record<string, number>
+  toolErrorCountsByName: Record<string, number>
+  effortCounts: Record<string, number>
+  sidechainToolCallCount: number
+  interruptedToolCallCount: number
+  hookErrorCount: number
+  userMessageCount: number
+}
