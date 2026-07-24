@@ -2,7 +2,7 @@ import { promises as fs } from "fs"
 import os from "os"
 import path from "path"
 import { afterEach, describe, expect, it } from "vitest"
-import { createSkill, deleteSkill, getSkill, listSkills, updateSkill } from "./skills"
+import { createSkill, deleteSkill, getSkill, listSkills, renameSkill, updateSkill } from "./skills"
 import { ProjectConfig } from "./types"
 
 const cleanupDirs: string[] = []
@@ -105,5 +105,54 @@ describe("createSkill / updateSkill / deleteSkill", () => {
     const project = await makeProject()
     await expect(updateSkill(project, "unknown", { description: "x" })).rejects.toThrow()
     await expect(deleteSkill(project, "unknown")).rejects.toThrow()
+  })
+})
+
+describe("renameSkill", () => {
+  it("ディレクトリ名とSKILL.md内のnameフィールドの両方が変わる", async () => {
+    const project = await makeProject()
+    await createSkill(project, { dirName: "task", description: "高負荷制作チーム", body: "# 手順" })
+
+    const renamed = await renameSkill(project, "task", "autonomous-production-team")
+    expect(renamed.dirName).toBe("autonomous-production-team")
+    expect(renamed.name).toBe("autonomous-production-team")
+    expect(renamed.description).toBe("高負荷制作チーム")
+    expect(renamed.body).toBe("# 手順")
+
+    expect(await getSkill(project, "task")).toBeNull()
+    const content = await fs.readFile(
+      path.join(project.path, "skills", "autonomous-production-team", "SKILL.md"),
+      "utf-8"
+    )
+    expect(content).toContain("name: autonomous-production-team")
+  })
+
+  it("argument-schema等の未編集フィールドはリネーム後も保持される", async () => {
+    const project = await makeProject()
+    await fs.mkdir(path.join(project.path, "skills", "with-schema"), { recursive: true })
+    await fs.writeFile(
+      path.join(project.path, "skills", "with-schema", "SKILL.md"),
+      "---\nname: with-schema\ndescription: desc\nargument-schema:\n  type: object\n---\n\n本文\n"
+    )
+    const renamed = await renameSkill(project, "with-schema", "renamed-schema")
+    expect(renamed.argumentSchema).toMatchObject({ type: "object" })
+  })
+
+  it("変更後の名前が既に存在する場合はエラーになる", async () => {
+    const project = await makeProject()
+    await createSkill(project, { dirName: "a", description: "x", body: "" })
+    await createSkill(project, { dirName: "b", description: "y", body: "" })
+    await expect(renameSkill(project, "a", "b")).rejects.toThrow()
+  })
+
+  it("不正な名前（日本語・スペース等）へのリネームは拒否する", async () => {
+    const project = await makeProject()
+    await createSkill(project, { dirName: "valid", description: "x", body: "" })
+    await expect(renameSkill(project, "valid", "不正な名前")).rejects.toThrow()
+  })
+
+  it("存在しないスキルのリネームはエラーになる", async () => {
+    const project = await makeProject()
+    await expect(renameSkill(project, "unknown", "new-name")).rejects.toThrow()
   })
 })

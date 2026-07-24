@@ -34,6 +34,17 @@ export function useSkills(projectId: string | null) {
     await mutate()
   }
 
+  async function renameSkill(oldDirName: string, newDirName: string) {
+    if (!projectId) throw new Error("プロジェクトが選択されていません")
+    const skill = await apiMutate<SkillMeta>(
+      `/api/skills/${oldDirName}/rename?projectId=${encodeURIComponent(projectId)}`,
+      "POST",
+      { newDirName }
+    )
+    await mutate()
+    return skill
+  }
+
   return {
     skills: data?.skills ?? [],
     isLoading,
@@ -41,5 +52,6 @@ export function useSkills(projectId: string | null) {
     createSkill,
     updateSkill,
     deleteSkill,
+    renameSkill,
   }
 }

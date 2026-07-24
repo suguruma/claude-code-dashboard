@@ -883,3 +883,37 @@ CLAUDE.mdルール vs GPUモードの判断：
 3. 機能3（GPUモード）は引き続き未着手。
 
 **自己採点：88/100**（ユーザーの2つの要望（並び替え・呼称変更）を実装し尽くしただけでなく、既存の命名ミス（`SkillCard.tsx`）とテストの抜け（`reorderRules`）を能動的に発見・修正できた。減点理由：設計相談への回答が「今回は実装を見送る」という結論のため、具体的なコード成果物としては残っていない）
+
+---
+
+# ラウンド14：スキルの改名機能
+
+## 背景・ユーザー要望
+
+「スキル名やフォルダ名の変更をすることって可能ですか」という質問を受け、現状（`updateSkill`は`description`/`body`のみパッチ可能、`SkillFormDialog.tsx`のディレクトリ名欄は編集時`disabled`）を回答した上で、「表示名(name)とフォルダ名(dirName)を今後も同期させるか、分離するか」という設計判断をユーザーに投げた。ユーザーから具体例として「"task"を"autonomous-production-team"に変更したい」という回答があった。これは実際にユーザーが日常的に使っているグローバルスキル（`~/.claude/skills/task/`）そのものを指しており、設計相談への回答であると同時に実際の改名依頼でもあると判断した。
+
+## 設計判断
+
+- 既存コードは作成時に`name: input.dirName`で固定しており、`name`と`dirName`を常に同期させる設計が既に前提になっている。今回もこれを踏襲し、フォルダ名と表示名を分離せず、改名時は両方まとめて変更する方式にした（分離する設計は要望されておらず、今回のスコープでは過剰と判断）
+- 改名はスキルの呼び出しコマンド（`/task`→`/autonomous-production-team`等）自体を変える操作であり、通常の`description`/`body`編集とは影響範囲が異なる。専用のUIやダイアログを新設するのではなく、既存の編集ダイアログの「スキル名（ディレクトリ名）」欄をそのまま改名にも使えるようにし（`disabled`を解除）、値を変更した場合のみ「呼び出しコマンドが `/旧名` から `/新名` に変わります」という注意文言を表示する設計にした。改名操作自体を隠さず、かつ既存のUIパターンを崩さないバランスを取った
+
+## 実装
+
+- [renameSkill](../src/lib/skills.ts)：`fs.rename`でディレクトリを移動した後、移動先の`SKILL.md`のfrontmatter`name`を新しい名前に書き換えて再シリアライズ。改名先が既存の場合・`validateSkillDirName`の命名規則に反する場合はエラー。旧名=新名の場合は既存データをそのまま返す（no-op）
+- `POST /api/skills/[dirName]/rename`（body: `{ newDirName }`）
+- `useSkills.ts`に`renameSkill(oldDirName, newDirName)`を追加
+- [SkillFormDialog.tsx](../src/components/skills/SkillFormDialog.tsx)：ディレクトリ名入力欄の`disabled={isEditing}`を解除し、編集時に値が変わった場合のみ注意文言を表示
+- `skills/page.tsx`の`handleSubmit`：編集時に`dirName`が変わっていれば`renameSkill`を先に呼んでから`updateSkill`（description/body）を呼ぶ2段階の処理にした
+- [skills.test.ts](../src/lib/skills.test.ts)に`renameSkill`のテスト5件を追加（ディレクトリ名・name両方の変更／argument-schema等の保持／改名先が既存の場合のエラー／不正な名前へのエラー／存在しないスキルのエラー）。14ファイル・**95件**
+
+## 検証
+
+- `npx tsc --noEmit` / `npx eslint .` / `npx vitest run`（95件）/ `npm run build`（`/api/skills/[dirName]/rename`ルートが生成されることを確認）すべて成功
+- ブラウザ確認（サンプルプロジェクト）：`summarize`スキルの編集ダイアログでディレクトリ名を`summarize-text`に変更すると、ダイアログ内に「呼び出しコマンドが /summarize から /summarize-text に変わります」という注意文言が表示されることを確認。更新後、一覧表示が`summarize-text`に変わり、実ファイルシステム上でも`sample-data/skills/summarize-text/SKILL.md`が生成され`name: summarize-text`になっていることを確認。その後`POST /api/skills/summarize-text/rename`を直接呼び出し元の`summarize`に戻した
+- **実機での本番改名**：ユーザーの要望どおり、実際のグローバル設定プロジェクト（`~/.claude`）で`task`スキルを`autonomous-production-team`に改名した。改名後、`~/.claude/skills/task/`が消え`~/.claude/skills/autonomous-production-team/SKILL.md`が生成されていること、frontmatterの`name`が`autonomous-production-team`に更新されていること、`argument-schema`・本文（`execution_log.json`書き出し指示を含む全180行）が改名前と変わらず保持されていることを実ファイルで確認した
+
+## ユーザーへの申し送り事項
+
+この改名は実際にユーザーが日常使っているグローバルスキルに対する変更のため、今後このスキルを呼び出す際は `/task` ではなく **`/autonomous-production-team`** と入力する必要がある。本リポジトリ自身の過去のラウンド記録（ラウンド9〜13の`docs/plan.md`エントリ、`TODO.md`）は「`task`スキル」という当時の名称のまま残しており、これは実行当時の記録として意図的に変更していない（今後の新規記述では新名称`autonomous-production-team`を使う）。
+
+**自己採点：92/100**（ユーザーからの設計相談への回答を、具体例（実際のtaskスキル改名）を通じて実装まで一気通貫で完了できた。サンプルプロジェクトでの安全な検証を経てから本番データに適用する手順を踏めた。減点理由：改名機能のUIは既存の編集ダイアログに相乗りする設計としたため、「改名」という操作の重さ（呼び出しコマンドが変わる）に対してダイアログのビジュアル上の警告がテキスト1行のみとやや控えめ）

@@ -13,7 +13,7 @@ import { SkillMeta } from "@/lib/types"
 
 export default function SkillsPage() {
   const { selectedProjectId, selectedProject, isLoading: projectsLoading } = useProjects()
-  const { skills, isLoading, error, createSkill, updateSkill, deleteSkill } =
+  const { skills, isLoading, error, createSkill, updateSkill, deleteSkill, renameSkill } =
     useSkills(selectedProjectId)
 
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -35,7 +35,12 @@ export default function SkillsPage() {
   async function handleSubmit(input: { dirName: string; description: string; body: string }) {
     try {
       if (editingSkill) {
-        await updateSkill(editingSkill.dirName, { description: input.description, body: input.body })
+        let dirName = editingSkill.dirName
+        if (input.dirName !== editingSkill.dirName) {
+          await renameSkill(editingSkill.dirName, input.dirName)
+          dirName = input.dirName
+        }
+        await updateSkill(dirName, { description: input.description, body: input.body })
         toast.success("スキルを更新しました")
       } else {
         await createSkill(input)

@@ -63,8 +63,13 @@ export function SkillFormDialog({
               value={dirName}
               onChange={(e) => setDirName(e.target.value)}
               placeholder="例: my-skill（半角英数字・ハイフン・アンダースコアのみ）"
-              disabled={isEditing}
             />
+            {isEditing && dirName.trim() !== initialSkill?.dirName && (
+              <p className="text-xs text-amber-600 dark:text-amber-500">
+                変更するとフォルダ名も変わり、呼び出しコマンドが /{initialSkill?.dirName} から /
+                {dirName.trim() || "..."} に変わります
+              </p>
+            )}
           </div>
           <div className="grid gap-2">
             <Label htmlFor="skill-description">説明（description）</Label>

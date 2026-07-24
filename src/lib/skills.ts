@@ -100,6 +100,36 @@ export async function updateSkill(
   return updated
 }
 
+export async function renameSkill(
+  project: ProjectConfig,
+  oldDirName: string,
+  newDirName: string
+): Promise<SkillMeta> {
+  if (oldDirName === newDirName) {
+    const existing = await readSkill(project, oldDirName)
+    if (!existing) throw new Error("スキルが見つかりません")
+    return existing
+  }
+
+  validateSkillDirName(newDirName)
+  const existing = await readSkill(project, oldDirName)
+  if (!existing) throw new Error("スキルが見つかりません")
+  const conflict = await readSkill(project, newDirName)
+  if (conflict) throw new Error(`スキル "${newDirName}" は既に存在します`)
+
+  await fs.rename(
+    path.join(skillsDir(project), oldDirName),
+    path.join(skillsDir(project), newDirName)
+  )
+
+  const updated: SkillMeta = { ...existing, dirName: newDirName, name: newDirName }
+  const data: Record<string, unknown> = { name: updated.name, description: updated.description }
+  if (updated.argumentSchema !== undefined) data["argument-schema"] = updated.argumentSchema
+
+  await writeTextFile(skillMdPath(project, newDirName), serializeFrontmatter(data, updated.body))
+  return updated
+}
+
 export async function deleteSkill(project: ProjectConfig, dirName: string): Promise<void> {
   const existing = await readSkill(project, dirName)
   if (!existing) throw new Error("スキルが見つかりません")
