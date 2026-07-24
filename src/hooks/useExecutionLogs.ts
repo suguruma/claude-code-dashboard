@@ -10,10 +10,10 @@ export function useExecutionLogs(projectId: string | null) {
     : null
   const { data, error, isLoading, mutate } = useSWR<ExecutionLogFile>(key, fetcher)
 
-  async function saveGoldenPromptRules(taskId: string): Promise<number> {
+  async function saveSuggestedRules(taskId: string): Promise<number> {
     if (!projectId) throw new Error("プロジェクトが選択されていません")
     const res = await apiMutate<{ ok: boolean; savedCount: number }>(
-      `/api/execution-log/${taskId}/golden-prompt?projectId=${encodeURIComponent(projectId)}`,
+      `/api/execution-log/${taskId}/suggested-rules?projectId=${encodeURIComponent(projectId)}`,
       "POST"
     )
     return res.savedCount
@@ -24,6 +24,6 @@ export function useExecutionLogs(projectId: string | null) {
     isLoading,
     error,
     mutate,
-    saveGoldenPromptRules,
+    saveSuggestedRules,
   }
 }

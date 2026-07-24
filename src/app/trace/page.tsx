@@ -9,19 +9,19 @@ import { LogList } from "@/components/trace/LogList"
 import { ConsensusMeter } from "@/components/trace/ConsensusMeter"
 import { TradeOffCompare } from "@/components/trace/TradeOffCompare"
 import { InterventionCard } from "@/components/trace/InterventionCard"
-import { GoldenPromptPanel } from "@/components/trace/GoldenPromptPanel"
+import { NextPromptPanel } from "@/components/trace/NextPromptPanel"
 import { AgentOrgChart } from "@/components/trace/AgentOrgChart"
 import { TrialProcessTimeline } from "@/components/trace/TrialProcessTimeline"
 
 export default function TracePage() {
   const { selectedProjectId, selectedProject, isLoading: projectsLoading } = useProjects()
-  const { logs, isLoading, error, saveGoldenPromptRules, mutate } =
+  const { logs, isLoading, error, saveSuggestedRules, mutate } =
     useExecutionLogs(selectedProjectId)
   const [manuallySelectedTaskId, setManuallySelectedTaskId] = useState<string | null>(null)
   const selectedTaskId = manuallySelectedTaskId ?? logs[0]?.task_id ?? null
 
-  async function handleSaveGoldenPrompt(taskId: string) {
-    const count = await saveGoldenPromptRules(taskId)
+  async function handleSaveSuggestedRules(taskId: string) {
+    const count = await saveSuggestedRules(taskId)
     await mutate()
     return count
   }
@@ -127,7 +127,7 @@ export default function TracePage() {
                 </div>
               )}
 
-              <GoldenPromptPanel entry={selectedEntry} onSave={handleSaveGoldenPrompt} />
+              <NextPromptPanel entry={selectedEntry} onSave={handleSaveSuggestedRules} />
             </div>
           )}
         </div>

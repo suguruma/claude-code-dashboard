@@ -2,7 +2,7 @@ import { promises as fs } from "fs"
 import os from "os"
 import path from "path"
 import { afterEach, describe, expect, it } from "vitest"
-import { createRule, deleteRule, getRules, updateRule } from "./rules"
+import { createRule, deleteRule, getRules, reorderRules, updateRule } from "./rules"
 import { ProjectConfig } from "./types"
 
 const cleanupDirs: string[] = []
@@ -74,5 +74,52 @@ describe("updateRule / deleteRule", () => {
 
     const claudeMd = await fs.readFile(path.join(project.path, "CLAUDE.md"), "utf-8")
     expect(claudeMd).not.toContain("消えるルール")
+  })
+})
+
+describe("reorderRules", () => {
+  it("指定した順序どおりに CLAUDE.md の見出し順が入れ替わる", async () => {
+    const project = await makeProject()
+    await createRule(project, { category: "構成", content: "A" })
+    await createRule(project, { category: "ビジュアル", content: "B" })
+    await createRule(project, { category: "トーン", content: "C" })
+
+    const before = await getRules(project)
+    expect(before.map((r) => r.category)).toEqual(["構成", "ビジュアル", "トーン"])
+
+    const reordered = await reorderRules(project, [before[2].id, before[0].id, before[1].id])
+    expect(reordered.map((r) => r.category)).toEqual(["トーン", "構成", "ビジュアル"])
+
+    const after = await getRules(project)
+    expect(after.map((r) => r.category)).toEqual(["トーン", "構成", "ビジュアル"])
+  })
+
+  it("無効化(enabled:false)状態は並び替え後も保持される", async () => {
+    const project = await makeProject()
+    const ruleA = await createRule(project, { category: "A", content: "内容A" })
+    await createRule(project, { category: "B", content: "内容B" })
+    await updateRule(project, ruleA.id, { enabled: false })
+
+    const before = await getRules(project)
+    const reordered = await reorderRules(project, [before[1].id, before[0].id])
+
+    expect(reordered.find((r) => r.category === "A")?.enabled).toBe(false)
+    const claudeMd = await fs.readFile(path.join(project.path, "CLAUDE.md"), "utf-8")
+    expect(claudeMd).toContain("<!-- CCD:DISABLED")
+  })
+
+  it("orderedIdsの個数が現在のルール数と一致しない場合はエラーになる", async () => {
+    const project = await makeProject()
+    const rule = await createRule(project, { category: "構成", content: "A" })
+    await createRule(project, { category: "ビジュアル", content: "B" })
+
+    await expect(reorderRules(project, [rule.id])).rejects.toThrow()
+  })
+
+  it("存在しないIDが含まれる場合はエラーになる", async () => {
+    const project = await makeProject()
+    await createRule(project, { category: "構成", content: "A" })
+
+    await expect(reorderRules(project, ["sec-999"])).rejects.toThrow()
   })
 })

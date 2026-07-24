@@ -4,11 +4,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { ExecutionLogEntry } from "@/lib/types"
 
-interface SkillCardProps {
+interface PromptSummaryCardProps {
   entry: ExecutionLogEntry
 }
 
-export function SkillCard({ entry }: SkillCardProps) {
+export function PromptSummaryCard({ entry }: PromptSummaryCardProps) {
   return (
     <Card>
       <CardHeader className="pb-2">

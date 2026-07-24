@@ -42,6 +42,20 @@ export function useRules(projectId: string | null) {
     await mutate()
   }
 
+  async function reorderRules(orderedIds: string[]) {
+    if (!projectId) throw new Error("プロジェクトが選択されていません")
+    await mutate(async (current) => {
+      await apiMutate<RulesResponse>(
+        `/api/rules/reorder?projectId=${encodeURIComponent(projectId)}`,
+        "POST",
+        { orderedIds }
+      )
+      if (!current) return current
+      const byId = new Map(current.rules.map((r) => [r.id, r]))
+      return { rules: orderedIds.map((id) => byId.get(id)!) }
+    }, { revalidate: true, rollbackOnError: true })
+  }
+
   return {
     rules: data?.rules ?? [],
     isLoading,
@@ -49,5 +63,6 @@ export function useRules(projectId: string | null) {
     createRule,
     updateRule,
     deleteRule,
+    reorderRules,
   }
 }

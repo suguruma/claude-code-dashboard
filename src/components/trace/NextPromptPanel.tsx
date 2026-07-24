@@ -7,12 +7,12 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ExecutionLogEntry } from "@/lib/types"
 
-interface GoldenPromptPanelProps {
+interface NextPromptPanelProps {
   entry: ExecutionLogEntry
   onSave: (taskId: string) => Promise<number>
 }
 
-export function GoldenPromptPanel({ entry, onSave }: GoldenPromptPanelProps) {
+export function NextPromptPanel({ entry, onSave }: NextPromptPanelProps) {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
@@ -33,7 +33,7 @@ export function GoldenPromptPanel({ entry, onSave }: GoldenPromptPanelProps) {
     <div className="space-y-3 rounded-lg border bg-card p-4">
       <div className="flex items-center gap-2 text-sm font-medium">
         <Sparkles className="size-4 text-primary" />
-        次回用の黄金プロンプト
+        次回用プロンプト
       </div>
       <pre className="whitespace-pre-wrap rounded-md bg-muted p-3 text-xs leading-relaxed font-mono">
         {entry.next_golden_prompt}
@@ -41,7 +41,7 @@ export function GoldenPromptPanel({ entry, onSave }: GoldenPromptPanelProps) {
 
       {entry.suggested_new_rules.length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs text-muted-foreground">この黄金プロンプトから抽出された新規ルール:</p>
+          <p className="text-xs text-muted-foreground">このプロンプトから抽出された新規ルール:</p>
           <div className="flex flex-wrap gap-1.5">
             {entry.suggested_new_rules.map((r, idx) => (
               <Badge key={idx} variant="outline">

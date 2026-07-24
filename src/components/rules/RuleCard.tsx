@@ -1,8 +1,10 @@
 "use client"
 
 import { useState } from "react"
-import { Pencil, Trash2 } from "lucide-react"
+import { GripVertical, Pencil, Trash2 } from "lucide-react"
 import { toast } from "sonner"
+import { useSortable } from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
@@ -23,6 +25,13 @@ interface RuleCardProps {
 
 export function RuleCard({ rule, onToggle, onEdit, onDelete }: RuleCardProps) {
   const [busy, setBusy] = useState(false)
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: rule.id,
+  })
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
 
   async function handleToggle(checked: boolean) {
     setBusy(true)
@@ -48,9 +57,24 @@ export function RuleCard({ rule, onToggle, onEdit, onDelete }: RuleCardProps) {
   }
 
   return (
-    <Card className={cn(!rule.enabled && "opacity-60")}>
+    <Card
+      ref={setNodeRef}
+      style={style}
+      className={cn(!rule.enabled && "opacity-60", isDragging && "z-10 opacity-50 shadow-lg")}
+    >
       <CardHeader className="flex flex-row items-start justify-between gap-2 pb-2">
-        <div className="text-sm font-medium">{rule.category}</div>
+        <div className="flex min-w-0 items-start gap-1.5">
+          <button
+            type="button"
+            className="mt-0.5 shrink-0 cursor-grab touch-none text-muted-foreground/50 hover:text-muted-foreground active:cursor-grabbing"
+            aria-label="ドラッグして並び替え"
+            {...attributes}
+            {...listeners}
+          >
+            <GripVertical className="size-4" />
+          </button>
+          <div className="text-sm font-medium">{rule.category}</div>
+        </div>
         <Tooltip>
           <TooltipTrigger render={<div />}>
             <Switch checked={rule.enabled} disabled={busy} onCheckedChange={handleToggle} />

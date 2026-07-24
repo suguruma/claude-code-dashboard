@@ -51,3 +51,24 @@ export async function deleteRule(project: ProjectConfig, id: string): Promise<vo
   const filtered = rules.filter((r) => r.id !== id)
   await persist(claudeMdPath, preamble, filtered)
 }
+
+/**
+ * ルールIDは読み込みのたびに見出し+出現順で再構築される一時的な識別子のため、
+ * orderedIdsは必ず直前のGETで取得したIDをそのまま使うこと。個数が一致しない
+ * （IDの過不足がある）場合は、その間に別プロセスがCLAUDE.mdを書き換えた可能性が
+ * あるとみなしエラーとする。
+ */
+export async function reorderRules(project: ProjectConfig, orderedIds: string[]): Promise<Rule[]> {
+  const { claudeMdPath, preamble, rules } = await readParsed(project)
+  const byId = new Map(rules.map((r) => [r.id, r]))
+  if (orderedIds.length !== rules.length || byId.size !== rules.length) {
+    throw new Error("並び替え対象のルール一覧が現在の内容と一致しません。画面を再読み込みしてください")
+  }
+  const reordered = orderedIds.map((id) => {
+    const rule = byId.get(id)
+    if (!rule) throw new Error("並び替え対象のルール一覧が現在の内容と一致しません。画面を再読み込みしてください")
+    return rule
+  })
+  await persist(claudeMdPath, preamble, reordered)
+  return reordered
+}

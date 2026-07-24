@@ -1,8 +1,17 @@
 "use client"
 
 import { useState } from "react"
-import { Plus } from "lucide-react"
+import { GripVertical, Plus } from "lucide-react"
 import { toast } from "sonner"
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core"
+import { SortableContext, arrayMove, rectSortingStrategy } from "@dnd-kit/sortable"
 import { useProjects } from "@/hooks/useProjects"
 import { useRules } from "@/hooks/useRules"
 import { useExecutionLogs } from "@/hooks/useExecutionLogs"
@@ -10,14 +19,29 @@ import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { RuleCard } from "@/components/rules/RuleCard"
 import { RuleFormDialog } from "@/components/rules/RuleFormDialog"
-import { SkillCard } from "@/components/rules/SkillCard"
+import { PromptSummaryCard } from "@/components/rules/PromptSummaryCard"
 import { Rule } from "@/lib/types"
 
 export default function RulesPage() {
   const { selectedProjectId, selectedProject, isLoading: projectsLoading } = useProjects()
-  const { rules, isLoading, error, createRule, updateRule, deleteRule } =
+  const { rules, isLoading, error, createRule, updateRule, deleteRule, reorderRules } =
     useRules(selectedProjectId)
   const { logs } = useExecutionLogs(selectedProjectId)
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
+
+  async function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIndex = rules.findIndex((r) => r.id === active.id)
+    const newIndex = rules.findIndex((r) => r.id === over.id)
+    if (oldIndex === -1 || newIndex === -1) return
+    const newOrder = arrayMove(rules, oldIndex, newIndex).map((r) => r.id)
+    try {
+      await reorderRules(newOrder)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "並び替えに失敗しました")
+    }
+  }
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingRule, setEditingRule] = useState<Rule | null>(null)
@@ -72,7 +96,9 @@ export default function RulesPage() {
           <div>
             <h1 className="text-xl font-semibold">ルール管理</h1>
             <p className="text-sm text-muted-foreground">
-              {selectedProject.name} の CLAUDE.md（## 見出し単位）を管理します
+              {selectedProject.name} の CLAUDE.md（## 見出し単位）を管理します。カード左上の
+              <GripVertical className="mx-0.5 inline size-3.5 align-text-bottom" />
+              ハンドルをドラッグすると表示順（CLAUDE.mdの記載順）を入れ替えられます
             </p>
           </div>
           <Button onClick={openCreateDialog}>
@@ -94,22 +120,26 @@ export default function RulesPage() {
           </p>
         )}
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {rules.map((rule) => (
-            <RuleCard
-              key={rule.id}
-              rule={rule}
-              onToggle={(id, enabled) => updateRule(id, { enabled })}
-              onEdit={openEditDialog}
-              onDelete={deleteRule}
-            />
-          ))}
-        </div>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={rules.map((r) => r.id)} strategy={rectSortingStrategy}>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {rules.map((rule) => (
+                <RuleCard
+                  key={rule.id}
+                  rule={rule}
+                  onToggle={(id, enabled) => updateRule(id, { enabled })}
+                  onEdit={openEditDialog}
+                  onDelete={deleteRule}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
       </section>
 
       <section className="space-y-4">
         <div>
-          <h2 className="text-lg font-semibold">黄金プロンプト集</h2>
+          <h2 className="text-lg font-semibold">次回用プロンプト集</h2>
           <p className="text-sm text-muted-foreground">
             過去タスクで生成された「次回用の最適化プロンプト」をSOPとして一覧化しています
           </p>
@@ -119,7 +149,7 @@ export default function RulesPage() {
         ) : (
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             {logs.map((entry) => (
-              <SkillCard key={entry.task_id} entry={entry} />
+              <PromptSummaryCard key={entry.task_id} entry={entry} />
             ))}
           </div>
         )}
