@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
-import { ExecutionLogEntry } from "@/lib/types"
+import { ExecutionLogEntry, ExecutionLogStatus } from "@/lib/types"
 
 interface LogListProps {
   logs: ExecutionLogEntry[]
@@ -12,6 +12,18 @@ function scoreVariant(score: number): "default" | "secondary" | "destructive" {
   if (score >= 90) return "default"
   if (score >= 60) return "secondary"
   return "destructive"
+}
+
+const STATUS_LABEL: Record<ExecutionLogStatus, string> = {
+  completed: "完了",
+  in_progress: "進行中",
+  failed: "失敗",
+}
+
+const STATUS_VARIANT: Record<ExecutionLogStatus, "secondary" | "destructive"> = {
+  completed: "secondary",
+  in_progress: "secondary",
+  failed: "destructive",
 }
 
 export function LogList({ logs, selectedTaskId, onSelect }: LogListProps) {
@@ -32,7 +44,14 @@ export function LogList({ logs, selectedTaskId, onSelect }: LogListProps) {
               {log.one_shot_score}点
             </Badge>
           </div>
-          <p className="mt-1 text-xs text-muted-foreground">{log.executed_at}</p>
+          <div className="mt-1 flex items-center gap-1.5">
+            <p className="text-xs text-muted-foreground">{log.executed_at}</p>
+            {log.status && log.status !== "completed" && (
+              <Badge variant={STATUS_VARIANT[log.status]} className="text-[10px]">
+                {STATUS_LABEL[log.status]}
+              </Badge>
+            )}
+          </div>
           {log.user_interventions.length > 0 && (
             <p className="mt-1 text-xs text-red-600 dark:text-red-400">
               介入 {log.user_interventions.length}件

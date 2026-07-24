@@ -21,7 +21,7 @@ export function GoldenPromptPanel({ entry, onSave }: GoldenPromptPanelProps) {
     try {
       const count = await onSave(entry.task_id)
       setSaved(true)
-      toast.success(`新規ルールを${count}件 rules.json に保存しました`)
+      toast.success(`新規ルールを${count}件 CLAUDE.md に保存しました`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "保存に失敗しました")
     } finally {

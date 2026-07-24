@@ -30,6 +30,63 @@
           "content": "数値データや比較データは文章ではなく必ず表形式（Table）で出力する"
         }
       ]
+    },
+    {
+      "task_id": "task_20260724_001",
+      "task_name": "競合分析レポートのオーケストレーション生成",
+      "executed_at": "2026-07-24 14:20:00",
+      "status": "completed",
+      "one_shot_score": 100,
+      "summary": "構成案作成者・検証者の2エージェント体制でレポートを生成。ファクトチェックで数値の古さを検出・修正し、ユーザー介入なしで完了。",
+      "agents_discussion": {
+        "consensus_rate": 92,
+        "conflict_point": "なし",
+        "trade_offs": [],
+        "assigned_agents": [
+          {
+            "role": "構成案作成者",
+            "reason_for_assignment": "レポート骨子とドラフト生成に専念させるため"
+          },
+          {
+            "role": "検証者（ファクトチェック）",
+            "reason_for_assignment": "作成と検証を分離しハルシネーションを防ぐため"
+          }
+        ],
+        "trial_process": [
+          {
+            "step": 1,
+            "action": "競合4社の最新資金調達額をWeb検索で取得",
+            "result": "success",
+            "note": ""
+          },
+          {
+            "step": 2,
+            "action": "検証者が資金調達額の出典を再検索しクロスチェック",
+            "result": "error",
+            "note": "1社の金額が古い出典のままだったため、検証者が最新情報との不一致を検出"
+          },
+          {
+            "step": 3,
+            "action": "最新の一次情報源から金額を再取得し本文を修正",
+            "result": "retry",
+            "note": "検証者の指摘を受け作成者が該当箇所を再生成"
+          },
+          {
+            "step": 4,
+            "action": "修正後の数値を検証者が再チェックし合意",
+            "result": "success",
+            "note": ""
+          }
+        ]
+      },
+      "user_interventions": [],
+      "next_golden_prompt": "【目的】競合分析レポート作成\n【体制】構成案作成者と検証者（ファクトチェック）の2エージェント体制で実施すること。数値データは必ず一次情報源で検証者がクロスチェックすること。",
+      "suggested_new_rules": [
+        {
+          "category": "検証プロセス",
+          "content": "数値データを含むレポートは作成者と検証者を分離し、検証者が一次情報源でクロスチェックする"
+        }
+      ]
     }
   ]
 }

@@ -56,10 +56,59 @@ describe("getExecutionLogs 後方互換読み込み", () => {
     const logs = await getExecutionLogs(project)
     expect(logs).toEqual([])
   })
+
+  it("assigned_agents / trial_process / status（マルチエージェント可視化用の新規フィールド）を保持する", async () => {
+    const project = await makeProject()
+    await fs.writeFile(
+      path.join(project.path, "execution_log.json"),
+      JSON.stringify({
+        logs: [
+          {
+            task_id: "t1",
+            status: "completed",
+            agents_discussion: {
+              consensus_rate: 90,
+              conflict_point: "なし",
+              trade_offs: [],
+              assigned_agents: [{ role: "検証者", reason_for_assignment: "ハルシネーション防止" }],
+              trial_process: [{ step: 1, action: "検索", result: "error", note: "出典が古い" }],
+            },
+          },
+        ],
+      })
+    )
+    const logs = await getExecutionLogs(project)
+    expect(logs[0].status).toBe("completed")
+    expect(logs[0].agents_discussion.assigned_agents).toEqual([
+      { role: "検証者", reason_for_assignment: "ハルシネーション防止" },
+    ])
+    expect(logs[0].agents_discussion.trial_process).toEqual([
+      { step: 1, action: "検索", result: "error", note: "出典が古い" },
+    ])
+  })
+
+  it("これらの新規フィールドが無い旧形式のログもそのまま読み込める（後方互換）", async () => {
+    const project = await makeProject()
+    await fs.writeFile(
+      path.join(project.path, "execution_log.json"),
+      JSON.stringify({
+        logs: [
+          {
+            task_id: "t1",
+            agents_discussion: { consensus_rate: 80, conflict_point: "", trade_offs: [] },
+          },
+        ],
+      })
+    )
+    const logs = await getExecutionLogs(project)
+    expect(logs[0].status).toBeUndefined()
+    expect(logs[0].agents_discussion.assigned_agents).toBeUndefined()
+    expect(logs[0].agents_discussion.trial_process).toBeUndefined()
+  })
 })
 
 describe("saveSuggestedRulesFromLog", () => {
-  it("指定タスクの suggested_new_rules を rules.json に追加する", async () => {
+  it("指定タスクの suggested_new_rules を CLAUDE.md に追加する", async () => {
     const project = await makeProject()
     await fs.writeFile(
       path.join(project.path, "execution_log.json"),

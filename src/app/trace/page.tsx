@@ -10,6 +10,8 @@ import { ConsensusMeter } from "@/components/trace/ConsensusMeter"
 import { TradeOffCompare } from "@/components/trace/TradeOffCompare"
 import { InterventionCard } from "@/components/trace/InterventionCard"
 import { GoldenPromptPanel } from "@/components/trace/GoldenPromptPanel"
+import { AgentOrgChart } from "@/components/trace/AgentOrgChart"
+import { TrialProcessTimeline } from "@/components/trace/TrialProcessTimeline"
 
 export default function TracePage() {
   const { selectedProjectId, selectedProject, isLoading: projectsLoading } = useProjects()
@@ -79,6 +81,13 @@ export default function TracePage() {
                 <p className="text-sm text-muted-foreground mt-1">{selectedEntry.summary}</p>
               </div>
 
+              <div className="space-y-2">
+                <h3 className="text-sm font-medium">エージェント構成</h3>
+                <AgentOrgChart agents={selectedEntry.agents_discussion.assigned_agents ?? []} />
+              </div>
+
+              <Separator />
+
               <ConsensusMeter
                 label="エージェント間 全体合意度"
                 value={selectedEntry.agents_discussion.consensus_rate}
@@ -93,6 +102,16 @@ export default function TracePage() {
                   tradeOffs={selectedEntry.agents_discussion.trade_offs}
                 />
               </div>
+
+              {(selectedEntry.agents_discussion.trial_process?.length ?? 0) > 0 && (
+                <>
+                  <Separator />
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-medium">試行錯誤・リトライの過程</h3>
+                    <TrialProcessTimeline steps={selectedEntry.agents_discussion.trial_process ?? []} />
+                  </div>
+                </>
+              )}
 
               {selectedEntry.user_interventions.length > 0 && (
                 <div className="space-y-2">

@@ -30,10 +30,30 @@ export interface TradeOff {
   option_b: string
 }
 
+/**
+ * AI社長が追加した専門エージェント1件。role/reason_for_assignmentは
+ * 「オーナー→AI社長→専門エージェント」の最大2階層ガードレールの一部として
+ * アサイン理由の明記を前提とする。既存ログとの後方互換のためoptional。
+ */
+export interface AssignedAgent {
+  role: string
+  reason_for_assignment: string
+}
+
+/** 試行錯誤・リトライの1ステップ。ツール実行エラーや自律修正の過程を記録する */
+export interface TrialStep {
+  step: number
+  action: string
+  result: "success" | "error" | "retry"
+  note: string
+}
+
 export interface AgentsDiscussion {
   consensus_rate: number
   conflict_point: string
   trade_offs: TradeOff[]
+  assigned_agents?: AssignedAgent[]
+  trial_process?: TrialStep[]
 }
 
 export interface UserIntervention {
@@ -47,10 +67,13 @@ export interface SuggestedNewRule {
   content: string
 }
 
+export type ExecutionLogStatus = "completed" | "in_progress" | "failed"
+
 export interface ExecutionLogEntry {
   task_id: string
   task_name: string
   executed_at: string
+  status?: ExecutionLogStatus
   one_shot_score: number
   summary: string
   agents_discussion: AgentsDiscussion

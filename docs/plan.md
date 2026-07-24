@@ -570,3 +570,61 @@
 2. 機能3（GPUモード）は引き続き未着手。
 3. `/help`の内容（用語集・各ページ使い方カード）は自動生成ではなく手動メンテナンスのため、今後の機能追加時に追従更新を忘れないこと。
 4. セッション横断の傾向分析、`/trace`との連携、サイドバー折りたたみの永続化、プロンプト言い直し検出の精度向上、F-2.1-dは引き続き未対応（`TODO.md`優先度「中」「低」に集約済み）。
+
+---
+
+# 割り込み対応：テーマ切替のHydration Mismatch修正
+
+ラウンド8で実装したテーマ切替について、ユーザーから「scriptタグの警告」と「Hydration Mismatch」の2件のエラー報告を受けて調査・修正した。
+
+原因は`next-themes`の`useTheme()`が、`localStorage`保存済みの値を初回クライアントレンダー（Hydration）時に同期的に読み込むため、常に`theme:undefined`で描画するサーバーと食い違うこと。`theme`の値でアイコンを出し分けていた`ThemeToggle.tsx`と、`theme`をpropとして渡していた`sonner.tsx`（Toaster）の2箇所が影響を受けていた。Hydration Mismatchが起きるとReactがそのツリーを丸ごとクライアントで再生成するため、次点でnext-themes内部の`<script>`タグ（FOUC防止用）も「クライアントで新規生成されたscriptタグ」として扱われ、2件目の警告が副次的に発生していた。
+
+`useSyncExternalStore`でマウント完了を検知する共通フック[useMounted.ts](../src/hooks/useMounted.ts)を新規作成し、`getServerSnapshot`でサーバーと同じ初期値を保証。両コンポーネントはマウント完了までサーバーと同じ既定表示（`system`）を描画するよう修正した。`useState`+`useEffect`によるmountedフラグ（ラウンド8で一度試して`react-hooks/set-state-in-effect`に抵触し削除した手法）を使わずに済んだ点が収穫。
+
+`localStorage`に`theme:"dark"`を仕込んだ状態で実際にページを再読み込みし、修正前に発生していた条件を再現。修正後は該当の警告が一切出ないことを確認した。`tsc`/`eslint`/`vitest`（75件）/`build`すべて成功。コミット`4ec2c54`。
+
+---
+
+# ラウンド9：マルチエージェント・オーケストレーション可視化
+
+## 背景
+
+ユーザーが「Claude Code AI向け指示プロンプト.txt」を新規作成し、AI社長（メインディレクター）が専門エージェントをアサインして作業する体制の可視化について意見を求めてきた。まず実現可能性とブラッシュアップ案を提示し（実装はせず）、承認を得てから着手する2段階の進め方をとった。
+
+## 1周目・2周目：方針提示とユーザーレビュー（チャット内で実施、docs/plan.mdへの記録は本セクションに集約）
+
+既存の`execution_log.json`・`/trace`実装（`AgentsDiscussion`の`consensus_rate`/`conflict_point`/`trade_offs`、`ConsensusMeter`/`TradeOffCompare`/`InterventionCard`/`GoldenPromptPanel`）を調査した上で、ユーザーのプロンプト文書と突き合わせ、以下を提案した。
+
+- スキーマ拡張（`assigned_agents`, `trial_process`, `status`）は既存構造への追加のみで実現可能
+- ただしプロンプト文書に2つの齟齬を発見：(1) 本システムは`rules.json`を廃止済みなのに`rules.json`への追記を指示している、(2) 「自動追記してください」という指示が、既存の`GoldenPromptPanel`の「ユーザーがボタンを押した時だけ反映」という承認フロー設計と矛盾する
+- 新規コンポーネント案（`AgentOrgChart`：2階層固定の構成図、`TrialProcessTimeline`：リトライタイムライン）を提示し、Rechartsではなく自作flexレイアウトで十分と判断
+- ユーザーから「上記方針で問題ない。TODOに記載して進めて」と承認を得た
+
+## 3周目：実装・検証
+
+### 生成者・破壊者
+
+- `types.ts`にスキーマ拡張。**重要な修正点**：実装当初、`trial_process`を`ExecutionLogEntry`直下（トップレベル）に配置したが、ユーザーの元プロンプト文書を再確認したところ`agents_discussion`の直下に定義されていることに気づき、ユーザー仕様に合わせて`AgentsDiscussion.trial_process`に修正した。自分で提案した設計を無批判に実装するのではなく、ユーザー原本の構造と照合し直したことで齟齬を防げた
+- `AgentOrgChart.tsx`：「オーナー→AI社長→専門エージェント」の固定2階層。ガードレールが最大2階層と明記しているため、3階層目を表現する手段は意図的に用意していない（無用な汎用ツリー構造は避けた）
+- `TrialProcessTimeline.tsx`：`result`が`success`なら枠なし、`retry`はamber、`error`は赤（既存`InterventionCard`の配色方針を踏襲）
+- `LogList.tsx`に`status`バッジを追加（`completed`は非表示、`in_progress`/`failed`のみ表示して一覧を煩雑にしない）
+- ついでに見つけた既存バグ：`GoldenPromptPanel.tsx`のトースト文言が「rules.json に保存しました」のままだったが、実際は`CLAUDE.md`に書き込む仕様（ラウンド2で移行済み）だった。表示文言のみのズレのため合わせて修正
+- `sample-data/execution_log.json`に、2エージェント体制＋エラー→リトライ→成功という試行錯誤を含む新規ログを1件追加。既存の1件（`assigned_agents`/`trial_process`なし）は後方互換確認用にそのまま残した
+- ユーザーの指示プロンプト文書自体も、上記2つの齟齬（`rules.json`参照、自動追記指示）を修正した版に書き換えた
+
+### 検証
+
+- `npx tsc --noEmit` / `npx eslint .` / `npx vitest run`（13ファイル・**77件**、新規2件：新旧フィールドの読み込み確認）/ `npm run build`すべて成功
+- ブラウザ実操作：`assigned_agents`2件を持つ新規ログでエージェント構成図（オーナー→AI社長→2枚のカード）、試行錯誤タイムライン4ステップ（`error`が赤・`retry`がamber・`success`が枠なし）が意図通りのDOM構造・スタイルで描画されることを確認。旧形式のログ（新フィールドなし）では「専門エージェントの追加はなし」というフォールバック文言が表示され、タイムラインのセクション自体が非表示になることも確認し、後方互換性を実証した
+- 本セッションのBrowser paneは引き続き`document.visibilityState:"hidden"`でスクリーンショットが撮れないため、DOM構造（`className`・`textContent`）による機能確認に留めた
+
+## 自己採点：93/100
+
+（理由：ユーザー承認前に実現可能性と齟齬を率直に指摘できた点、自分の実装ミス（`trial_process`の階層違い）をユーザー原本との再照合で自ら発見・修正できた点、後方互換性を実データで検証できた点を評価。減点理由：スクリーンショットによる視覚的な最終確認ができておらず、DOM構造ベースの確認に留まっている）
+
+## 次にClaudeへ頼むべき追加指示（ラウンド9時点）
+
+1. `TODO.md`優先度「高」の2点（E2Eテスト自動化、誤操作防止UI）が引き続き最優先候補。
+2. 実際にClaude Code（AI社長役）が修正版の指示プロンプトに従って`execution_log.json`を書き出せるかは未検証。ユーザーが実運用に投入した後、想定通りのスキーマで出力されるか確認が必要。
+3. `assigned_agents`が多数（5件以上等）になった場合の`AgentOrgChart`の折り返しレイアウトは未検証。
+4. 機能3（GPUモード）は引き続き未着手。
