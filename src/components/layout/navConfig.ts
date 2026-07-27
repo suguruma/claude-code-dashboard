@@ -2,7 +2,6 @@ import {
   Activity,
   ArrowLeftRight,
   BrainCircuit,
-  Cpu,
   HelpCircle,
   Home,
   LineChart,
@@ -10,6 +9,7 @@ import {
   ListTodo,
   Settings as SettingsIcon,
   Sparkles,
+  Wand2,
   type LucideIcon,
 } from "lucide-react"
 
@@ -49,13 +49,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "ツール",
     items: [
       { href: "/migrate", label: "移行", icon: ArrowLeftRight },
-      {
-        href: "/refactor",
-        label: "GPUモード",
-        icon: Cpu,
-        disabled: true,
-        disabledReason: "GPUモード（機能3）は次回実装予定です",
-      },
+      { href: "/refactor", label: "ルール整理", icon: Wand2 },
     ],
   },
 ]

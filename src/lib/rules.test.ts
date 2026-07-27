@@ -122,4 +122,20 @@ describe("reorderRules", () => {
 
     await expect(reorderRules(project, ["sec-999"])).rejects.toThrow()
   })
+
+  it("IDが重複し別のIDが欠落している場合はエラーになり、ルールが消失しない", async () => {
+    const project = await makeProject()
+    await createRule(project, { category: "構成", content: "A" })
+    await createRule(project, { category: "ビジュアル", content: "B" })
+    await createRule(project, { category: "トーン", content: "C" })
+
+    const before = await getRules(project)
+    // 個数はrules.lengthと一致するが、before[1]を欠落させbefore[0]を重複させている
+    const brokenOrderedIds = [before[0].id, before[0].id, before[2].id]
+
+    await expect(reorderRules(project, brokenOrderedIds)).rejects.toThrow()
+
+    const after = await getRules(project)
+    expect(after.map((r) => r.category)).toEqual(["構成", "ビジュアル", "トーン"])
+  })
 })

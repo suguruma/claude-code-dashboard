@@ -1,13 +1,18 @@
 {
   "name": "claude-code-dashboard",
   "version": "0.1.0",
+  "description": "Claude Code の CLAUDE.md・スキル・実行ログ等をローカルで可視化・編集するダッシュボード",
+  "author": "Claude Code Dashboard Contributors",
   "private": true,
+  "main": "electron/main.js",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "electron:dev": "next build && electron .",
+    "dist:win": "next build && electron-builder --win portable --x64"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
@@ -36,6 +41,8 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "electron": "^38.5.0",
+    "electron-builder": "^25.1.8",
     "eslint": "^9",
     "eslint-config-next": "16.2.11",
     "tailwindcss": "^4",

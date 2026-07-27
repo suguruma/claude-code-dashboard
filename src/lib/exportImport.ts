@@ -33,6 +33,10 @@ export async function buildExportBundle(project: ProjectConfig): Promise<ExportB
       name: s.name,
       description: s.description,
       argumentSchema: s.argumentSchema,
+      category: s.category,
+      title: s.title,
+      createdAt: s.createdAt,
+      updatedAt: s.updatedAt,
       body: s.body,
     })),
   }
@@ -79,6 +83,10 @@ export function validateBundle(input: unknown): ExportBundle {
       name: s.name,
       description: s.description,
       argumentSchema: s.argumentSchema,
+      category: typeof s.category === "string" ? s.category : undefined,
+      title: typeof s.title === "string" ? s.title : undefined,
+      createdAt: typeof s.createdAt === "string" ? s.createdAt : undefined,
+      updatedAt: typeof s.updatedAt === "string" ? s.updatedAt : undefined,
       body: s.body,
     }
   })
@@ -141,23 +149,38 @@ export async function computeImportDiff(
       continue
     }
     const existing = currentSkills.find((s) => s.dirName === incoming.dirName)
+    const categoryAfter = incoming.category ?? null
+    const titleAfter = incoming.title ?? null
     if (!existing) {
-      items.push({ kind: "skill", key: incoming.dirName, status: "new", before: null, after: incoming.body })
-    } else if (existing.body !== incoming.body || existing.description !== incoming.description) {
       items.push({
         kind: "skill",
         key: incoming.dirName,
-        status: "changed",
-        before: existing.body,
+        status: "new",
+        before: null,
         after: incoming.body,
+        categoryBefore: null,
+        categoryAfter,
+        titleBefore: null,
+        titleAfter,
       })
     } else {
+      const categoryBefore = existing.category ?? null
+      const titleBefore = existing.title ?? null
+      const changed =
+        existing.body !== incoming.body ||
+        existing.description !== incoming.description ||
+        categoryBefore !== categoryAfter ||
+        titleBefore !== titleAfter
       items.push({
         kind: "skill",
         key: incoming.dirName,
-        status: "unchanged",
+        status: changed ? "changed" : "unchanged",
         before: existing.body,
         after: incoming.body,
+        categoryBefore,
+        categoryAfter,
+        titleBefore,
+        titleAfter,
       })
     }
   }
@@ -219,6 +242,10 @@ export async function applyImport(
 
     const data: Record<string, unknown> = { name: incoming.name, description: incoming.description }
     if (incoming.argumentSchema !== undefined) data["argument-schema"] = incoming.argumentSchema
+    if (incoming.category !== undefined) data.category = incoming.category
+    if (incoming.title !== undefined) data.title = incoming.title
+    if (incoming.createdAt !== undefined) data.created = incoming.createdAt
+    if (incoming.updatedAt !== undefined) data.updated = incoming.updatedAt
     await writeTextFile(filePath, serializeFrontmatter(data, incoming.body))
   }
 

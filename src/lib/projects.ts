@@ -1,8 +1,8 @@
 import path from "path"
-import { readJsonFile, writeJsonFile } from "./fileIO"
+import { getAppDataRoot, isGlobalClaudeConfig, readJsonFile, writeJsonFile } from "./fileIO"
 import { ProjectConfig, ProjectsFile } from "./types"
 
-const PROJECTS_CONFIG_PATH = path.join(process.cwd(), "config", "projects.json")
+const PROJECTS_CONFIG_PATH = path.join(getAppDataRoot(), "config", "projects.json")
 
 const DEFAULT_PROJECTS: ProjectsFile = {
   projects: [
@@ -16,11 +16,17 @@ export async function getProjectsFile(): Promise<ProjectsFile> {
   if (!data.selectedProjectId && data.projects.length > 0) {
     data.selectedProjectId = data.projects[0].id
   }
+  data.projects = data.projects.map((p) => ({ ...p, isGlobalConfig: isGlobalClaudeConfig(p.path) }))
   return data
 }
 
 export async function saveProjectsFile(data: ProjectsFile): Promise<void> {
-  await writeJsonFile(PROJECTS_CONFIG_PATH, data)
+  // isGlobalConfigはgetProjectsFile()が読み込み時に計算する表示専用フィールドのため、書き込み時は除いて永続化する
+  const sanitized: ProjectsFile = {
+    ...data,
+    projects: data.projects.map((p) => ({ id: p.id, name: p.name, path: p.path })),
+  }
+  await writeJsonFile(PROJECTS_CONFIG_PATH, sanitized)
 }
 
 export async function getSelectedProject(): Promise<ProjectConfig | null> {

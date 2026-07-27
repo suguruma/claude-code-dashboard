@@ -13,6 +13,53 @@ export interface Rule {
 }
 
 /**
+ * `rule-optimizer`スキルが生成する`rule_refactor_proposal.json`の1件の提案。
+ * categoryで対象ルールを照合する（Rule.idは位置依存の一時的な識別子のため使用しない）。
+ * - modify: sourceCategoriesは1件のみでtargetCategoryと同じ値（既存ルールの内容修正）
+ * - merge: sourceCategoriesが複数件（統合対象の見出し名一覧）、targetCategoryは統合後の見出し名
+ * - remove: sourceCategories/targetCategoryは削除対象の見出し名、contentはnull
+ */
+export interface RuleProposal {
+  type: "modify" | "merge" | "remove"
+  targetCategory: string
+  sourceCategories: string[]
+  content: string | null
+  reason: string
+}
+
+export interface RuleRefactorProposalFile {
+  version: 1
+  generatedAt: string
+  proposals: RuleProposal[]
+}
+
+export type RuleRefactorItemStatus = "ready" | "stale"
+
+/** 提案1件と現在のCLAUDE.mdを突き合わせたdiffプレビュー用の1項目 */
+export interface RuleRefactorDiffItem {
+  index: number
+  type: RuleProposal["type"]
+  targetCategory: string
+  sourceCategories: string[]
+  reason: string
+  status: RuleRefactorItemStatus
+  before: string | null
+  after: string | null
+  /** status: "stale"の場合のみ、適用できない理由 */
+  staleReason?: string
+}
+
+export interface RuleRefactorDiffResult {
+  /** 提案ファイルが存在しない場合はnull */
+  generatedAt: string | null
+  items: RuleRefactorDiffItem[]
+}
+
+export interface RuleRefactorApplyResult {
+  backups: string[]
+}
+
+/**
  * `.claude/skills/<dirName>/SKILL.md` から読み込むスキル定義。
  * dirName はディレクトリ名（API操作時の識別子）、name/description/argumentSchema は
  * YAML frontmatter 由来、body はfrontmatter以降のMarkdown本文。
@@ -23,11 +70,17 @@ export interface SkillMeta {
   description: string
   argumentSchema?: unknown
   category?: string
+  /** ディレクトリ名（呼び出しコマンド）とは別の、一覧で見出しとして表示する人間向けの名前 */
+  title?: string
   body: string
   /** references/scripts/evals サブディレクトリの有無（表示専用、frontmatterには保存しない） */
   hasReferences?: boolean
   hasScripts?: boolean
   hasEvals?: boolean
+  /** SKILL.mdの作成日時。frontmatterの`created`に一度だけ保存し、以後の編集では変更しない */
+  createdAt?: string
+  /** SKILL.mdの最終更新日時。frontmatterの`updated`に保存し、更新のたびに現在時刻へ差し替える */
+  updatedAt?: string
 }
 
 export interface TradeOff {
@@ -115,6 +168,8 @@ export interface ProjectConfig {
   id: string
   name: string
   path: string
+  /** 実際の~/.claude（グローバル設定）と一致するかどうか。表示専用の計算値でファイルには保存しない */
+  isGlobalConfig?: boolean
 }
 
 export interface ProjectsFile {
@@ -195,6 +250,10 @@ export interface ExportedSkill {
   name: string
   description: string
   argumentSchema?: unknown
+  category?: string
+  title?: string
+  createdAt?: string
+  updatedAt?: string
   body: string
 }
 
@@ -215,6 +274,12 @@ export interface ImportDiffItem {
   status: ImportItemStatus
   before: string | null
   after: string
+  /** スキルのカテゴリ変更（未分類は null）。kind: "rule" では使用しない */
+  categoryBefore?: string | null
+  categoryAfter?: string | null
+  /** スキルの表示名変更（未設定は null）。kind: "rule" では使用しない */
+  titleBefore?: string | null
+  titleAfter?: string | null
 }
 
 export interface ImportDiffResult {

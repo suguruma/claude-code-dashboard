@@ -1,0 +1,33 @@
+appId: com.claudecodedashboard.app
+productName: ClaudeCodeDashboard
+directories:
+  output: release
+# electron/main.js とpackage.jsonのみをアプリ本体としてパッケージする。
+# node_modulesやsrc/・config/（実際の個人パスを含むgitignore対象ファイル）等は
+# ここに含めず、下のextraResourcesで必要なものだけを明示的にコピーする。
+files:
+  - electron/**/*
+  - package.json
+asar: true
+extraResources:
+  - from: .next/standalone/node_modules
+    to: standalone/node_modules
+  - from: .next/standalone/server.js
+    to: standalone/server.js
+  - from: .next/standalone/.next
+    to: standalone/.next
+  - from: .next/static
+    to: standalone/.next/static
+  - from: config/projects.example.json
+    to: seed/config/projects.example.json
+  - from: sample-data
+    to: seed/sample-data
+    filter:
+      - "**/*"
+      - "!**/*.ccd-backup.*"
+win:
+  target:
+    - target: portable
+      arch:
+        - x64
+artifactName: "${productName}-${version}-portable.exe"

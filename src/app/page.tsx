@@ -1,14 +1,13 @@
 "use client"
 
 import Link from "next/link"
-import { ArrowRight, ListChecks, Sparkles, Activity, Cpu } from "lucide-react"
+import { ArrowRight, ListChecks, Sparkles, Activity, Wand2 } from "lucide-react"
 import { useProjects } from "@/hooks/useProjects"
 import { useRules } from "@/hooks/useRules"
 import { useSkills } from "@/hooks/useSkills"
 import { useExecutionLogs } from "@/hooks/useExecutionLogs"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Badge } from "@/components/ui/badge"
 
 export default function HomePage() {
   const { selectedProject, isLoading: projectsLoading } = useProjects()
@@ -126,18 +125,22 @@ export default function HomePage() {
           </Card>
         </Link>
 
-        <Card className="h-full opacity-60">
-          <CardHeader>
-            <Cpu className="size-5 text-muted-foreground" />
-            <CardTitle className="text-base flex items-center gap-2">
-              GPUモード
-              <Badge variant="outline">次回実装予定</Badge>
-            </CardTitle>
-            <CardDescription>
-              ローカルLLM（Ollama等）によるルール矛盾・重複の自動検出
-            </CardDescription>
-          </CardHeader>
-        </Card>
+        <Link href="/refactor">
+          <Card className="h-full transition-colors hover:border-primary">
+            <CardHeader>
+              <Wand2 className="size-5 text-primary" />
+              <CardTitle className="text-base">ルール整理</CardTitle>
+              <CardDescription>
+                rule-optimizerスキルによるルールの矛盾・重複整理
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <span className="inline-flex items-center gap-1 text-sm text-primary">
+                開く <ArrowRight className="size-3.5" />
+              </span>
+            </CardContent>
+          </Card>
+        </Link>
       </div>
     </div>
   )

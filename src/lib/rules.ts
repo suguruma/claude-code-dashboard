@@ -61,7 +61,8 @@ export async function deleteRule(project: ProjectConfig, id: string): Promise<vo
 export async function reorderRules(project: ProjectConfig, orderedIds: string[]): Promise<Rule[]> {
   const { claudeMdPath, preamble, rules } = await readParsed(project)
   const byId = new Map(rules.map((r) => [r.id, r]))
-  if (orderedIds.length !== rules.length || byId.size !== rules.length) {
+  const uniqueOrderedIds = new Set(orderedIds)
+  if (orderedIds.length !== rules.length || uniqueOrderedIds.size !== rules.length) {
     throw new Error("並び替え対象のルール一覧が現在の内容と一致しません。画面を再読み込みしてください")
   }
   const reordered = orderedIds.map((id) => {

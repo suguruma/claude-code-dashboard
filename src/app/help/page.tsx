@@ -3,13 +3,13 @@ import {
   Activity,
   ArrowLeftRight,
   BrainCircuit,
-  Cpu,
   Home,
   LineChart,
   ListChecks,
   ListTodo,
   Settings as SettingsIcon,
   Sparkles,
+  Wand2,
   type LucideIcon,
 } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -43,7 +43,7 @@ const GLOSSARY: { term: string; description: string }[] = [
   {
     term: "実行ログ（execution_log.json）",
     description:
-      "タスク完了時に記録される、AIエージェント間の議論・手戻り理由・次回用プロンプト等をまとめた時系列ログ。",
+      "タスク完了時に記録される、AIエージェント間の議論・手戻り理由・次回用プロンプト等をまとめた時系列ログ。ダッシュボード自身は生成せず、Claude Code側のスキル（autonomous-production-teamまたはsession-log-extractor）が書き出す。",
   },
   {
     term: "1-Shot達成度",
@@ -76,13 +76,18 @@ const GLOSSARY: { term: string; description: string }[] = [
     description: "ツール実行の前後など、特定のタイミングでカスタムコマンドを自動実行する仕組み。",
   },
   {
-    term: "CPUモード / GPUモード",
+    term: "CPUモード",
     description:
-      "本ダッシュボードの動作モード。CPUモードはファイルの読み書きのみで外部通信なし（既定）。GPUモードはローカルLLMを使った高度な解析で、本ダッシュボードでは未実装。",
+      "本ダッシュボードの動作モード。ファイルの読み書きのみで外部通信を行わない。ローカルLLMと接続する「GPUモード」構想は方針転換により廃止し、ルールの矛盾・重複整理はClaude Code標準スキル「rule-optimizer」との連携（ルール整理ページ）に統一した。",
   },
   {
     term: "グローバル設定",
     description: "~/.claude 配下にある、全プロジェクト共通のClaude Code設定。",
+  },
+  {
+    term: "分析対象プロジェクト",
+    description:
+      "「実行ログ」「ルール整理」ページ内にある独自のプロジェクトセレクター。execution_log.json / rule_refactor_proposal.jsonは、スキルを実際に実行した作業ディレクトリに書き出されるため、TopBar右上の「選択中プロジェクト」（設定管理の対象）とは別に、見たいプロジェクトをこのセレクターで選ぶ。",
   },
   {
     term: "メモリ",
@@ -135,7 +140,7 @@ const PAGE_GUIDES: PageGuide[] = [
     label: "実行ログ",
     icon: Activity,
     description:
-      "execution_log.jsonを可視化。エージェント間の合意度メーター、トレードオフ比較、ユーザー介入ハイライト（赤色）、次回用プロンプトのワンクリック保存ができる。",
+      "execution_log.jsonを可視化。エージェント間の合意度メーター、トレードオフ比較、ユーザー介入ハイライト（赤色）、次回用プロンプトのワンクリック保存ができる。execution_log.json自体は、Claude Codeのターミナルでautonomous-production-team（5役体制の高負荷タスク向け）またはsession-log-extractor（通常の会話を事後的に記録）のいずれかのスキルを実行しないと生成されない。ページ上部の「分析対象プロジェクト」セレクターはTopBarの選択中プロジェクトとは独立しており、ルール保存先（CLAUDE.md）はTopBar側になる。",
   },
   {
     href: "/session-monitor",
@@ -166,9 +171,10 @@ const PAGE_GUIDES: PageGuide[] = [
   },
   {
     href: "/refactor",
-    label: "GPUモード",
-    icon: Cpu,
-    description: "ローカルLLMによるルール矛盾・重複自動検出の説明ページ。現時点では未実装。",
+    label: "ルール整理",
+    icon: Wand2,
+    description:
+      "Claude Code標準スキル「rule-optimizer」（execution_log.jsonの過去のユーザー介入履歴から矛盾・重複ルールを学習するスキル）が出力する提案（rule_refactor_proposal.json）をDiffプレビューし、選択した項目だけをCLAUDE.mdへ適用できる。実行自体はClaude Codeのターミナルで行う。ページ上部の「分析対象プロジェクト」セレクターはTopBarの選択中プロジェクトとは独立しており、適用先のCLAUDE.mdもこのセレクターで選んだプロジェクトのものになる。",
   },
 ]
 
@@ -194,12 +200,20 @@ const FAQ: { q: string; a: string }[] = [
     a: "画面右上のテーマ切替ボタン（太陽・月アイコン）から、ライト・ダーク・システムに合わせるを選べます。",
   },
   {
-    q: "GPUモードはいつ使える？",
-    a: "現時点では未実装です。今後の優先度は TODO.md に記載しています。",
+    q: "「ルール整理」ページで提案が表示されない",
+    a: "Claude Codeのターミナルで /rule-optimizer を実行するとrule_refactor_proposal.jsonが生成され、ここに表示される。実行前は「まだ提案がありません」と表示されるのが正常な状態。同スキルはexecution_log.jsonの過去のユーザー介入履歴から学習するため、実行回数が少ないうちは提案が出ない、または少ないことがある。",
   },
   {
     q: "エージェント構成のカードに「役割・制約」「記憶・文脈」などが一部しか出ない",
     a: "これらはエージェントが保持する4種の情報（役割・制約／記憶・文脈／ツール・実行権限／状態）の一部で、いずれも任意項目です。ログにその情報が書かれていれば表示され、書かれていなければその行ごと表示されません。",
+  },
+  {
+    q: "「実行ログ」に何も表示されない",
+    a: "execution_log.jsonはこのダッシュボードが自動生成するものではなく、Claude Code側のスキルが書き出す。5役体制で重いタスクを頼むならautonomous-production-team、それ以外の普段の会話を事後的に記録したいだけならsession-log-extractorを、Claude Codeのターミナルで実行してほしい。実行後、対象のプロジェクトディレクトリ直下にexecution_log.jsonが作成/追記される。",
+  },
+  {
+    q: "「実行ログ」「ルール整理」ページと、TopBarの「選択中プロジェクト」が違うプロジェクトを指しているように見える",
+    a: "意図的な仕様。CLAUDE.md/スキル/設定/メモリなどは「設定管理の対象」であるTopBarの選択中プロジェクトに紐づくが、execution_log.jsonやrule_refactor_proposal.jsonはスキルを実際に実行した作業ディレクトリに書き出されるため、TopBarの選択とは無関係に生成される。そのため「実行ログ」「ルール整理」の2ページだけは、ページ上部に独自の「分析対象プロジェクト」セレクターを持ち、TopBarとは独立してどのプロジェクトのログ・提案を見るか選べるようにしている（登録済みプロジェクトの一覧から選ぶ点は共通）。「実行ログ」でルールを保存する際の保存先はTopBarの選択中プロジェクトのCLAUDE.mdになる点に注意（保存先はボタン付近に表示される）。",
   },
 ]
 

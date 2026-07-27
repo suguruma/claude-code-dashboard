@@ -5,6 +5,7 @@ import { useProjects } from "@/hooks/useProjects"
 import { useExecutionLogs } from "@/hooks/useExecutionLogs"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Separator } from "@/components/ui/separator"
+import { AnalysisProjectSelector } from "@/components/analysis/AnalysisProjectSelector"
 import { LogList } from "@/components/trace/LogList"
 import { ConsensusMeter } from "@/components/trace/ConsensusMeter"
 import { TradeOffCompare } from "@/components/trace/TradeOffCompare"
@@ -14,23 +15,34 @@ import { AgentOrgChart } from "@/components/trace/AgentOrgChart"
 import { TrialProcessTimeline } from "@/components/trace/TrialProcessTimeline"
 
 export default function TracePage() {
-  const { selectedProjectId, selectedProject, isLoading: projectsLoading } = useProjects()
-  const { logs, isLoading, error, saveSuggestedRules, mutate } =
-    useExecutionLogs(selectedProjectId)
+  const { projects, selectedProjectId, selectedProject, isLoading: projectsLoading } = useProjects()
+  const [manuallySelectedProjectId, setManuallySelectedProjectId] = useState<string | null>(null)
+  const analysisProjectId = manuallySelectedProjectId ?? projects[0]?.id ?? null
+  const analysisProject = projects.find((p) => p.id === analysisProjectId) ?? null
+
+  const { logs, isLoading, error, saveSuggestedRules, deleteLog, mutate } =
+    useExecutionLogs(analysisProjectId)
   const [manuallySelectedTaskId, setManuallySelectedTaskId] = useState<string | null>(null)
   const selectedTaskId = manuallySelectedTaskId ?? logs[0]?.task_id ?? null
 
   async function handleSaveSuggestedRules(taskId: string) {
-    const count = await saveSuggestedRules(taskId)
+    // 保存先は「分析対象」ではなく、設定管理（TopBar）で選択中のプロジェクトのCLAUDE.md
+    if (!selectedProjectId) throw new Error("保存先のプロジェクトが選択されていません")
+    const count = await saveSuggestedRules(taskId, selectedProjectId)
     await mutate()
     return count
+  }
+
+  async function handleDeleteLog(taskId: string) {
+    await deleteLog(taskId)
+    if (manuallySelectedTaskId === taskId) setManuallySelectedTaskId(null)
   }
 
   if (projectsLoading) {
     return <p className="text-sm text-muted-foreground">読み込み中...</p>
   }
 
-  if (!selectedProject) {
+  if (projects.length === 0) {
     return (
       <Alert>
         <AlertTitle>プロジェクトが未登録です</AlertTitle>
@@ -48,9 +60,17 @@ export default function TracePage() {
       <div>
         <h1 className="text-xl font-semibold">実行ログ & 思考プロセス可視化</h1>
         <p className="text-sm text-muted-foreground">
-          {selectedProject.name} の execution_log.json を可視化します
+          execution_log.jsonは、スキル（autonomous-production-team／session-log-extractor）を実際に実行した
+          作業ディレクトリに書き出されるため、TopBar右上の「選択中プロジェクト」（設定管理の対象）とは独立して、
+          下のセレクターで見たいプロジェクトを選んでください。
         </p>
       </div>
+
+      <AnalysisProjectSelector
+        projects={projects}
+        value={analysisProjectId}
+        onChange={setManuallySelectedProjectId}
+      />
 
       {error && (
         <Alert variant="destructive">
@@ -61,7 +81,8 @@ export default function TracePage() {
 
       {!isLoading && logs.length === 0 && !error && (
         <p className="text-sm text-muted-foreground">
-          まだ実行ログがありません。Claude Code がタスクを完了すると execution_log.json
+          {analysisProject?.name ?? "選択中のプロジェクト"}
+          にはまだ実行ログがありません。Claude Code がタスクを完了すると execution_log.json
           に記録されます。
         </p>
       )}
@@ -72,10 +93,11 @@ export default function TracePage() {
             logs={logs}
             selectedTaskId={selectedTaskId}
             onSelect={setManuallySelectedTaskId}
+            onDelete={handleDeleteLog}
           />
 
           {selectedEntry && (
-            <div className="space-y-6">
+            <div className="min-w-0 space-y-6">
               <div>
                 <h2 className="text-lg font-semibold">{selectedEntry.task_name}</h2>
                 <p className="text-sm text-muted-foreground mt-1">{selectedEntry.summary}</p>
@@ -127,7 +149,11 @@ export default function TracePage() {
                 </div>
               )}
 
-              <NextPromptPanel entry={selectedEntry} onSave={handleSaveSuggestedRules} />
+              <NextPromptPanel
+                entry={selectedEntry}
+                onSave={handleSaveSuggestedRules}
+                targetProjectName={selectedProject?.name}
+              />
             </div>
           )}
         </div>

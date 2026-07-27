@@ -26,6 +26,7 @@ interface SkillFormDialogProps {
     description: string
     body: string
     category?: string
+    title?: string
   }) => Promise<void>
 }
 
@@ -38,6 +39,7 @@ export function SkillFormDialog({
   onSubmit,
 }: SkillFormDialogProps) {
   const [dirName, setDirName] = useState(initialSkill?.dirName ?? "")
+  const [title, setTitle] = useState(initialSkill?.title ?? "")
   const [description, setDescription] = useState(initialSkill?.description ?? "")
   const [body, setBody] = useState(initialSkill?.body ?? "")
   const [category, setCategory] = useState(initialSkill?.category ?? UNCATEGORIZED_VALUE)
@@ -53,9 +55,10 @@ export function SkillFormDialog({
         dirName: dirName.trim(),
         description: description.trim(),
         body,
-        // 未分類は空文字として送る（JSON化でキー自体が消えるundefinedだと、
-        // 更新時に「変更なし」と区別できず既存カテゴリが残ってしまうため）
+        // 未分類/未設定は空文字として送る（JSON化でキー自体が消えるundefinedだと、
+        // 更新時に「変更なし」と区別できず既存の値が残ってしまうため）
         category: category === UNCATEGORIZED_VALUE ? "" : category,
+        title: title.trim(),
       })
       onOpenChange(false)
     } finally {
@@ -73,6 +76,18 @@ export function SkillFormDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 overflow-y-auto py-2">
+          <div className="grid gap-2">
+            <Label htmlFor="skill-title">表示名（見出し）</Label>
+            <Input
+              id="skill-title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="例: コードレビュー支援（未設定時はディレクトリ名を表示）"
+            />
+            <p className="text-xs text-muted-foreground">
+              一覧に見出しとして表示する人間向けの名前です。呼び出しコマンド（下のディレクトリ名）とは独立しており、いつでも変更できます。
+            </p>
+          </div>
           <div className="grid gap-2">
             <Label htmlFor="skill-dirname">スキル名（ディレクトリ名）</Label>
             <Input

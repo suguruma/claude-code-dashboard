@@ -181,6 +181,43 @@ describe("listSessions / getSessionMetrics", () => {
     expect(metrics.summary.totalToolOutputChars).toBe(16)
   })
 
+  it("tool_resultのcontent配列中、type!=='text'のブロックはtextフィールドを持っていても文字数に含めない", async () => {
+    const lines = [
+      SAMPLE_LINES[0],
+      {
+        type: "assistant",
+        timestamp: "2026-01-01T00:00:01.000Z",
+        message: {
+          usage: { input_tokens: 1, output_tokens: 1 },
+          content: [{ type: "tool_use", id: "toolu_img", name: "Read" }],
+        },
+      },
+      {
+        type: "user",
+        timestamp: "2026-01-01T00:00:02.000Z",
+        message: {
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "toolu_img",
+              is_error: false,
+              content: [
+                { type: "text", text: "abc" },
+                // typeがtext以外だが偶然textという名の文字列フィールドを持つブロック（画像ブロック等を想定）
+                { type: "image", text: "should-not-be-counted" },
+              ],
+            },
+          ],
+        },
+      },
+    ]
+    await writeSession("proj-a", "s1", lines.map(line).join(""))
+    const metrics = await getSessionMetrics("proj-a", "s1")
+
+    const readCall = metrics.toolCalls.find((t) => t.name === "Read")
+    expect(readCall?.outputChars).toBe(3)
+  })
+
   it("interrupted:trueを正しくカウントする", async () => {
     const lines = [
       SAMPLE_LINES[0],

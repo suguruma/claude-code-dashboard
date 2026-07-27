@@ -1,6 +1,12 @@
 import { Badge } from "@/components/ui/badge"
+import { getCategoryMeta } from "@/lib/skillCategories"
 import { ImportDiffItem, ImportItemStatus } from "@/lib/types"
 import { cn } from "@/lib/utils"
+
+function categoryLabel(category: string | null | undefined): string {
+  const meta = getCategoryMeta(category ?? undefined)
+  return `${meta.emoji} ${meta.label}`
+}
 
 const STATUS_LABEL: Record<ImportItemStatus, string> = {
   new: "新規",
@@ -61,6 +67,28 @@ export function ImportDiffList({ title, items, selectedKeys, onToggle }: ImportD
                       スキル名の形式が不正なためインポートできません（半角英数字・ハイフン・アンダースコアのみ有効）
                     </p>
                   )}
+                  {item.kind === "skill" &&
+                    item.categoryBefore !== undefined &&
+                    item.categoryAfter !== undefined &&
+                    item.categoryBefore !== item.categoryAfter && (
+                      <p className="text-xs text-muted-foreground">
+                        カテゴリ：
+                        {item.status === "new"
+                          ? categoryLabel(item.categoryAfter)
+                          : `${categoryLabel(item.categoryBefore)} → ${categoryLabel(item.categoryAfter)}`}
+                      </p>
+                    )}
+                  {item.kind === "skill" &&
+                    item.titleBefore !== undefined &&
+                    item.titleAfter !== undefined &&
+                    item.titleBefore !== item.titleAfter && (
+                      <p className="text-xs text-muted-foreground">
+                        表示名：
+                        {item.status === "new"
+                          ? (item.titleAfter ?? "未設定")
+                          : `${item.titleBefore ?? "未設定"} → ${item.titleAfter ?? "未設定"}`}
+                      </p>
+                    )}
                   {item.status === "changed" && (
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                       <div>

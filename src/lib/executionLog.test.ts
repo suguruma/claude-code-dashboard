@@ -2,7 +2,7 @@ import { promises as fs } from "fs"
 import os from "os"
 import path from "path"
 import { afterEach, describe, expect, it } from "vitest"
-import { getExecutionLogs, saveSuggestedRulesFromLog } from "./executionLog"
+import { deleteExecutionLog, getExecutionLogs, saveSuggestedRulesFromLog } from "./executionLog"
 import { getRules } from "./rules"
 import { ProjectConfig } from "./types"
 
@@ -193,7 +193,7 @@ describe("saveSuggestedRulesFromLog", () => {
     )
     await fs.writeFile(path.join(project.path, "CLAUDE.md"), "")
 
-    const savedCount = await saveSuggestedRulesFromLog(project, "t1")
+    const savedCount = await saveSuggestedRulesFromLog(project, project, "t1")
     expect(savedCount).toBe(1)
 
     const rules = await getRules(project)
@@ -204,6 +204,77 @@ describe("saveSuggestedRulesFromLog", () => {
   it("存在しない task_id を指定するとエラーになる", async () => {
     const project = await makeProject()
     await fs.writeFile(path.join(project.path, "execution_log.json"), JSON.stringify({ logs: [] }))
-    await expect(saveSuggestedRulesFromLog(project, "unknown")).rejects.toThrow()
+    await expect(saveSuggestedRulesFromLog(project, project, "unknown")).rejects.toThrow()
+  })
+
+  it("読み込み元と書き込み先が別プロジェクトの場合、ルールは書き込み先にのみ追加される", async () => {
+    const sourceProject = await makeProject()
+    const targetProject = await makeProject()
+    await fs.writeFile(
+      path.join(sourceProject.path, "execution_log.json"),
+      JSON.stringify({
+        logs: [
+          {
+            task_id: "t1",
+            task_name: "サンプルタスク",
+            executed_at: "2026-01-01",
+            one_shot_score: 80,
+            summary: "",
+            agents_discussion: { consensus_rate: 80, conflict_point: "", trade_offs: [] },
+            user_interventions: [],
+            next_golden_prompt: "",
+            suggested_new_rules: [{ category: "フォーマット", content: "表形式にする" }],
+          },
+        ],
+      })
+    )
+    await fs.writeFile(path.join(sourceProject.path, "CLAUDE.md"), "")
+    await fs.writeFile(path.join(targetProject.path, "CLAUDE.md"), "")
+
+    const savedCount = await saveSuggestedRulesFromLog(sourceProject, targetProject, "t1")
+    expect(savedCount).toBe(1)
+
+    expect(await getRules(sourceProject)).toHaveLength(0)
+    const targetRules = await getRules(targetProject)
+    expect(targetRules).toHaveLength(1)
+    expect(targetRules[0].content).toBe("表形式にする")
+  })
+})
+
+describe("deleteExecutionLog", () => {
+  it("指定したtask_idのエントリのみを削除し、他のエントリは保持する", async () => {
+    const project = await makeProject()
+    await fs.writeFile(
+      path.join(project.path, "execution_log.json"),
+      JSON.stringify({ logs: [{ task_id: "t1" }, { task_id: "t2" }] })
+    )
+
+    await deleteExecutionLog(project, "t1")
+
+    const logs = await getExecutionLogs(project)
+    expect(logs).toHaveLength(1)
+    expect(logs[0].task_id).toBe("t2")
+  })
+
+  it("単一オブジェクト形式（後方互換の読み込み元）から削除すると、正式スキーマの配列で書き戻される", async () => {
+    const project = await makeProject()
+    await fs.writeFile(
+      path.join(project.path, "execution_log.json"),
+      JSON.stringify({ task_id: "t1", task_name: "legacy" })
+    )
+
+    await deleteExecutionLog(project, "t1")
+
+    const raw = JSON.parse(await fs.readFile(path.join(project.path, "execution_log.json"), "utf-8"))
+    expect(raw).toEqual({ logs: [] })
+  })
+
+  it("存在しないtask_idを指定するとエラーになる", async () => {
+    const project = await makeProject()
+    await fs.writeFile(path.join(project.path, "execution_log.json"), JSON.stringify({ logs: [{ task_id: "t1" }] }))
+    await expect(deleteExecutionLog(project, "unknown")).rejects.toThrow()
+
+    const logs = await getExecutionLogs(project)
+    expect(logs).toHaveLength(1)
   })
 })

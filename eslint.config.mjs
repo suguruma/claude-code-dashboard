@@ -12,7 +12,16 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // electron-builderのビルド出力（ClaudeCodeDashboard.exe等の配布用パッケージ）
+    "release/**",
   ]),
+  {
+    // Electronのmainプロセスは慣例的にCommonJS（require）で書くため、このディレクトリのみ許可する
+    files: ["electron/**/*.js"],
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
+    },
+  },
 ]);
 
 export default eslintConfig;

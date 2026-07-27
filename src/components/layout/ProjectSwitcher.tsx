@@ -1,9 +1,11 @@
 "use client"
 
 import { useState } from "react"
-import { Plus, FolderGit2, Pencil, Trash2 } from "lucide-react"
+import { Plus, FolderGit2, Pencil, Trash2, ShieldAlert } from "lucide-react"
 import { useProjects } from "@/hooks/useProjects"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   Select,
   SelectContent,
@@ -86,7 +88,9 @@ export function ProjectSwitcher() {
           disabled={projects.length === 0}
         >
           <SelectTrigger size="sm" className="w-[180px]">
-            <SelectValue placeholder="プロジェクトを選択" />
+            <SelectValue placeholder="プロジェクトを選択">
+              {(value: string) => projects.find((p) => p.id === value)?.name ?? value}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {projects.map((p) => (
@@ -96,6 +100,22 @@ export function ProjectSwitcher() {
             ))}
           </SelectContent>
         </Select>
+      )}
+
+      {selectedProject?.isGlobalConfig && (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Badge variant="destructive" className="gap-1">
+                <ShieldAlert className="size-3" />
+                グローバル設定
+              </Badge>
+            }
+          />
+          <TooltipContent>
+            実際の ~/.claude を編集しています。ここでの変更はClaude Code本体の設定に直接反映されます。
+          </TooltipContent>
+        </Tooltip>
       )}
 
       {selectedProject && (

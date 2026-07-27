@@ -32,6 +32,42 @@ describe("buildExportBundle", () => {
     expect(bundle.rules).toEqual([{ category: "ルールA", content: "本文A", enabled: true }])
     expect(bundle.skills).toMatchObject([{ dirName: "s1", name: "s1", description: "desc1", body: "body1" }])
   })
+
+  it("スキルのcategoryもバンドルに含める", async () => {
+    const project = await makeProject()
+    await fs.mkdir(path.join(project.path, "skills", "categorized"), { recursive: true })
+    await fs.writeFile(
+      path.join(project.path, "skills", "categorized", "SKILL.md"),
+      "---\nname: categorized\ndescription: desc\ncategory: dev-qa\n---\n\nbody\n"
+    )
+
+    const bundle = await buildExportBundle(project)
+    expect(bundle.skills).toMatchObject([{ dirName: "categorized", category: "dev-qa" }])
+  })
+
+  it("スキルのtitle（表示名）もバンドルに含める", async () => {
+    const project = await makeProject()
+    await fs.mkdir(path.join(project.path, "skills", "titled"), { recursive: true })
+    await fs.writeFile(
+      path.join(project.path, "skills", "titled", "SKILL.md"),
+      "---\nname: titled\ndescription: desc\ntitle: 表示用の名前\n---\n\nbody\n"
+    )
+
+    const bundle = await buildExportBundle(project)
+    expect(bundle.skills).toMatchObject([{ dirName: "titled", title: "表示用の名前" }])
+  })
+
+  it("スキルのupdatedAt（更新日）もバンドルに含める", async () => {
+    const project = await makeProject()
+    await fs.mkdir(path.join(project.path, "skills", "updated-skill"), { recursive: true })
+    await fs.writeFile(
+      path.join(project.path, "skills", "updated-skill", "SKILL.md"),
+      "---\nname: updated-skill\ndescription: desc\nupdated: 2026-01-01T00:00:00.000Z\n---\n\nbody\n"
+    )
+
+    const bundle = await buildExportBundle(project)
+    expect(bundle.skills).toMatchObject([{ dirName: "updated-skill", updatedAt: "2026-01-01T00:00:00.000Z" }])
+  })
 })
 
 describe("validateBundle", () => {
@@ -59,6 +95,45 @@ describe("validateBundle", () => {
       validateBundle({ version: 1, rules: [{ category: "A" }], skills: [] })
     ).toThrow()
   })
+
+  it("スキルのcategoryが文字列ならそのまま保持し、無ければundefinedになる", () => {
+    const bundle = validateBundle({
+      version: 1,
+      rules: [],
+      skills: [
+        { dirName: "a", name: "a", description: "d", body: "b", category: "career" },
+        { dirName: "b", name: "b", description: "d", body: "b" },
+      ],
+    })
+    expect(bundle.skills[0].category).toBe("career")
+    expect(bundle.skills[1].category).toBeUndefined()
+  })
+
+  it("スキルのtitleが文字列ならそのまま保持し、無ければundefinedになる", () => {
+    const bundle = validateBundle({
+      version: 1,
+      rules: [],
+      skills: [
+        { dirName: "a", name: "a", description: "d", body: "b", title: "見出しA" },
+        { dirName: "b", name: "b", description: "d", body: "b" },
+      ],
+    })
+    expect(bundle.skills[0].title).toBe("見出しA")
+    expect(bundle.skills[1].title).toBeUndefined()
+  })
+
+  it("スキルのupdatedAtが文字列ならそのまま保持し、無ければundefinedになる", () => {
+    const bundle = validateBundle({
+      version: 1,
+      rules: [],
+      skills: [
+        { dirName: "a", name: "a", description: "d", body: "b", updatedAt: "2026-01-01T00:00:00.000Z" },
+        { dirName: "b", name: "b", description: "d", body: "b" },
+      ],
+    })
+    expect(bundle.skills[0].updatedAt).toBe("2026-01-01T00:00:00.000Z")
+    expect(bundle.skills[1].updatedAt).toBeUndefined()
+  })
 })
 
 describe("computeImportDiff", () => {
@@ -74,7 +149,17 @@ describe("computeImportDiff", () => {
     const diff = await computeImportDiff(project, bundle)
     expect(diff.items).toEqual([
       { kind: "rule", key: "新ルール", status: "new", before: null, after: "内容" },
-      { kind: "skill", key: "new-skill", status: "new", before: null, after: "b" },
+      {
+        kind: "skill",
+        key: "new-skill",
+        status: "new",
+        before: null,
+        after: "b",
+        categoryBefore: null,
+        categoryAfter: null,
+        titleBefore: null,
+        titleAfter: null,
+      },
     ])
   })
 
@@ -101,6 +186,50 @@ describe("computeImportDiff", () => {
     const skill = diff.items.find((i) => i.kind === "skill")
     expect(rule?.status).toBe("changed")
     expect(skill?.status).toBe("unchanged")
+  })
+
+  it("bodyとdescriptionは同じでもcategoryだけ異なる場合はchangedになる", async () => {
+    const project = await makeProject()
+    await fs.mkdir(path.join(project.path, "skills", "existing"), { recursive: true })
+    await fs.writeFile(
+      path.join(project.path, "skills", "existing", "SKILL.md"),
+      "---\nname: existing\ndescription: desc\ncategory: dev-qa\n---\n\n本文\n"
+    )
+
+    const bundle: ExportBundle = {
+      version: 1,
+      exportedAt: "now",
+      sourceProjectName: "src",
+      rules: [],
+      skills: [{ dirName: "existing", name: "existing", description: "desc", body: "本文", category: "career" }],
+    }
+    const diff = await computeImportDiff(project, bundle)
+    const skill = diff.items.find((i) => i.kind === "skill")
+    expect(skill?.status).toBe("changed")
+    expect(skill?.categoryBefore).toBe("dev-qa")
+    expect(skill?.categoryAfter).toBe("career")
+  })
+
+  it("bodyとdescriptionは同じでもtitleだけ異なる場合はchangedになる", async () => {
+    const project = await makeProject()
+    await fs.mkdir(path.join(project.path, "skills", "existing"), { recursive: true })
+    await fs.writeFile(
+      path.join(project.path, "skills", "existing", "SKILL.md"),
+      "---\nname: existing\ndescription: desc\ntitle: 旧見出し\n---\n\n本文\n"
+    )
+
+    const bundle: ExportBundle = {
+      version: 1,
+      exportedAt: "now",
+      sourceProjectName: "src",
+      rules: [],
+      skills: [{ dirName: "existing", name: "existing", description: "desc", body: "本文", title: "新見出し" }],
+    }
+    const diff = await computeImportDiff(project, bundle)
+    const skill = diff.items.find((i) => i.kind === "skill")
+    expect(skill?.status).toBe("changed")
+    expect(skill?.titleBefore).toBe("旧見出し")
+    expect(skill?.titleAfter).toBe("新見出し")
   })
 
   it("不正な形式のスキルdirNameはinvalidになる", async () => {
@@ -187,6 +316,59 @@ describe("applyImport", () => {
     expect(updated).toContain("新本文")
     const created = await fs.readFile(path.join(project.path, "skills", "brand-new", "SKILL.md"), "utf-8")
     expect(created).toContain("b")
+  })
+
+  it("スキルのcategoryもSKILL.mdのfrontmatterに書き込む", async () => {
+    const project = await makeProject()
+    const bundle: ExportBundle = {
+      version: 1,
+      exportedAt: "now",
+      sourceProjectName: "src",
+      rules: [],
+      skills: [{ dirName: "categorized", name: "categorized", description: "d", body: "b", category: "writing" }],
+    }
+    await applyImport(project, bundle, { ruleCategories: [], skillDirNames: ["categorized"] })
+
+    const content = await fs.readFile(path.join(project.path, "skills", "categorized", "SKILL.md"), "utf-8")
+    expect(content).toContain("category: writing")
+  })
+
+  it("スキルのtitleもSKILL.mdのfrontmatterに書き込む", async () => {
+    const project = await makeProject()
+    const bundle: ExportBundle = {
+      version: 1,
+      exportedAt: "now",
+      sourceProjectName: "src",
+      rules: [],
+      skills: [{ dirName: "titled", name: "titled", description: "d", body: "b", title: "表示名テスト" }],
+    }
+    await applyImport(project, bundle, { ruleCategories: [], skillDirNames: ["titled"] })
+
+    const content = await fs.readFile(path.join(project.path, "skills", "titled", "SKILL.md"), "utf-8")
+    expect(content).toContain("title: 表示名テスト")
+  })
+
+  it("スキルのupdatedAtもSKILL.mdのfrontmatterに書き込む", async () => {
+    const project = await makeProject()
+    const bundle: ExportBundle = {
+      version: 1,
+      exportedAt: "now",
+      sourceProjectName: "src",
+      rules: [],
+      skills: [
+        {
+          dirName: "dated",
+          name: "dated",
+          description: "d",
+          body: "b",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    }
+    await applyImport(project, bundle, { ruleCategories: [], skillDirNames: ["dated"] })
+
+    const content = await fs.readFile(path.join(project.path, "skills", "dated", "SKILL.md"), "utf-8")
+    expect(content).toContain("updated: '2026-01-01T00:00:00.000Z'")
   })
 
   it("不正な形式のdirNameは選択されていても書き込まない", async () => {

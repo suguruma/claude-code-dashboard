@@ -38,20 +38,53 @@ async function detectSupportingDirs(
   return { hasReferences, hasScripts, hasEvals }
 }
 
+/**
+ * fs.statのbirthtimeを作成日時の代替として使う。writeTextFile/renameSkillは書き込み時に
+ * 一時ファイル経由のrenameを行うため、Windows(NTFS)ではbirthtimeが更新のたびにリセットされてしまい
+ * 作成日として信頼できない。そのため作成日時は本来frontmatterの`created`に保存した値を正とし、
+ * これは既存スキル（`created`が無い、このフィールド追加以前に作られたスキル）向けの一度きりの推定値としてのみ使う。
+ */
+async function detectCreatedAt(filePath: string): Promise<string | undefined> {
+  try {
+    const stat = await fs.stat(filePath)
+    const birth = stat.birthtimeMs > 0 ? stat.birthtime : stat.mtime
+    return birth.toISOString()
+  } catch {
+    return undefined
+  }
+}
+
+/** `updated`が無い既存スキル向けのフォールバック。mtimeは書き込みのたびに正しく更新されるため、そのまま最終更新日時の推定値として使える */
+async function detectMtime(filePath: string): Promise<string | undefined> {
+  try {
+    const stat = await fs.stat(filePath)
+    return stat.mtime.toISOString()
+  } catch {
+    return undefined
+  }
+}
+
 async function readSkill(project: ProjectConfig, dirName: string): Promise<SkillMeta | null> {
   const filePath = skillMdPath(project, dirName)
   try {
     const content = await fs.readFile(filePath, "utf-8")
     const { data, body } = parseFrontmatter(content)
     const supportingDirs = await detectSupportingDirs(project, dirName)
+    const createdAt =
+      typeof data.created === "string" ? data.created : await detectCreatedAt(filePath)
+    const updatedAt =
+      typeof data.updated === "string" ? data.updated : await detectMtime(filePath)
     return {
       dirName,
       name: typeof data.name === "string" ? data.name : dirName,
       description: typeof data.description === "string" ? data.description : "",
       argumentSchema: data["argument-schema"],
       category: typeof data.category === "string" ? data.category : undefined,
+      title: typeof data.title === "string" ? data.title : undefined,
       body: body.trim(),
       ...supportingDirs,
+      createdAt,
+      updatedAt,
     }
   } catch (err) {
     const nodeErr = err as NodeJS.ErrnoException
@@ -64,6 +97,9 @@ function buildFrontmatterData(skill: SkillMeta): Record<string, unknown> {
   const data: Record<string, unknown> = { name: skill.name, description: skill.description }
   if (skill.argumentSchema !== undefined) data["argument-schema"] = skill.argumentSchema
   if (skill.category !== undefined) data.category = skill.category
+  if (skill.title !== undefined) data.title = skill.title
+  if (skill.createdAt !== undefined) data.created = skill.createdAt
+  if (skill.updatedAt !== undefined) data.updated = skill.updatedAt
   return data
 }
 
@@ -95,18 +131,22 @@ export function validateSkillDirName(dirName: string): void {
 
 export async function createSkill(
   project: ProjectConfig,
-  input: { dirName: string; description: string; body: string; category?: string }
+  input: { dirName: string; description: string; body: string; category?: string; title?: string }
 ): Promise<SkillMeta> {
   validateSkillDirName(input.dirName)
   const existing = await readSkill(project, input.dirName)
   if (existing) throw new Error(`スキル "${input.dirName}" は既に存在します`)
 
+  const now = new Date().toISOString()
   const skill: SkillMeta = {
     dirName: input.dirName,
     name: input.dirName,
     description: input.description,
     category: input.category || undefined,
+    title: input.title || undefined,
     body: input.body.trim(),
+    createdAt: now,
+    updatedAt: now,
   }
   await writeTextFile(
     skillMdPath(project, input.dirName),
@@ -118,8 +158,9 @@ export async function createSkill(
 export async function updateSkill(
   project: ProjectConfig,
   dirName: string,
-  patch: { description?: string; body?: string; category?: string }
+  patch: { description?: string; body?: string; category?: string; title?: string }
 ): Promise<SkillMeta> {
+  validateSkillDirName(dirName)
   const existing = await readSkill(project, dirName)
   if (!existing) throw new Error("スキルが見つかりません")
 
@@ -127,8 +168,10 @@ export async function updateSkill(
     ...existing,
     description: patch.description ?? existing.description,
     body: patch.body ?? existing.body,
-    // 空文字は「未分類に戻す」明示的な指定として扱う（キー自体が無い場合のみ既存値を維持する）
+    // 空文字は「未分類/未設定に戻す」明示的な指定として扱う(キー自体が無い場合のみ既存値を維持する)
     category: patch.category !== undefined ? patch.category || undefined : existing.category,
+    title: patch.title !== undefined ? patch.title || undefined : existing.title,
+    updatedAt: new Date().toISOString(),
   }
 
   await writeTextFile(
@@ -143,6 +186,7 @@ export async function renameSkill(
   oldDirName: string,
   newDirName: string
 ): Promise<SkillMeta> {
+  validateSkillDirName(oldDirName)
   if (oldDirName === newDirName) {
     const existing = await readSkill(project, oldDirName)
     if (!existing) throw new Error("スキルが見つかりません")
@@ -160,7 +204,12 @@ export async function renameSkill(
     path.join(skillsDir(project), newDirName)
   )
 
-  const updated: SkillMeta = { ...existing, dirName: newDirName, name: newDirName }
+  const updated: SkillMeta = {
+    ...existing,
+    dirName: newDirName,
+    name: newDirName,
+    updatedAt: new Date().toISOString(),
+  }
 
   await writeTextFile(
     skillMdPath(project, newDirName),
@@ -170,6 +219,7 @@ export async function renameSkill(
 }
 
 export async function deleteSkill(project: ProjectConfig, dirName: string): Promise<void> {
+  validateSkillDirName(dirName)
   const existing = await readSkill(project, dirName)
   if (!existing) throw new Error("スキルが見つかりません")
   await fs.rm(path.join(skillsDir(project), dirName), { recursive: true, force: true })

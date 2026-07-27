@@ -120,6 +120,97 @@ describe("createSkill / updateSkill / deleteSkill", () => {
     expect(content).not.toContain("category:")
   })
 
+  it("titleを指定して作成し、description更新後もtitleが保持される", async () => {
+    const project = await makeProject()
+    await createSkill(project, { dirName: "titled", description: "x", body: "", title: "表示名" })
+    const updated = await updateSkill(project, "titled", { description: "更新後" })
+    expect(updated.title).toBe("表示名")
+
+    const content = await fs.readFile(path.join(project.path, "skills", "titled", "SKILL.md"), "utf-8")
+    expect(content).toContain("title: 表示名")
+  })
+
+  it("titleに空文字を指定すると未設定に戻る", async () => {
+    const project = await makeProject()
+    await createSkill(project, { dirName: "will-clear-title", description: "x", body: "", title: "旧見出し" })
+    const updated = await updateSkill(project, "will-clear-title", { title: "" })
+    expect(updated.title).toBeUndefined()
+
+    const content = await fs.readFile(
+      path.join(project.path, "skills", "will-clear-title", "SKILL.md"),
+      "utf-8"
+    )
+    expect(content).not.toContain("title:")
+  })
+
+  it("createdAtは作成時にfrontmatterのcreatedへ保存される", async () => {
+    const project = await makeProject()
+    const skill = await createSkill(project, { dirName: "dated", description: "x", body: "" })
+    expect(skill.createdAt).toBeDefined()
+    expect(new Date(skill.createdAt!).toString()).not.toBe("Invalid Date")
+
+    const content = await fs.readFile(path.join(project.path, "skills", "dated", "SKILL.md"), "utf-8")
+    expect(content).toContain("created:")
+  })
+
+  it("createdAtは更新（description変更）してもリセットされない（書き込みは一時ファイル経由のrenameを伴うため、fs.stat依存だとbirthtimeがリセットされてしまう）", async () => {
+    const project = await makeProject()
+    const created = await createSkill(project, { dirName: "persist-date", description: "旧", body: "" })
+    const updated = await updateSkill(project, "persist-date", { description: "新" })
+    expect(updated.createdAt).toBe(created.createdAt)
+  })
+
+  it("updatedAtは作成時にcreatedAtと同じ時刻でfrontmatterのupdatedへ保存される", async () => {
+    const project = await makeProject()
+    const skill = await createSkill(project, { dirName: "fresh", description: "x", body: "" })
+    expect(skill.updatedAt).toBeDefined()
+
+    const content = await fs.readFile(path.join(project.path, "skills", "fresh", "SKILL.md"), "utf-8")
+    expect(content).toContain("updated:")
+  })
+
+  it("updateSkillするたびにupdatedAtが更新される一方、createdAtは変わらない", async () => {
+    const project = await makeProject()
+    const created = await createSkill(project, { dirName: "touched", description: "旧", body: "" })
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    const updated = await updateSkill(project, "touched", { description: "新" })
+
+    expect(updated.createdAt).toBe(created.createdAt)
+    expect(updated.updatedAt).not.toBe(created.updatedAt)
+    expect(new Date(updated.updatedAt!).getTime()).toBeGreaterThan(new Date(created.updatedAt!).getTime())
+  })
+
+  it("renameSkillしてもupdatedAtが更新される", async () => {
+    const project = await makeProject()
+    const created = await createSkill(project, { dirName: "old-name", description: "x", body: "" })
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    const renamed = await renameSkill(project, "old-name", "new-name")
+
+    expect(renamed.updatedAt).not.toBe(created.updatedAt)
+  })
+
+  it("updatedフィールドが無い既存スキルは、fs.statのmtimeを暫定値として使う", async () => {
+    const project = await makeProject()
+    await fs.mkdir(path.join(project.path, "skills", "legacy-mtime"), { recursive: true })
+    await fs.writeFile(
+      path.join(project.path, "skills", "legacy-mtime", "SKILL.md"),
+      "---\nname: legacy-mtime\ndescription: desc\n---\n\n本文\n"
+    )
+    const skill = await getSkill(project, "legacy-mtime")
+    expect(skill?.updatedAt).toBeDefined()
+  })
+
+  it("createdフィールドが無い既存スキルは、fs.statのbirthtimeを暫定値として使う", async () => {
+    const project = await makeProject()
+    await fs.mkdir(path.join(project.path, "skills", "legacy"), { recursive: true })
+    await fs.writeFile(
+      path.join(project.path, "skills", "legacy", "SKILL.md"),
+      "---\nname: legacy\ndescription: desc\n---\n\n本文\n"
+    )
+    const skill = await getSkill(project, "legacy")
+    expect(skill?.createdAt).toBeDefined()
+  })
+
   it("references/scripts/evalsサブフォルダの有無を検知する", async () => {
     const project = await makeProject()
     await createSkill(project, { dirName: "plain", description: "x", body: "" })
@@ -149,6 +240,20 @@ describe("createSkill / updateSkill / deleteSkill", () => {
     const project = await makeProject()
     await expect(updateSkill(project, "unknown", { description: "x" })).rejects.toThrow()
     await expect(deleteSkill(project, "unknown")).rejects.toThrow()
+  })
+
+  it("dirNameにパストラバーサル文字列が含まれる更新・削除は拒否され、対象外ディレクトリに影響しない", async () => {
+    const project = await makeProject()
+    await createSkill(project, { dirName: "victim", description: "被害想定", body: "" })
+
+    const traversalNames = ["../victim", "..\\victim", "a/../../victim", "a/b"]
+    for (const traversal of traversalNames) {
+      await expect(updateSkill(project, traversal, { description: "x" })).rejects.toThrow()
+      await expect(deleteSkill(project, traversal)).rejects.toThrow()
+    }
+
+    // 検証対象のディレクトリが実際に無傷であることを確認する
+    expect(await getSkill(project, "victim")).toMatchObject({ description: "被害想定" })
   })
 })
 
@@ -198,5 +303,15 @@ describe("renameSkill", () => {
   it("存在しないスキルのリネームはエラーになる", async () => {
     const project = await makeProject()
     await expect(renameSkill(project, "unknown", "new-name")).rejects.toThrow()
+  })
+
+  it("oldDirNameにパストラバーサル文字列が含まれる場合は拒否する", async () => {
+    const project = await makeProject()
+    await createSkill(project, { dirName: "victim", description: "被害想定", body: "" })
+
+    await expect(renameSkill(project, "../victim", "new-name")).rejects.toThrow()
+    await expect(renameSkill(project, "a/../../victim", "new-name")).rejects.toThrow()
+
+    expect(await getSkill(project, "victim")).toMatchObject({ description: "被害想定" })
   })
 })

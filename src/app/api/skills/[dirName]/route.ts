@@ -13,10 +13,11 @@ export async function PATCH(
     const { dirName } = await params
     const project = await resolveRequestProject(req)
     const body = await req.json()
-    const patch: { description?: string; body?: string; category?: string } = {}
+    const patch: { description?: string; body?: string; category?: string; title?: string } = {}
     if (typeof body.description === "string") patch.description = body.description.trim()
     if (typeof body.body === "string") patch.body = body.body
     if (typeof body.category === "string") patch.category = body.category.trim()
+    if (typeof body.title === "string") patch.title = body.title.trim()
     const skill = await updateSkill(project, dirName, patch)
     return NextResponse.json(skill)
   } catch (err) {

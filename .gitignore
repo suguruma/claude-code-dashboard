@@ -49,3 +49,9 @@ next-env.d.ts
 
 # dashboard: import機能が上書き前に自動生成するバックアップファイル
 *.ccd-backup.*
+
+# electron-builder のexeビルド出力
+/release/
+
+# dashboard: AI駆動開発の内部作業ログ（率直なユーザー指摘・自己批評を含むため非公開、ローカルのみで保持）
+/docs/plan.md

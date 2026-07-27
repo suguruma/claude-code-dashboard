@@ -10,6 +10,9 @@ argument-schema:
     audience:
       type: string
       description: 想定読者（役員 / チームメンバー 等）
+title: ビジネスレポート作成
+created: '2026-07-27T13:15:35.183Z'
+updated: '2026-07-27T13:17:53.916Z'
 ---
 
 # レポート作成スキル

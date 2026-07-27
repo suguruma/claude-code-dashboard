@@ -30,9 +30,13 @@ export function ThemeToggle() {
       <DropdownMenuTrigger render={<Button variant="ghost" size="icon" aria-label="テーマを切り替え" />}>
         <Icon className="size-4" />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
+      <DropdownMenuContent align="end" className="min-w-44">
         {OPTIONS.map((option) => (
-          <DropdownMenuItem key={option.value} onClick={() => setTheme(option.value)}>
+          <DropdownMenuItem
+            key={option.value}
+            onClick={() => setTheme(option.value)}
+            className="whitespace-nowrap"
+          >
             <option.icon className="size-4" />
             {option.label}
           </DropdownMenuItem>

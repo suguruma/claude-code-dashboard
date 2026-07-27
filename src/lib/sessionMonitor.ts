@@ -54,7 +54,12 @@ function contentLength(content: unknown): number {
   if (typeof content === "string") return content.length
   if (Array.isArray(content)) {
     return content.reduce((sum: number, part) => {
-      if (part && typeof part === "object" && typeof (part as { text?: unknown }).text === "string") {
+      if (
+        part &&
+        typeof part === "object" &&
+        (part as { type?: unknown }).type === "text" &&
+        typeof (part as { text?: unknown }).text === "string"
+      ) {
         return sum + (part as { text: string }).text.length
       }
       return sum

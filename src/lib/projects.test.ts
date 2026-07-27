@@ -1,6 +1,8 @@
+import os from "os"
+import path from "path"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import * as fileIO from "./fileIO"
-import { addProject, removeProject, selectProject, updateProject } from "./projects"
+import { addProject, getProjectsFile, removeProject, selectProject, updateProject } from "./projects"
 import { ProjectsFile } from "./types"
 
 /**
@@ -37,7 +39,7 @@ describe("updateProject", () => {
       selectedProjectId: "p1",
     })
     const updated = await updateProject("p1", { name: "新名前", path: "C:/new" })
-    expect(updated).toEqual({ id: "p1", name: "新名前", path: "C:/new" })
+    expect(updated).toEqual({ id: "p1", name: "新名前", path: "C:/new", isGlobalConfig: false })
     expect(getData().projects[0]).toEqual({ id: "p1", name: "新名前", path: "C:/new" })
   })
 
@@ -78,6 +80,32 @@ describe("removeProject", () => {
     await removeProject("p1")
     expect(getData().projects).toHaveLength(0)
     expect(getData().selectedProjectId).toBeNull()
+  })
+})
+
+describe("isGlobalConfig（誤操作防止UI用の計算フィールド）", () => {
+  it("実際の~/.claudeと一致するプロジェクトのみtrueになる", async () => {
+    const globalPath = path.join(os.homedir(), ".claude")
+    makeStore({
+      projects: [
+        { id: "global", name: "グローバル設定", path: globalPath },
+        { id: "other", name: "他プロジェクト", path: "C:/other" },
+      ],
+      selectedProjectId: "global",
+    })
+    const data = await getProjectsFile()
+    expect(data.projects.find((p) => p.id === "global")?.isGlobalConfig).toBe(true)
+    expect(data.projects.find((p) => p.id === "other")?.isGlobalConfig).toBe(false)
+  })
+
+  it("isGlobalConfigはconfig/projects.jsonには永続化されない（保存のたびに再計算される表示専用フィールド）", async () => {
+    const globalPath = path.join(os.homedir(), ".claude")
+    const getData = makeStore({
+      projects: [{ id: "global", name: "グローバル設定", path: globalPath }],
+      selectedProjectId: "global",
+    })
+    await updateProject("global", { name: "改名後" })
+    expect(getData().projects[0]).toEqual({ id: "global", name: "改名後", path: globalPath })
   })
 })
 

@@ -7,6 +7,7 @@ import { useProjects } from "@/hooks/useProjects"
 import { useSkills } from "@/hooks/useSkills"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { CategorySection } from "@/components/skills/CategorySection"
 import { SkillListCard } from "@/components/skills/SkillListCard"
 import { SkillFormDialog } from "@/components/skills/SkillFormDialog"
 import { SkillMeta } from "@/lib/types"
@@ -20,6 +21,17 @@ export default function SkillsPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingSkill, setEditingSkill] = useState<SkillMeta | null>(null)
   const [formKey, setFormKey] = useState(0)
+  // カテゴリはデフォルトで折りたたみ、クリックした分だけ展開してスクロール量を減らす
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
+
+  function toggleCategory(slug: string) {
+    setExpandedCategories((prev) => {
+      const next = new Set(prev)
+      if (next.has(slug)) next.delete(slug)
+      else next.add(slug)
+      return next
+    })
+  }
 
   function openCreateDialog() {
     setEditingSkill(null)
@@ -38,6 +50,7 @@ export default function SkillsPage() {
     description: string
     body: string
     category?: string
+    title?: string
   }) {
     try {
       if (editingSkill) {
@@ -50,6 +63,7 @@ export default function SkillsPage() {
           description: input.description,
           body: input.body,
           category: input.category,
+          title: input.title,
         })
         toast.success("スキルを更新しました")
       } else {
@@ -110,13 +124,17 @@ export default function SkillsPage() {
         </p>
       )}
 
-      <div className="space-y-8">
+      <div className="space-y-4">
         {groupedSkills.map(({ category, skills: groupSkills }) => (
-          <section key={category.slug} className="space-y-3">
-            <h2 className="text-sm font-medium text-muted-foreground">
-              {category.emoji} {category.label}（{groupSkills.length}）
-            </h2>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <CategorySection
+            key={category.slug}
+            emoji={category.emoji}
+            label={category.label}
+            count={groupSkills.length}
+            expanded={expandedCategories.has(category.slug)}
+            onToggle={() => toggleCategory(category.slug)}
+          >
+            <div className="grid grid-cols-1 gap-3 pt-3 sm:grid-cols-2 lg:grid-cols-3">
               {groupSkills.map((skill) => (
                 <SkillListCard
                   key={skill.dirName}
@@ -126,7 +144,7 @@ export default function SkillsPage() {
                 />
               ))}
             </div>
-          </section>
+          </CategorySection>
         ))}
       </div>
 

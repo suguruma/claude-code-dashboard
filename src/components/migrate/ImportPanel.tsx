@@ -5,15 +5,17 @@ import { toast } from "sonner"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useExportImport } from "@/hooks/useExportImport"
 import { ExportBundle, ImportDiffItem, ImportDiffResult } from "@/lib/types"
 import { ImportDiffList, itemKey } from "./ImportDiffList"
 
 interface ImportPanelProps {
   projectId: string
+  isGlobalConfig?: boolean
 }
 
-export function ImportPanel({ projectId }: ImportPanelProps) {
+export function ImportPanel({ projectId, isGlobalConfig }: ImportPanelProps) {
   const { diffImport, applyImport } = useExportImport(projectId)
   const [fileName, setFileName] = useState<string | null>(null)
   const [bundle, setBundle] = useState<ExportBundle | null>(null)
@@ -22,6 +24,7 @@ export function ImportPanel({ projectId }: ImportPanelProps) {
   const [loadingDiff, setLoadingDiff] = useState(false)
   const [applying, setApplying] = useState(false)
   const [lastBackups, setLastBackups] = useState<string[] | null>(null)
+  const [confirmOpen, setConfirmOpen] = useState(false)
 
   async function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -81,6 +84,20 @@ export function ImportPanel({ projectId }: ImportPanelProps) {
     setSelectedKeys(new Set())
   }
 
+  function handleApplyClick() {
+    if (!bundle || !diff) return
+    const hasSelection = diff.items.some((i) => selectedKeys.has(itemKey(i)))
+    if (!hasSelection) {
+      toast.error("適用する項目を選択してください")
+      return
+    }
+    if (isGlobalConfig) {
+      setConfirmOpen(true)
+      return
+    }
+    handleApply()
+  }
+
   async function handleApply() {
     if (!bundle || !diff) return
     const ruleCategories = diff.items
@@ -95,6 +112,7 @@ export function ImportPanel({ projectId }: ImportPanelProps) {
       return
     }
 
+    setConfirmOpen(false)
     setApplying(true)
     try {
       const result = await applyImport(bundle, { ruleCategories, skillDirNames })
@@ -148,11 +166,21 @@ export function ImportPanel({ projectId }: ImportPanelProps) {
             </div>
             <ImportDiffList title="ルール" items={ruleItems} selectedKeys={selectedKeys} onToggle={toggle} />
             <ImportDiffList title="スキル" items={skillItems} selectedKeys={selectedKeys} onToggle={toggle} />
-            <Button onClick={handleApply} disabled={applying}>
+            <Button onClick={handleApplyClick} disabled={applying}>
               {applying ? "適用中..." : `選択した${selectedKeys.size}件を適用`}
             </Button>
           </div>
         )}
+
+        <ConfirmDialog
+          open={confirmOpen}
+          onOpenChange={setConfirmOpen}
+          title="グローバル設定を上書きします"
+          description="適用先は実際の ~/.claude（グローバル設定）です。選択した項目がClaude Code本体の設定に直接反映されます。上書きされる既存ファイルは自動でバックアップされますが、続行しますか？"
+          confirmLabel="上書きを実行する"
+          onConfirm={handleApply}
+          confirming={applying}
+        />
 
         {lastBackups && (
           <Alert>
