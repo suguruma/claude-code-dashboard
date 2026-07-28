@@ -23,6 +23,9 @@
   --color-chart-3: var(--chart-3);
   --color-chart-2: var(--chart-2);
   --color-chart-1: var(--chart-1);
+  --color-status-good: var(--status-good);
+  --color-status-warning: var(--status-warning);
+  --color-status-critical: var(--status-critical);
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
@@ -72,6 +75,17 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
+  /*
+   * 診断（セッション監視）の状態色。系列色（chart-*）とは役割が異なるため意図的に別枠にし、
+   * 「良好/注意/要対処」以外の用途には使わない。3段階に絞っているのは、4段階目（serious）を
+   * 足すと注意色との差が小さくなり（正常視でのΔE 13.6）見分けが付かなくなるため。
+   * 注意色は白背景でのコントラストが3:1未満だが、これは色を濃くすると
+   * 第2色覚では要対処色と混同されてしまう（ΔE 3.3）ためのトレードオフ。
+   * 色だけに意味を持たせず、必ずアイコンの形と日本語ラベルを併記して補う。
+   */
+  --status-good: #0ca30c;
+  --status-warning: #fab219;
+  --status-critical: #d03b3b;
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
@@ -107,6 +121,10 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
+  /* 暗い面（#171717）では3色とも3:1以上を満たすため、明るい面と同じ値をそのまま使う */
+  --status-good: #0ca30c;
+  --status-warning: #fab219;
+  --status-critical: #d03b3b;
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);

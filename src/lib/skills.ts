@@ -81,6 +81,7 @@ async function readSkill(project: ProjectConfig, dirName: string): Promise<Skill
       argumentSchema: data["argument-schema"],
       category: typeof data.category === "string" ? data.category : undefined,
       title: typeof data.title === "string" ? data.title : undefined,
+      targetModel: typeof data["target-model"] === "string" ? data["target-model"] : undefined,
       body: body.trim(),
       ...supportingDirs,
       createdAt,
@@ -98,6 +99,7 @@ function buildFrontmatterData(skill: SkillMeta): Record<string, unknown> {
   if (skill.argumentSchema !== undefined) data["argument-schema"] = skill.argumentSchema
   if (skill.category !== undefined) data.category = skill.category
   if (skill.title !== undefined) data.title = skill.title
+  if (skill.targetModel !== undefined) data["target-model"] = skill.targetModel
   if (skill.createdAt !== undefined) data.created = skill.createdAt
   if (skill.updatedAt !== undefined) data.updated = skill.updatedAt
   return data
@@ -131,7 +133,14 @@ export function validateSkillDirName(dirName: string): void {
 
 export async function createSkill(
   project: ProjectConfig,
-  input: { dirName: string; description: string; body: string; category?: string; title?: string }
+  input: {
+    dirName: string
+    description: string
+    body: string
+    category?: string
+    title?: string
+    targetModel?: string
+  }
 ): Promise<SkillMeta> {
   validateSkillDirName(input.dirName)
   const existing = await readSkill(project, input.dirName)
@@ -144,6 +153,7 @@ export async function createSkill(
     description: input.description,
     category: input.category || undefined,
     title: input.title || undefined,
+    targetModel: input.targetModel || undefined,
     body: input.body.trim(),
     createdAt: now,
     updatedAt: now,
@@ -158,7 +168,13 @@ export async function createSkill(
 export async function updateSkill(
   project: ProjectConfig,
   dirName: string,
-  patch: { description?: string; body?: string; category?: string; title?: string }
+  patch: {
+    description?: string
+    body?: string
+    category?: string
+    title?: string
+    targetModel?: string
+  }
 ): Promise<SkillMeta> {
   validateSkillDirName(dirName)
   const existing = await readSkill(project, dirName)
@@ -171,6 +187,8 @@ export async function updateSkill(
     // 空文字は「未分類/未設定に戻す」明示的な指定として扱う(キー自体が無い場合のみ既存値を維持する)
     category: patch.category !== undefined ? patch.category || undefined : existing.category,
     title: patch.title !== undefined ? patch.title || undefined : existing.title,
+    targetModel:
+      patch.targetModel !== undefined ? patch.targetModel || undefined : existing.targetModel,
     updatedAt: new Date().toISOString(),
   }
 

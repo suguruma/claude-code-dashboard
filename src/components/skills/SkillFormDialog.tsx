@@ -27,6 +27,7 @@ interface SkillFormDialogProps {
     body: string
     category?: string
     title?: string
+    targetModel?: string
   }) => Promise<void>
 }
 
@@ -43,6 +44,7 @@ export function SkillFormDialog({
   const [description, setDescription] = useState(initialSkill?.description ?? "")
   const [body, setBody] = useState(initialSkill?.body ?? "")
   const [category, setCategory] = useState(initialSkill?.category ?? UNCATEGORIZED_VALUE)
+  const [targetModel, setTargetModel] = useState(initialSkill?.targetModel ?? "")
   const [submitting, setSubmitting] = useState(false)
 
   const isEditing = Boolean(initialSkill)
@@ -59,6 +61,7 @@ export function SkillFormDialog({
         // 更新時に「変更なし」と区別できず既存の値が残ってしまうため）
         category: category === UNCATEGORIZED_VALUE ? "" : category,
         title: title.trim(),
+        targetModel: targetModel.trim(),
       })
       onOpenChange(false)
     } finally {
@@ -123,6 +126,18 @@ export function SkillFormDialog({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="skill-target-model">対象モデル</Label>
+            <Input
+              id="skill-target-model"
+              value={targetModel}
+              onChange={(e) => setTargetModel(e.target.value)}
+              placeholder="例: Opus 5（未設定可。モデルは今後も増えるため自由入力）"
+            />
+            <p className="text-xs text-muted-foreground">
+              このスキルのプロンプト設計がどのモデルを想定しているかのメモです。Claude Codeの動作には影響しません。
+            </p>
           </div>
           <div className="grid gap-2">
             <Label htmlFor="skill-description">説明（description）</Label>

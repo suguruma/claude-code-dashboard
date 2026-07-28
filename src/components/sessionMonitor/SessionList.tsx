@@ -27,12 +27,17 @@ export function SessionList({ sessions, selectedSessionId, onSelect }: SessionLi
           )}
         >
           <div className="flex items-center justify-between gap-2">
-            <span className="truncate font-mono">{s.sessionId}</span>
+            <span className="truncate font-medium">
+              {s.firstUserMessageExcerpt || "（発話内容なし）"}
+            </span>
             {s.toolErrorCount > 0 && (
               <Badge variant="destructive" className="shrink-0">
                 エラー{s.toolErrorCount}
               </Badge>
             )}
+          </div>
+          <div className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground/70">
+            {s.sessionId}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-muted-foreground">
             <span>{s.startedAt ? format(new Date(s.startedAt), "yyyy-MM-dd HH:mm") : "日時不明"}</span>
@@ -43,6 +48,15 @@ export function SessionList({ sessions, selectedSessionId, onSelect }: SessionLi
             </span>
             {s.compactionCount > 0 && <span>コンパクション{s.compactionCount}回</span>}
           </div>
+          {s.skillNames.length > 0 && (
+            <div className="mt-1 flex flex-wrap gap-1">
+              {s.skillNames.map((name) => (
+                <Badge key={name} variant="outline" className="text-[10px] font-normal">
+                  {name}
+                </Badge>
+              ))}
+            </div>
+          )}
         </button>
       ))}
     </div>

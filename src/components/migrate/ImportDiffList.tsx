@@ -89,6 +89,17 @@ export function ImportDiffList({ title, items, selectedKeys, onToggle }: ImportD
                           : `${item.titleBefore ?? "未設定"} → ${item.titleAfter ?? "未設定"}`}
                       </p>
                     )}
+                  {item.kind === "skill" &&
+                    item.targetModelBefore !== undefined &&
+                    item.targetModelAfter !== undefined &&
+                    item.targetModelBefore !== item.targetModelAfter && (
+                      <p className="text-xs text-muted-foreground">
+                        対象モデル：
+                        {item.status === "new"
+                          ? (item.targetModelAfter ?? "未設定")
+                          : `${item.targetModelBefore ?? "未設定"} → ${item.targetModelAfter ?? "未設定"}`}
+                      </p>
+                    )}
                   {item.status === "changed" && (
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                       <div>

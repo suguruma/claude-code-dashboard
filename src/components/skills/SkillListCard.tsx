@@ -41,6 +41,7 @@ export function SkillListCard({ skill, onEdit, onDelete }: SkillListCardProps) {
           )}
         </div>
         <div className="flex flex-wrap justify-end gap-1">
+          {skill.targetModel && <Badge variant="outline">🎯 {skill.targetModel}</Badge>}
           {skill.argumentSchema !== undefined && <Badge variant="outline">引数あり</Badge>}
           {skill.hasReferences && <Badge variant="secondary">📎 references</Badge>}
           {skill.hasScripts && <Badge variant="secondary">🔧 scripts</Badge>}

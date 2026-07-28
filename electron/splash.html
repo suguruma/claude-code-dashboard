@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <title>起動中 - Claude Code Dashboard</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        font-family: "Segoe UI", -apple-system, sans-serif;
+        background: #18181b;
+        color: #f4f4f5;
+        -webkit-app-region: drag;
+        user-select: none;
+      }
+      .title {
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+      .bar-track {
+        width: 260px;
+        height: 6px;
+        border-radius: 999px;
+        background: #3f3f46;
+        overflow: hidden;
+      }
+      .bar-fill {
+        height: 100%;
+        width: 0%;
+        background: #818cf8;
+        border-radius: 999px;
+        transition: width 0.2s ease-out;
+      }
+      .meta {
+        display: flex;
+        gap: 10px;
+        font-size: 11px;
+        color: #a1a1aa;
+      }
+      .meta .label {
+        max-width: 200px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="title">Claude Code Dashboard を起動しています…</div>
+    <div class="bar-track"><div class="bar-fill" id="bar"></div></div>
+    <div class="meta">
+      <span id="percent">0%</span>
+      <span class="label" id="label"></span>
+      <span id="eta"></span>
+    </div>
+    <script>
+      const bar = document.getElementById("bar")
+      const percentEl = document.getElementById("percent")
+      const labelEl = document.getElementById("label")
+      const etaEl = document.getElementById("eta")
+
+      window.splashAPI?.onProgress(({ percent, label, etaSeconds }) => {
+        const p = Math.max(0, Math.min(100, percent))
+        bar.style.width = p + "%"
+        percentEl.textContent = Math.round(p) + "%"
+        if (label) labelEl.textContent = label
+        etaEl.textContent =
+          etaSeconds != null && etaSeconds > 1 ? `残り約${etaSeconds}秒` : etaSeconds != null ? "まもなく起動します" : ""
+      })
+    </script>
+  </body>
+</html>

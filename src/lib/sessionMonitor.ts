@@ -37,6 +37,25 @@ interface RawContentBlock {
   is_error?: boolean
   input?: unknown
   content?: unknown
+  text?: string
+}
+
+/** 表示名に使う先頭発話の抜粋の上限文字数。本文全体は保持・表示しない */
+const EXCERPT_MAX_CHARS = 60
+
+/** ユーザー発話から表示用の短い抜粋を作る（改行等を1スペースに畳み、長ければ末尾を省略） */
+function buildExcerpt(content: RawContentBlock[] | string | undefined): string | null {
+  let text: string | null = null
+  if (typeof content === "string") {
+    text = content
+  } else if (Array.isArray(content)) {
+    const block = content.find((b) => b.type === "text" && typeof b.text === "string")
+    text = block?.text ?? null
+  }
+  if (!text) return null
+  const collapsed = text.replace(/\s+/g, " ").trim()
+  if (!collapsed) return null
+  return collapsed.length > EXCERPT_MAX_CHARS ? `${collapsed.slice(0, EXCERPT_MAX_CHARS)}…` : collapsed
 }
 
 /** `mcp__<server>__<tool>` 形式のツール名からサーバー識別子を取り出す（組み込みツールはnull） */
@@ -105,6 +124,7 @@ async function parseSessionFile(filePath: string): Promise<SessionMetrics> {
   let endedAt: string | null = null
   let cwd: string | null = null
   let version: string | null = null
+  let firstUserMessageExcerpt: string | null = null
   let sidechainToolCallCount = 0
   let interruptedToolCallCount = 0
   let hookErrorCount = 0
@@ -221,7 +241,10 @@ async function parseSessionFile(filePath: string): Promise<SessionMetrics> {
           }
         }
       }
-      if (!hasToolResult) userMessageCount++
+      if (!hasToolResult) {
+        userMessageCount++
+        if (userMessageCount === 1) firstUserMessageExcerpt = buildExcerpt(obj.message?.content)
+      }
       if (obj.toolUseResult?.interrupted === true) interruptedToolCallCount++
     }
 
@@ -244,6 +267,7 @@ async function parseSessionFile(filePath: string): Promise<SessionMetrics> {
   const mcpToolCallCount = Object.values(mcpCallCountsByServer).reduce((a, b) => a + b, 0)
   const skillCallCount = Object.values(skillCallCounts).reduce((a, b) => a + b, 0)
   const totalToolOutputChars = Object.values(toolOutputCharsByName).reduce((a, b) => a + b, 0)
+  const subagentCallCount = Object.values(subagentCallCounts).reduce((a, b) => a + b, 0)
   const stat = await fs.stat(filePath)
 
   const summary: SessionSummary = {
@@ -264,12 +288,17 @@ async function parseSessionFile(filePath: string): Promise<SessionMetrics> {
     mcpToolCallCount,
     skillCallCount,
     totalToolOutputChars,
+    userMessageCount,
+    interruptedToolCallCount,
+    hookErrorCount,
+    subagentCallCount,
+    firstUserMessageExcerpt,
+    skillNames: Object.keys(skillCallCounts).sort(),
   }
 
   return {
     summary,
     tokenPoints,
-    toolCalls,
     compactions,
     toolCallCountsByName,
     toolErrorCountsByName,

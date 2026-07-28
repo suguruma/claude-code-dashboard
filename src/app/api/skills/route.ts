@@ -24,10 +24,19 @@ export async function POST(req: NextRequest) {
     const skillBody = typeof body.body === "string" ? body.body : ""
     const category = typeof body.category === "string" ? body.category.trim() || undefined : undefined
     const title = typeof body.title === "string" ? body.title.trim() || undefined : undefined
+    const targetModel =
+      typeof body.targetModel === "string" ? body.targetModel.trim() || undefined : undefined
     if (!dirName || !description) {
       return NextResponse.json({ error: "dirName と description は必須です" }, { status: 400 })
     }
-    const skill = await createSkill(project, { dirName, description, body: skillBody, category, title })
+    const skill = await createSkill(project, {
+      dirName,
+      description,
+      body: skillBody,
+      category,
+      title,
+      targetModel,
+    })
     return NextResponse.json(skill, { status: 201 })
   } catch (err) {
     return handleError(err)

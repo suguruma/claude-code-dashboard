@@ -20,11 +20,6 @@ extraResources:
     to: standalone/.next/static
   - from: config/projects.example.json
     to: seed/config/projects.example.json
-  - from: sample-data
-    to: seed/sample-data
-    filter:
-      - "**/*"
-      - "!**/*.ccd-backup.*"
 win:
   target:
     - target: portable

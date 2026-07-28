@@ -1,13 +1,25 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
+import { ChevronRight } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { useSessionMetrics, useSessionProjects, useSessions } from "@/hooks/useSessionMonitor"
+import { cn } from "@/lib/utils"
+import { buildSessionTrends, diagnoseSession } from "@/lib/sessionDiagnostics"
+import {
+  useSessionDetailMetrics,
+  useSessionDiagnosisMetrics,
+  useSessionProjects,
+  useSessionSemanticDiagnosis,
+  useSessions,
+} from "@/hooks/useSessionMonitor"
 import { SessionProjectSelector } from "@/components/sessionMonitor/SessionProjectSelector"
 import { SessionList } from "@/components/sessionMonitor/SessionList"
+import { SessionHealthPanel } from "@/components/sessionMonitor/SessionHealthPanel"
+import { SessionSemanticDiagnosisPanel } from "@/components/sessionMonitor/SessionSemanticDiagnosisPanel"
+import { SessionTrendCharts } from "@/components/sessionMonitor/SessionTrendCharts"
 import { SessionSummaryCards } from "@/components/sessionMonitor/SessionSummaryCards"
 import { TokenUsageChart } from "@/components/sessionMonitor/TokenUsageChart"
 import { ToolCallChart } from "@/components/sessionMonitor/ToolCallChart"
@@ -21,11 +33,30 @@ export default function SessionMonitorPage() {
   const [manuallySelectedDir, setManuallySelectedDir] = useState<string | null>(null)
   const [manuallySelectedSession, setManuallySelectedSession] = useState<string | null>(null)
   const [live, setLive] = useState(false)
+  const [detailOpen, setDetailOpen] = useState(false)
 
   const selectedDirName = manuallySelectedDir ?? projects[0]?.dirName ?? null
   const { sessions, isLoading: sessionsLoading } = useSessions(selectedDirName)
   const selectedSessionId = manuallySelectedSession ?? sessions[0]?.sessionId ?? null
-  const { metrics } = useSessionMetrics(selectedDirName, selectedSessionId, live)
+  const { metrics } = useSessionDiagnosisMetrics(selectedDirName, selectedSessionId, live)
+  const { metrics: detailMetrics, isLoading: detailLoading } = useSessionDetailMetrics(
+    selectedDirName,
+    selectedSessionId,
+    detailOpen,
+    live
+  )
+  const {
+    diagnosis: semanticDiagnosis,
+    isLoading: semanticLoading,
+    refresh: refreshSemanticDiagnosis,
+  } = useSessionSemanticDiagnosis(selectedDirName, selectedSessionId)
+
+  // 判定・比較はいずれもCPUのみの純粋関数。再解析(live)のたびに走るためメモ化する
+  const report = useMemo(() => (metrics ? diagnoseSession(metrics, sessions) : null), [metrics, sessions])
+  const trends = useMemo(
+    () => buildSessionTrends(sessions, selectedSessionId),
+    [sessions, selectedSessionId]
+  )
 
   function handleSelectDir(dirName: string) {
     setManuallySelectedDir(dirName)
@@ -42,8 +73,8 @@ export default function SessionMonitorPage() {
         <h1 className="text-xl font-semibold">セッション監視</h1>
         <p className="text-sm text-muted-foreground">
           このマシンの実際のClaude Code実行ログ（<code className="font-mono">~/.claude/projects/</code>
-          配下の`.jsonl`）を解析し、トークン消費・ツール呼び出し・コンテキスト圧縮を可視化します（読み取り専用）。
-          ダッシュボードに登録したプロジェクトとは独立して、実際にClaude Codeを実行した場所の一覧から選びます。
+          配下の`.jsonl`）を解析し、「このセッションが健全か」「次に何をすべきか」を判定します（読み取り専用）。
+          判定は同じプロジェクトの過去セッションとの比較を伴うため、作業を重ねるほど精度が上がります。
         </p>
       </div>
 
@@ -70,7 +101,7 @@ export default function SessionMonitorPage() {
 
       {selectedDirName && (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[280px_1fr]">
-          <Card>
+          <Card className="h-fit">
             <CardHeader>
               <CardTitle className="text-sm">セッション一覧</CardTitle>
             </CardHeader>
@@ -87,8 +118,8 @@ export default function SessionMonitorPage() {
             </CardContent>
           </Card>
 
-          <div className="space-y-4">
-            {metrics ? (
+          <div className="min-w-0 space-y-4">
+            {metrics && report ? (
               <>
                 <div className="flex items-center justify-end gap-2">
                   <Label htmlFor="live-toggle" className="text-sm text-muted-foreground">
@@ -97,68 +128,86 @@ export default function SessionMonitorPage() {
                   <Switch id="live-toggle" checked={live} onCheckedChange={setLive} />
                 </div>
 
-                <SessionSummaryCards metrics={metrics} />
+                <SessionHealthPanel report={report} />
+
+                <SessionSemanticDiagnosisPanel
+                  diagnosis={semanticDiagnosis}
+                  isLoading={semanticLoading}
+                  onRefresh={() => refreshSemanticDiagnosis()}
+                />
+
+                <SessionTrendCharts trends={trends} />
 
                 <Card>
-                  <CardHeader>
-                    <CardTitle className="text-sm">トークン消費の推移（ターンごと）</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <TokenUsageChart tokenPoints={metrics.tokenPoints} compactions={metrics.compactions} />
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-sm">ツール呼び出し集計</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <ToolCallChart
-                      countsByName={metrics.toolCallCountsByName}
-                      errorCountsByName={metrics.toolErrorCountsByName}
-                    />
-                  </CardContent>
-                </Card>
-
-                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-sm">MCPサーバー別 呼び出し集計</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <McpUsageChart countsByServer={metrics.mcpCallCountsByServer} />
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-sm">スキル・サブエージェント発火状況</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <SkillSubagentUsage
-                        skillCallCounts={metrics.skillCallCounts}
-                        subagentCallCounts={metrics.subagentCallCounts}
+                  <CardHeader className="pb-0">
+                    <button
+                      type="button"
+                      onClick={() => setDetailOpen((v) => !v)}
+                      aria-expanded={detailOpen}
+                      className="flex w-full items-center gap-1.5 text-left"
+                    >
+                      <ChevronRight
+                        className={cn(
+                          "size-4 shrink-0 text-muted-foreground transition-transform",
+                          detailOpen && "rotate-90"
+                        )}
+                        aria-hidden
                       />
-                    </CardContent>
-                  </Card>
-                </div>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-sm">ツール出力サイズ（文字数）ランキング</CardTitle>
+                      <CardTitle className="text-sm">詳細データ（生の集計値とグラフ）</CardTitle>
+                    </button>
                   </CardHeader>
-                  <CardContent>
-                    <ToolOutputSizeChart charsByName={metrics.toolOutputCharsByName} />
-                  </CardContent>
-                </Card>
+                  {detailOpen &&
+                    (detailMetrics ? (
+                      <CardContent className="space-y-4 pt-4">
+                        <SessionSummaryCards metrics={detailMetrics} />
 
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-sm">コンパクション（コンテキスト圧縮）履歴</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <CompactionTimeline compactions={metrics.compactions} />
-                  </CardContent>
+                        <div className="space-y-1">
+                          <h3 className="text-sm font-medium">トークン消費の推移（ターンごと）</h3>
+                          <TokenUsageChart
+                            tokenPoints={detailMetrics.tokenPoints}
+                            compactions={detailMetrics.compactions}
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <h3 className="text-sm font-medium">ツール呼び出し集計</h3>
+                          <ToolCallChart
+                            countsByName={detailMetrics.toolCallCountsByName}
+                            errorCountsByName={detailMetrics.toolErrorCountsByName}
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                          <div className="min-w-0 space-y-1">
+                            <h3 className="text-sm font-medium">MCPサーバー別 呼び出し集計</h3>
+                            <McpUsageChart countsByServer={detailMetrics.mcpCallCountsByServer} />
+                          </div>
+                          <div className="min-w-0 space-y-1">
+                            <h3 className="text-sm font-medium">スキル・サブエージェント発火状況</h3>
+                            <SkillSubagentUsage
+                              skillCallCounts={detailMetrics.skillCallCounts}
+                              subagentCallCounts={detailMetrics.subagentCallCounts}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <h3 className="text-sm font-medium">ツール出力サイズ（文字数）ランキング</h3>
+                          <ToolOutputSizeChart charsByName={detailMetrics.toolOutputCharsByName} />
+                        </div>
+
+                        <div className="space-y-1">
+                          <h3 className="text-sm font-medium">コンパクション（コンテキスト圧縮）履歴</h3>
+                          <CompactionTimeline compactions={detailMetrics.compactions} />
+                        </div>
+                      </CardContent>
+                    ) : (
+                      <CardContent className="pt-4">
+                        <p className="text-sm text-muted-foreground">
+                          {detailLoading ? "読み込み中..." : "詳細データを取得できませんでした。"}
+                        </p>
+                      </CardContent>
+                    ))}
                 </Card>
               </>
             ) : (

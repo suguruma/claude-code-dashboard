@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, type ChangeEvent } from "react"
+import { useRef, useState, type ChangeEvent, type DragEvent } from "react"
 import { toast } from "sonner"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -25,24 +25,66 @@ export function ImportPanel({ projectId, isGlobalConfig }: ImportPanelProps) {
   const [applying, setApplying] = useState(false)
   const [lastBackups, setLastBackups] = useState<string[] | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [isDragOver, setIsDragOver] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  async function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    e.target.value = ""
-    if (!file) return
+  function loadFromText(name: string, text: string) {
     setLastBackups(null)
     setDiff(null)
     setSelectedKeys(new Set())
     try {
-      const text = await file.text()
       const parsed = JSON.parse(text) as ExportBundle
       setBundle(parsed)
-      setFileName(file.name)
+      setFileName(name)
     } catch {
       setBundle(null)
       setFileName(null)
       toast.error("JSONファイルの読み込みに失敗しました")
     }
+  }
+
+  async function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ""
+    if (!file) return
+    loadFromText(file.name, await file.text())
+  }
+
+  /**
+   * 配布版exeで<input type="file">クリックがネイティブダイアログを開かない事例が
+   * 報告されたため（項目6）、Electron上ではmain process側のdialog.showOpenDialogを
+   * IPC経由で直接呼び出す。ブラウザ実行時（開発時）はwindow.electronAPIが存在しないため、
+   * 従来どおり隠しinputのclickにフォールバックする。
+   */
+  async function handlePickFile() {
+    if (window.electronAPI?.pickImportFile) {
+      const result = await window.electronAPI.pickImportFile()
+      if (!result) return
+      if ("error" in result) {
+        toast.error(`ファイルの読み込みに失敗しました: ${result.error}`)
+        return
+      }
+      loadFromText(result.fileName, result.content)
+      return
+    }
+    fileInputRef.current?.click()
+  }
+
+  function handleDragOver(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault()
+    setIsDragOver(true)
+  }
+
+  function handleDragLeave() {
+    setIsDragOver(false)
+  }
+
+  async function handleDrop(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault()
+    setIsDragOver(false)
+    const file = e.dataTransfer.files?.[0]
+    if (!file) return
+    loadFromText(file.name, await file.text())
   }
 
   async function handleComputeDiff() {
@@ -143,9 +185,30 @@ export function ImportPanel({ projectId, isGlobalConfig }: ImportPanelProps) {
           選択した項目だけを反映できます。上書きされるファイルは適用前に自動でバックアップされます。
         </p>
 
-        <div className="flex items-center gap-3">
-          <input type="file" accept="application/json" onChange={handleFileChange} className="text-sm" />
-          {fileName && <span className="text-xs text-muted-foreground">{fileName}</span>}
+        <div
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          className={`flex flex-col items-center gap-2 rounded-md border border-dashed p-4 text-center transition-colors ${
+            isDragOver ? "border-primary bg-accent" : "border-border"
+          }`}
+        >
+          <p className="text-xs text-muted-foreground">
+            ここにJSONファイルをドラッグ&ドロップ、または
+          </p>
+          <div className="flex items-center gap-3">
+            <Button type="button" variant="outline" size="sm" onClick={handlePickFile}>
+              ファイルを選択
+            </Button>
+            {fileName && <span className="text-xs text-muted-foreground">{fileName}</span>}
+          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json,application/json"
+            onChange={handleFileChange}
+            className="hidden"
+          />
         </div>
 
         {bundle && !diff && (

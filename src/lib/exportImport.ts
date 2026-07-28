@@ -35,6 +35,7 @@ export async function buildExportBundle(project: ProjectConfig): Promise<ExportB
       argumentSchema: s.argumentSchema,
       category: s.category,
       title: s.title,
+      targetModel: s.targetModel,
       createdAt: s.createdAt,
       updatedAt: s.updatedAt,
       body: s.body,
@@ -85,6 +86,7 @@ export function validateBundle(input: unknown): ExportBundle {
       argumentSchema: s.argumentSchema,
       category: typeof s.category === "string" ? s.category : undefined,
       title: typeof s.title === "string" ? s.title : undefined,
+      targetModel: typeof s.targetModel === "string" ? s.targetModel : undefined,
       createdAt: typeof s.createdAt === "string" ? s.createdAt : undefined,
       updatedAt: typeof s.updatedAt === "string" ? s.updatedAt : undefined,
       body: s.body,
@@ -151,6 +153,7 @@ export async function computeImportDiff(
     const existing = currentSkills.find((s) => s.dirName === incoming.dirName)
     const categoryAfter = incoming.category ?? null
     const titleAfter = incoming.title ?? null
+    const targetModelAfter = incoming.targetModel ?? null
     if (!existing) {
       items.push({
         kind: "skill",
@@ -162,15 +165,19 @@ export async function computeImportDiff(
         categoryAfter,
         titleBefore: null,
         titleAfter,
+        targetModelBefore: null,
+        targetModelAfter,
       })
     } else {
       const categoryBefore = existing.category ?? null
       const titleBefore = existing.title ?? null
+      const targetModelBefore = existing.targetModel ?? null
       const changed =
         existing.body !== incoming.body ||
         existing.description !== incoming.description ||
         categoryBefore !== categoryAfter ||
-        titleBefore !== titleAfter
+        titleBefore !== titleAfter ||
+        targetModelBefore !== targetModelAfter
       items.push({
         kind: "skill",
         key: incoming.dirName,
@@ -181,6 +188,8 @@ export async function computeImportDiff(
         categoryAfter,
         titleBefore,
         titleAfter,
+        targetModelBefore,
+        targetModelAfter,
       })
     }
   }
@@ -244,6 +253,7 @@ export async function applyImport(
     if (incoming.argumentSchema !== undefined) data["argument-schema"] = incoming.argumentSchema
     if (incoming.category !== undefined) data.category = incoming.category
     if (incoming.title !== undefined) data.title = incoming.title
+    if (incoming.targetModel !== undefined) data["target-model"] = incoming.targetModel
     if (incoming.createdAt !== undefined) data.created = incoming.createdAt
     if (incoming.updatedAt !== undefined) data.updated = incoming.updatedAt
     await writeTextFile(filePath, serializeFrontmatter(data, incoming.body))

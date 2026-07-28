@@ -55,3 +55,12 @@ next-env.d.ts
 
 # dashboard: AI駆動開発の内部作業ログ（率直なユーザー指摘・自己批評を含むため非公開、ローカルのみで保持）
 /docs/plan.md
+
+# dashboard: 開発時の指示プロンプト原文・仕様原案・ラウンド単位の実装経緯など、
+# 「作っている過程」が分かってしまう内部資料（非公開、ローカルのみで保持）
+/TODO.md
+/docs/spec.md
+/docs/design-reference/
+
+# electron-builder が sample-data から生成する配布用zip
+/dist-assets/

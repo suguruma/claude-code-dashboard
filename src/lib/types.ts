@@ -72,6 +72,12 @@ export interface SkillMeta {
   category?: string
   /** ディレクトリ名（呼び出しコマンド）とは別の、一覧で見出しとして表示する人間向けの名前 */
   title?: string
+  /**
+   * このスキルのプロンプト設計が想定しているモデル（自由記述。例:"Opus 5"）。
+   * Claude Code側でSKILL.mdのfrontmatterキー`model`が予約語として解釈される可能性を避けるため、
+   * ダッシュボード専用メタデータとして`target-model`という別名を使う。
+   */
+  targetModel?: string
   body: string
   /** references/scripts/evals サブディレクトリの有無（表示専用、frontmatterには保存しない） */
   hasReferences?: boolean
@@ -252,6 +258,7 @@ export interface ExportedSkill {
   argumentSchema?: unknown
   category?: string
   title?: string
+  targetModel?: string
   createdAt?: string
   updatedAt?: string
   body: string
@@ -280,6 +287,9 @@ export interface ImportDiffItem {
   /** スキルの表示名変更（未設定は null）。kind: "rule" では使用しない */
   titleBefore?: string | null
   titleAfter?: string | null
+  /** スキルの対象モデル変更（未設定は null）。kind: "rule" では使用しない */
+  targetModelBefore?: string | null
+  targetModelAfter?: string | null
 }
 
 export interface ImportDiffResult {
@@ -301,7 +311,12 @@ export interface SessionProjectSummary {
   lastActivityAt: string | null
 }
 
-/** 1セッション（1つの`.jsonl`）の集計サマリー */
+/**
+ * 1セッション（1つの`.jsonl`）の集計サマリー。
+ * セッション一覧の表示だけでなく、同一プロジェクト内の他セッションと突き合わせて
+ * 「いつもと比べて異常か」を判定する診断（sessionDiagnostics.ts）の入力も兼ねるため、
+ * 診断の8軸が必要とする値はすべてここに含める。
+ */
 export interface SessionSummary {
   sessionId: string
   startedAt: string | null
@@ -320,6 +335,21 @@ export interface SessionSummary {
   mcpToolCallCount: number
   skillCallCount: number
   totalToolOutputChars: number
+  /** ツール実行結果ではない、人間が実際に送った指示の件数（自律度の分母） */
+  userMessageCount: number
+  /** ユーザーが途中で停止させたツール呼び出しの回数 */
+  interruptedToolCallCount: number
+  /** フック（pre-commit・フォーマッタ等）が失敗した回数 */
+  hookErrorCount: number
+  /** Agentツールによるサブエージェント呼び出しの回数 */
+  subagentCallCount: number
+  /**
+   * 先頭のユーザー発話の抜粋（何のセッションだったかを判別するための表示名用）。
+   * プライバシー方針上、本文全体や2件目以降の発話は保持・表示しない（この抜粋のみ）。
+   */
+  firstUserMessageExcerpt: string | null
+  /** 発火したスキル名（重複なし、呼び出し回数の情報は持たない） */
+  skillNames: string[]
 }
 
 /** ターン（assistantメッセージ1件）ごとのトークン消費ポイント */
@@ -357,11 +387,19 @@ export interface CompactionEvent {
   durationMs: number
 }
 
-/** セッション詳細の全メトリクス */
+/**
+ * 診断（sessionDiagnostics.ts）が実際に必要とする最小限のフィールドだけを持つ軽量版。
+ * セッションを選んだ直後の初期表示ではこちらを取得する（詳細データを開くまでSessionMetrics全体は取得しない）。
+ */
+export interface SessionDiagnosisMetrics {
+  summary: SessionSummary
+  mcpCallCountsByServer: Record<string, number>
+}
+
+/** セッション詳細の全メトリクス（「詳細データ」を開いたときだけ取得する） */
 export interface SessionMetrics {
   summary: SessionSummary
   tokenPoints: TokenPoint[]
-  toolCalls: ToolCallEvent[]
   compactions: CompactionEvent[]
   toolCallCountsByName: Record<string, number>
   toolErrorCountsByName: Record<string, number>
@@ -378,4 +416,26 @@ export interface SessionMetrics {
   interruptedToolCallCount: number
   hookErrorCount: number
   userMessageCount: number
+}
+
+/**
+ * `session-diagnostician`スキル（Claude Code側）が生成する意味診断1件。
+ * sessionDiagnostics.tsのしきい値判定とは異なり、根拠(observation)は会話内容を読んだ自由記述になる。
+ */
+export interface SessionSemanticFinding {
+  id: string
+  title: string
+  severity: "good" | "warning" | "critical" | "info"
+  observation: string
+  action: string | null
+}
+
+/** `session_diagnosis.json`の内容（対象プロジェクトのルートに生成される） */
+export interface SessionSemanticDiagnosis {
+  version: number
+  generatedAt: string
+  sessionId: string
+  summary: string
+  overall: "good" | "warning" | "critical" | "info"
+  findings: SessionSemanticFinding[]
 }

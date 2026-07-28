@@ -18,6 +18,7 @@ export function useSkills(projectId: string | null) {
     body: string
     category?: string
     title?: string
+    targetModel?: string
   }) {
     if (!projectId) throw new Error("プロジェクトが選択されていません")
     await apiMutate<SkillMeta>(`/api/skills?projectId=${encodeURIComponent(projectId)}`, "POST", input)
@@ -26,7 +27,13 @@ export function useSkills(projectId: string | null) {
 
   async function updateSkill(
     dirName: string,
-    patch: { description?: string; body?: string; category?: string; title?: string }
+    patch: {
+      description?: string
+      body?: string
+      category?: string
+      title?: string
+      targetModel?: string
+    }
   ) {
     if (!projectId) throw new Error("プロジェクトが選択されていません")
     await apiMutate<SkillMeta>(

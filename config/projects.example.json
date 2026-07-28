@@ -1,10 +1,4 @@
 {
-  "projects": [
-    {
-      "id": "sample",
-      "name": "サンプルプロジェクト",
-      "path": "./sample-data"
-    }
-  ],
-  "selectedProjectId": "sample"
+  "projects": [],
+  "selectedProjectId": null
 }

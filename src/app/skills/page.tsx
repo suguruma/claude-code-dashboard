@@ -51,6 +51,7 @@ export default function SkillsPage() {
     body: string
     category?: string
     title?: string
+    targetModel?: string
   }) {
     try {
       if (editingSkill) {
@@ -64,6 +65,7 @@ export default function SkillsPage() {
           body: input.body,
           category: input.category,
           title: input.title,
+          targetModel: input.targetModel,
         })
         toast.success("スキルを更新しました")
       } else {

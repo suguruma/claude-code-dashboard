@@ -143,6 +143,42 @@ describe("createSkill / updateSkill / deleteSkill", () => {
     expect(content).not.toContain("title:")
   })
 
+  it("targetModelを指定して作成し、description更新後もtargetModelが保持される（frontmatterキーはtarget-model）", async () => {
+    const project = await makeProject()
+    await createSkill(project, {
+      dirName: "model-tagged",
+      description: "x",
+      body: "",
+      targetModel: "Opus 5",
+    })
+    const updated = await updateSkill(project, "model-tagged", { description: "更新後" })
+    expect(updated.targetModel).toBe("Opus 5")
+
+    const content = await fs.readFile(
+      path.join(project.path, "skills", "model-tagged", "SKILL.md"),
+      "utf-8"
+    )
+    expect(content).toContain("target-model: Opus 5")
+  })
+
+  it("targetModelに空文字を指定すると未設定に戻る", async () => {
+    const project = await makeProject()
+    await createSkill(project, {
+      dirName: "will-clear-model",
+      description: "x",
+      body: "",
+      targetModel: "Opus 4.8",
+    })
+    const updated = await updateSkill(project, "will-clear-model", { targetModel: "" })
+    expect(updated.targetModel).toBeUndefined()
+
+    const content = await fs.readFile(
+      path.join(project.path, "skills", "will-clear-model", "SKILL.md"),
+      "utf-8"
+    )
+    expect(content).not.toContain("target-model:")
+  })
+
   it("createdAtは作成時にfrontmatterのcreatedへ保存される", async () => {
     const project = await makeProject()
     const skill = await createSkill(project, { dirName: "dated", description: "x", body: "" })

@@ -108,6 +108,8 @@ describe("listSessions / getSessionMetrics", () => {
     expect(summary.compactionCount).toBe(1)
     expect(summary.cwd).toBe("C:\\proj")
     expect(summary.version).toBe("2.1.217")
+    expect(summary.firstUserMessageExcerpt).toBe("こんにちは")
+    expect(summary.skillNames).toEqual([])
 
     const metrics = await getSessionMetrics("proj-a", "s1")
     expect(metrics.tokenPoints).toHaveLength(2)
@@ -119,8 +121,6 @@ describe("listSessions / getSessionMetrics", () => {
     ])
     expect(metrics.hookErrorCount).toBe(1)
     expect(metrics.userMessageCount).toBe(1)
-    expect(metrics.toolCalls.find((t) => t.name === "Bash")?.isError).toBe(true)
-    expect(metrics.toolCalls.find((t) => t.name === "Read")?.isError).toBe(false)
   })
 
   it("MCPツール呼び出し・スキル呼び出し・サブエージェント呼び出し・出力文字数を集計する", async () => {
@@ -168,17 +168,30 @@ describe("listSessions / getSessionMetrics", () => {
     expect(metrics.subagentCallCounts).toEqual({ Explore: 1 })
     expect(metrics.toolOutputCharsByName["mcp__ccd_session__mark_chapter"]).toBe(10)
 
-    const mcpCall = metrics.toolCalls.find((t) => t.name === "mcp__ccd_session__mark_chapter")
-    expect(mcpCall?.mcpServer).toBe("ccd_session")
-    expect(mcpCall?.outputChars).toBe(10)
-    const skillCall = metrics.toolCalls.find((t) => t.name === "Skill")
-    expect(skillCall?.skillName).toBe("task")
-    const agentCall = metrics.toolCalls.find((t) => t.name === "Agent")
-    expect(agentCall?.subagentType).toBe("Explore")
-
     expect(metrics.summary.mcpToolCallCount).toBe(1)
     expect(metrics.summary.skillCallCount).toBe(1)
     expect(metrics.summary.totalToolOutputChars).toBe(16)
+    expect(metrics.summary.skillNames).toEqual(["task"])
+  })
+
+  it("先頭発話が60文字を超える場合は末尾を省略し、tool_result専用行は先頭発話として扱わない", async () => {
+    const longText = "あ".repeat(80)
+    const lines = [
+      {
+        type: "user",
+        timestamp: "2026-01-01T00:00:00.000Z",
+        // tool_resultのみの行はhasToolResult=trueとなり、ユーザーの実発話としてはカウントされない
+        message: { content: [{ type: "tool_result", tool_use_id: "toolu_x", is_error: false }] },
+      },
+      {
+        type: "user",
+        timestamp: "2026-01-01T00:00:01.000Z",
+        message: { content: [{ type: "text", text: longText }] },
+      },
+    ]
+    await writeSession("proj-a", "s1", lines.map(line).join(""))
+    const summary = (await listSessions("proj-a"))[0]
+    expect(summary.firstUserMessageExcerpt).toBe(`${"あ".repeat(60)}…`)
   })
 
   it("tool_resultのcontent配列中、type!=='text'のブロックはtextフィールドを持っていても文字数に含めない", async () => {
@@ -214,8 +227,7 @@ describe("listSessions / getSessionMetrics", () => {
     await writeSession("proj-a", "s1", lines.map(line).join(""))
     const metrics = await getSessionMetrics("proj-a", "s1")
 
-    const readCall = metrics.toolCalls.find((t) => t.name === "Read")
-    expect(readCall?.outputChars).toBe(3)
+    expect(metrics.toolOutputCharsByName.Read).toBe(3)
   })
 
   it("interrupted:trueを正しくカウントする", async () => {

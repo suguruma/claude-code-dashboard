@@ -57,6 +57,18 @@ describe("buildExportBundle", () => {
     expect(bundle.skills).toMatchObject([{ dirName: "titled", title: "表示用の名前" }])
   })
 
+  it("スキルのtargetModel（対象モデル）もバンドルに含める", async () => {
+    const project = await makeProject()
+    await fs.mkdir(path.join(project.path, "skills", "model-tagged"), { recursive: true })
+    await fs.writeFile(
+      path.join(project.path, "skills", "model-tagged", "SKILL.md"),
+      "---\nname: model-tagged\ndescription: desc\ntarget-model: Opus 5\n---\n\nbody\n"
+    )
+
+    const bundle = await buildExportBundle(project)
+    expect(bundle.skills).toMatchObject([{ dirName: "model-tagged", targetModel: "Opus 5" }])
+  })
+
   it("スキルのupdatedAt（更新日）もバンドルに含める", async () => {
     const project = await makeProject()
     await fs.mkdir(path.join(project.path, "skills", "updated-skill"), { recursive: true })
@@ -122,6 +134,19 @@ describe("validateBundle", () => {
     expect(bundle.skills[1].title).toBeUndefined()
   })
 
+  it("スキルのtargetModelが文字列ならそのまま保持し、無ければundefinedになる", () => {
+    const bundle = validateBundle({
+      version: 1,
+      rules: [],
+      skills: [
+        { dirName: "a", name: "a", description: "d", body: "b", targetModel: "Opus 5" },
+        { dirName: "b", name: "b", description: "d", body: "b" },
+      ],
+    })
+    expect(bundle.skills[0].targetModel).toBe("Opus 5")
+    expect(bundle.skills[1].targetModel).toBeUndefined()
+  })
+
   it("スキルのupdatedAtが文字列ならそのまま保持し、無ければundefinedになる", () => {
     const bundle = validateBundle({
       version: 1,
@@ -159,6 +184,8 @@ describe("computeImportDiff", () => {
         categoryAfter: null,
         titleBefore: null,
         titleAfter: null,
+        targetModelBefore: null,
+        targetModelAfter: null,
       },
     ])
   })
@@ -230,6 +257,30 @@ describe("computeImportDiff", () => {
     expect(skill?.status).toBe("changed")
     expect(skill?.titleBefore).toBe("旧見出し")
     expect(skill?.titleAfter).toBe("新見出し")
+  })
+
+  it("bodyとdescriptionは同じでもtargetModelだけ異なる場合はchangedになる", async () => {
+    const project = await makeProject()
+    await fs.mkdir(path.join(project.path, "skills", "existing"), { recursive: true })
+    await fs.writeFile(
+      path.join(project.path, "skills", "existing", "SKILL.md"),
+      "---\nname: existing\ndescription: desc\ntarget-model: Opus 4.8\n---\n\n本文\n"
+    )
+
+    const bundle: ExportBundle = {
+      version: 1,
+      exportedAt: "now",
+      sourceProjectName: "src",
+      rules: [],
+      skills: [
+        { dirName: "existing", name: "existing", description: "desc", body: "本文", targetModel: "Opus 5" },
+      ],
+    }
+    const diff = await computeImportDiff(project, bundle)
+    const skill = diff.items.find((i) => i.kind === "skill")
+    expect(skill?.status).toBe("changed")
+    expect(skill?.targetModelBefore).toBe("Opus 4.8")
+    expect(skill?.targetModelAfter).toBe("Opus 5")
   })
 
   it("不正な形式のスキルdirNameはinvalidになる", async () => {
@@ -346,6 +397,23 @@ describe("applyImport", () => {
 
     const content = await fs.readFile(path.join(project.path, "skills", "titled", "SKILL.md"), "utf-8")
     expect(content).toContain("title: 表示名テスト")
+  })
+
+  it("スキルのtargetModelもSKILL.mdのfrontmatterに書き込む（キーはtarget-model）", async () => {
+    const project = await makeProject()
+    const bundle: ExportBundle = {
+      version: 1,
+      exportedAt: "now",
+      sourceProjectName: "src",
+      rules: [],
+      skills: [
+        { dirName: "model-tagged", name: "model-tagged", description: "d", body: "b", targetModel: "Opus 5" },
+      ],
+    }
+    await applyImport(project, bundle, { ruleCategories: [], skillDirNames: ["model-tagged"] })
+
+    const content = await fs.readFile(path.join(project.path, "skills", "model-tagged", "SKILL.md"), "utf-8")
+    expect(content).toContain("target-model: Opus 5")
   })
 
   it("スキルのupdatedAtもSKILL.mdのfrontmatterに書き込む", async () => {

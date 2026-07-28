@@ -12,7 +12,8 @@
     "lint": "eslint",
     "test": "vitest run",
     "electron:dev": "next build && electron .",
-    "dist:win": "next build && electron-builder --win portable --x64"
+    "dist:win": "next build && electron-builder --win portable --x64",
+    "package:sample-data": "node scripts/package-sample-data.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
