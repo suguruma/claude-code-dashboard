@@ -81,3 +81,45 @@ export async function browseDirectory(targetPath: string | null): Promise<Browse
 
   return { path: resolved, parentPath, entries }
 }
+
+/** プレビューとして読み込むファイル内容の上限バイト数。ディレクトリピッカーでの簡易確認用のため小さめに抑える */
+const PREVIEW_MAX_BYTES = 8 * 1024
+
+export interface FilePreviewResult {
+  content: string
+  /** ファイルサイズが上限を超え、先頭のみを表示している場合true */
+  truncated: boolean
+  /** null バイトを含むなどテキストとして扱えないと判断した場合true（contentは空文字になる） */
+  binary: boolean
+}
+
+/**
+ * ディレクトリピッカーでのファイル中身プレビュー用に、先頭PREVIEW_MAX_BYTESバイトのみを読み込む。
+ * 巨大ファイル・バイナリファイルを誤ってメモリに全読み込みしないためのガード。
+ */
+export async function readFilePreview(targetPath: string): Promise<FilePreviewResult> {
+  const resolved = path.resolve(targetPath)
+  const stat = await fs.stat(resolved)
+  if (!stat.isFile()) {
+    throw new Error("指定されたパスはファイルではありません")
+  }
+
+  const readSize = Math.min(stat.size, PREVIEW_MAX_BYTES)
+  const buffer = Buffer.alloc(readSize)
+  const handle = await fs.open(resolved, "r")
+  try {
+    await handle.read(buffer, 0, readSize, 0)
+  } finally {
+    await handle.close()
+  }
+
+  if (buffer.includes(0)) {
+    return { content: "", truncated: false, binary: true }
+  }
+
+  return {
+    content: buffer.toString("utf-8"),
+    truncated: stat.size > PREVIEW_MAX_BYTES,
+    binary: false,
+  }
+}

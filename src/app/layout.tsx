@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { SideNav } from "@/components/layout/SideNav";
-import { TopBar } from "@/components/layout/TopBar";
+import { AppShell } from "@/components/layout/AppShell";
 import { ThemeProvider } from "@/components/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
@@ -36,15 +35,7 @@ export default function RootLayout({
       <body className="h-full">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <TooltipProvider>
-            <div className="flex h-full">
-              <SideNav />
-              <div className="flex h-full min-w-0 flex-1 flex-col">
-                <TopBar />
-                <main className="flex-1 overflow-y-auto">
-                  <div className="mx-auto w-full max-w-6xl px-6 py-8">{children}</div>
-                </main>
-              </div>
-            </div>
+            <AppShell>{children}</AppShell>
             <Toaster />
           </TooltipProvider>
         </ThemeProvider>

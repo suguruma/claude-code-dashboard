@@ -2,7 +2,7 @@ import { promises as fs } from "fs"
 import os from "os"
 import path from "path"
 import { afterEach, describe, expect, it } from "vitest"
-import { browseDirectory, getShortcuts } from "./dirBrowser"
+import { browseDirectory, getShortcuts, readFilePreview } from "./dirBrowser"
 
 const cleanupDirs: string[] = []
 
@@ -75,5 +75,56 @@ describe("getShortcuts", () => {
     const shortcuts = getShortcuts()
     expect(shortcuts.some((s) => s.label === "ホーム")).toBe(true)
     expect(shortcuts.some((s) => s.label === "~/.claude")).toBe(true)
+  })
+})
+
+describe("readFilePreview", () => {
+  it("テキストファイルの内容を読み込む", async () => {
+    const tmpDir = await makeTmpDir()
+    const filePath = path.join(tmpDir, "CLAUDE.md")
+    await fs.writeFile(filePath, "# ルール\n結論を先に書く", "utf-8")
+
+    const result = await readFilePreview(filePath)
+    expect(result).toEqual({ content: "# ルール\n結論を先に書く", truncated: false, binary: false })
+  })
+
+  it("上限バイト数を超えるファイルはtruncated: trueで先頭のみ返す", async () => {
+    const tmpDir = await makeTmpDir()
+    const filePath = path.join(tmpDir, "big.txt")
+    await fs.writeFile(filePath, "a".repeat(20 * 1024), "utf-8")
+
+    const result = await readFilePreview(filePath)
+    expect(result.truncated).toBe(true)
+    expect(result.binary).toBe(false)
+    expect(result.content.length).toBe(8 * 1024)
+  })
+
+  it("nullバイトを含むファイルはbinary: trueとし内容を返さない", async () => {
+    const tmpDir = await makeTmpDir()
+    const filePath = path.join(tmpDir, "image.png")
+    await fs.writeFile(filePath, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x0d, 0x0a]))
+
+    const result = await readFilePreview(filePath)
+    expect(result).toEqual({ content: "", truncated: false, binary: true })
+  })
+
+  it("空ファイルはbinary: false・content: \"\"を返す", async () => {
+    const tmpDir = await makeTmpDir()
+    const filePath = path.join(tmpDir, "empty.txt")
+    await fs.writeFile(filePath, "")
+
+    const result = await readFilePreview(filePath)
+    expect(result).toEqual({ content: "", truncated: false, binary: false })
+  })
+
+  it("ディレクトリを指定するとエラーになる", async () => {
+    const tmpDir = await makeTmpDir()
+    await expect(readFilePreview(tmpDir)).rejects.toThrow("ファイルではありません")
+  })
+
+  it("存在しないパスを指定するとエラーになる", async () => {
+    await expect(
+      readFilePreview(path.join(os.tmpdir(), "ccd-does-not-exist-xyz.txt"))
+    ).rejects.toThrow()
   })
 })

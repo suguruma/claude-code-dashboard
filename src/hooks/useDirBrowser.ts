@@ -2,7 +2,7 @@
 
 import useSWR from "swr"
 import { fetcher } from "@/lib/fetcher"
-import type { DirEntry } from "@/lib/dirBrowser"
+import type { DirEntry, FilePreviewResult } from "@/lib/dirBrowser"
 
 export interface DirBrowseResponse {
   path: string | null
@@ -20,6 +20,19 @@ export function useDirBrowser(targetPath: string | null, enabled: boolean = true
     parentPath: data?.parentPath ?? null,
     entries: data?.entries ?? [],
     shortcuts: data?.shortcuts ?? [],
+    isLoading,
+    error,
+  }
+}
+
+export function useFilePreview(filePath: string | null) {
+  const key = filePath ? `/api/browse-dir/preview?path=${encodeURIComponent(filePath)}` : null
+  const { data, error, isLoading } = useSWR<FilePreviewResult>(key, fetcher)
+
+  return {
+    content: data?.content ?? "",
+    truncated: data?.truncated ?? false,
+    binary: data?.binary ?? false,
     isLoading,
     error,
   }

@@ -83,6 +83,15 @@ export function LogList({ logs, selectedTaskId, onSelect, onDelete }: LogListPro
                 介入 {log.user_interventions.length}件
               </p>
             )}
+            {log.skill_names && log.skill_names.length > 0 && (
+              <div className="mt-1 flex flex-wrap gap-1">
+                {log.skill_names.map((name) => (
+                  <Badge key={name} variant="outline" className="text-[10px] font-normal">
+                    {name}
+                  </Badge>
+                ))}
+              </div>
+            )}
           </button>
           <button
             type="button"

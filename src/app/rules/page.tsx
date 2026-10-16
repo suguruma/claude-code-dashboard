@@ -92,7 +92,7 @@ export default function RulesPage() {
   return (
     <div className="space-y-10">
       <section className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-start justify-between">
           <div>
             <h1 className="text-xl font-semibold">ルール管理</h1>
             <p className="text-sm text-muted-foreground">

@@ -3,7 +3,9 @@
 import { useState } from "react"
 import { useProjects } from "@/hooks/useProjects"
 import { useExecutionLogs } from "@/hooks/useExecutionLogs"
+import { usePersistedState } from "@/hooks/useLocalStorage"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { AnalysisProjectSelector } from "@/components/analysis/AnalysisProjectSelector"
 import { LogList } from "@/components/trace/LogList"
@@ -16,7 +18,10 @@ import { TrialProcessTimeline } from "@/components/trace/TrialProcessTimeline"
 
 export default function TracePage() {
   const { projects, selectedProjectId, selectedProject, isLoading: projectsLoading } = useProjects()
-  const [manuallySelectedProjectId, setManuallySelectedProjectId] = useState<string | null>(null)
+  const [manuallySelectedProjectId, setManuallySelectedProjectId] = usePersistedState<string | null>(
+    "ccd:trace-analysis-project",
+    null
+  )
   const analysisProjectId = manuallySelectedProjectId ?? projects[0]?.id ?? null
   const analysisProject = projects.find((p) => p.id === analysisProjectId) ?? null
 
@@ -101,6 +106,15 @@ export default function TracePage() {
               <div>
                 <h2 className="text-lg font-semibold">{selectedEntry.task_name}</h2>
                 <p className="text-sm text-muted-foreground mt-1">{selectedEntry.summary}</p>
+                {selectedEntry.skill_names && selectedEntry.skill_names.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {selectedEntry.skill_names.map((name) => (
+                      <Badge key={name} variant="outline" className="font-mono text-xs font-normal">
+                        {name}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2">

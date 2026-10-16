@@ -151,7 +151,8 @@
       },
       "user_interventions": [],
       "next_golden_prompt": "【目的】新機能の企画書作成\n【体制】戦略家・設計者・生成者・破壊者・仕上げ屋の5役体制（高負荷制作チームスキル）で実施すること。生成者は必ず3案出して比較すること。",
-      "suggested_new_rules": []
+      "suggested_new_rules": [],
+      "skill_names": ["autonomous-production-team"]
     },
     {
       "task_id": "task_20260725_002",
@@ -167,7 +168,8 @@
       },
       "user_interventions": [],
       "next_golden_prompt": "session-log-extractorは会話の区切り（セッション終了時や機能追加が一段落したタイミング）で呼び出すとよい。直前に動作検証目的で手動作成したエントリがすでにある場合は、実質的な差分が無いことを正直に記録し、内容を水増ししないこと。",
-      "suggested_new_rules": []
+      "suggested_new_rules": [],
+      "skill_names": ["session-log-extractor"]
     }
   ]
 }

@@ -1,7 +1,6 @@
-import { promises as fs } from "fs"
 import path from "path"
 import { parseClaudeMd, serializeClaudeMd } from "./claudeMdParser"
-import { readTextFile, resolveProjectPath, writeTextFile } from "./fileIO"
+import { backupFile, readTextFile, resolveProjectPath, writeTextFile } from "./fileIO"
 import { serializeFrontmatter } from "./frontmatter"
 import { listSkills, validateSkillDirName } from "./skills"
 import {
@@ -195,18 +194,6 @@ export async function computeImportDiff(
   }
 
   return { items }
-}
-
-/** 上書き前に同名バックアップ(`<file>.ccd-backup.<epoch ms>`)を作成する。元ファイルが無い場合は何もしない */
-async function backupFile(filePath: string): Promise<string | null> {
-  try {
-    await fs.access(filePath)
-  } catch {
-    return null
-  }
-  const backupPath = `${filePath}.ccd-backup.${Date.now()}`
-  await fs.copyFile(filePath, backupPath)
-  return backupPath
 }
 
 export async function applyImport(

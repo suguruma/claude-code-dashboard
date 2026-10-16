@@ -2,7 +2,16 @@ import { promises as fs } from "fs"
 import os from "os"
 import path from "path"
 import { afterEach, describe, expect, it } from "vitest"
-import { createSkill, deleteSkill, getSkill, listSkills, renameSkill, updateSkill } from "./skills"
+import {
+  createSkill,
+  deleteSkill,
+  disableSkill,
+  enableSkill,
+  getSkill,
+  listSkills,
+  renameSkill,
+  updateSkill,
+} from "./skills"
 import { ProjectConfig } from "./types"
 
 const cleanupDirs: string[] = []
@@ -349,5 +358,89 @@ describe("renameSkill", () => {
     await expect(renameSkill(project, "a/../../victim", "new-name")).rejects.toThrow()
 
     expect(await getSkill(project, "victim")).toMatchObject({ description: "被害想定" })
+  })
+})
+
+describe("disableSkill / enableSkill", () => {
+  it("新規スキルは既定でenabled: trueになる", async () => {
+    const project = await makeProject()
+    const skill = await createSkill(project, { dirName: "fresh", description: "x", body: "" })
+    expect(skill.enabled).toBe(true)
+  })
+
+  it("無効化するとskills/から消え、skills-disabled/に実体が移る", async () => {
+    const project = await makeProject()
+    await createSkill(project, { dirName: "toggle-me", description: "x", body: "本文" })
+
+    const disabled = await disableSkill(project, "toggle-me")
+    expect(disabled.enabled).toBe(false)
+    expect(disabled.body).toBe("本文")
+
+    await expect(fs.access(path.join(project.path, "skills", "toggle-me"))).rejects.toThrow()
+    const content = await fs.readFile(
+      path.join(project.path, "skills-disabled", "toggle-me", "SKILL.md"),
+      "utf-8"
+    )
+    expect(content).toContain("本文")
+  })
+
+  it("無効化したスキルはlistSkillsに引き続き含まれる（enabled: false）", async () => {
+    const project = await makeProject()
+    await createSkill(project, { dirName: "still-listed", description: "x", body: "" })
+    await disableSkill(project, "still-listed")
+
+    const skills = await listSkills(project)
+    expect(skills).toHaveLength(1)
+    expect(skills[0]).toMatchObject({ dirName: "still-listed", enabled: false })
+  })
+
+  it("有効化するとskills-disabled/から消え、skills/に実体が戻る", async () => {
+    const project = await makeProject()
+    await createSkill(project, { dirName: "back-again", description: "x", body: "" })
+    await disableSkill(project, "back-again")
+
+    const enabled = await enableSkill(project, "back-again")
+    expect(enabled.enabled).toBe(true)
+
+    await expect(
+      fs.access(path.join(project.path, "skills-disabled", "back-again"))
+    ).rejects.toThrow()
+    const content = await fs.readFile(
+      path.join(project.path, "skills", "back-again", "SKILL.md"),
+      "utf-8"
+    )
+    expect(content).toBeTruthy()
+  })
+
+  it("既に無効なスキルを再度無効化しようとするとエラーになる", async () => {
+    const project = await makeProject()
+    await createSkill(project, { dirName: "dup-disable", description: "x", body: "" })
+    await disableSkill(project, "dup-disable")
+    await expect(disableSkill(project, "dup-disable")).rejects.toThrow()
+  })
+
+  it("既に有効なスキルを再度有効化しようとするとエラーになる", async () => {
+    const project = await makeProject()
+    await createSkill(project, { dirName: "dup-enable", description: "x", body: "" })
+    await expect(enableSkill(project, "dup-enable")).rejects.toThrow()
+  })
+
+  it("存在しないスキルの無効化・有効化はエラーになる", async () => {
+    const project = await makeProject()
+    await expect(disableSkill(project, "unknown")).rejects.toThrow()
+    await expect(enableSkill(project, "unknown")).rejects.toThrow()
+  })
+
+  it("無効化したスキルもupdateSkill/deleteSkillの対象にできる", async () => {
+    const project = await makeProject()
+    await createSkill(project, { dirName: "editable-disabled", description: "旧", body: "" })
+    await disableSkill(project, "editable-disabled")
+
+    const updated = await updateSkill(project, "editable-disabled", { description: "新" })
+    expect(updated.description).toBe("新")
+    expect(updated.enabled).toBe(false)
+
+    await deleteSkill(project, "editable-disabled")
+    expect(await getSkill(project, "editable-disabled")).toBeNull()
   })
 })

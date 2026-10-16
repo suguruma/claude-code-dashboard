@@ -87,6 +87,32 @@ export interface SkillMeta {
   createdAt?: string
   /** SKILL.mdの最終更新日時。frontmatterの`updated`に保存し、更新のたびに現在時刻へ差し替える */
   updatedAt?: string
+  /**
+   * 有効/無効の状態。frontmatterには保存せず、実体が`skills/`（true）と`skills-disabled/`（false）の
+   * どちらに置かれているかから計算する（Claude Codeは`skills/`配下を全て有効なスキルとして読み込むため、
+   * フラグだけでは発火を止められない）。
+   */
+  enabled: boolean
+}
+
+/**
+ * 同カテゴリ内でdescriptionが意味的に近く、Claude Codeの発火判定が曖昧になりうるスキルの組。
+ * `skillSimilarity.ts`の文字bigram類似度で検出する（LLM呼び出し不要）。
+ */
+export interface SimilarSkillPair {
+  category: string
+  dirNameA: string
+  dirNameB: string
+  labelA: string
+  labelB: string
+  /** 0〜1のDice係数。1に近いほどdescriptionの文字bigram構成が一致している */
+  score: number
+}
+
+/** `skills-archive/<model>/<dirName>/` に退避されているスキルの1バージョン */
+export interface ArchivedSkillVersion {
+  model: string
+  updatedAt?: string
 }
 
 export interface TradeOff {
@@ -164,6 +190,12 @@ export interface ExecutionLogEntry {
   user_interventions: UserIntervention[]
   next_golden_prompt: string
   suggested_new_rules: SuggestedNewRule[]
+  /**
+   * このタスク中に発火したスキル名（呼び出しコマンド＝dirName）の配列。ログを書き出すスキル自身が
+   * 会話履歴から自己申告する（`.jsonl`の機械的な解析ではない）。trigger-evalsを机上で作らずとも
+   * 実利用からの発火実績データを蓄積する目的のため、対応するスキルが無ければ省略してよい。
+   */
+  skill_names?: string[]
 }
 
 export interface ExecutionLogFile {

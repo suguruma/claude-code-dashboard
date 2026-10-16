@@ -11,12 +11,16 @@ import { RuleRefactorList } from "@/components/refactor/RuleRefactorList"
 import { AnalysisProjectSelector } from "@/components/analysis/AnalysisProjectSelector"
 import { useProjects } from "@/hooks/useProjects"
 import { useRuleRefactor } from "@/hooks/useRuleRefactor"
+import { usePersistedState } from "@/hooks/useLocalStorage"
 
 const INVOKE_COMMAND = "/rule-optimizer"
 
 export default function RefactorPage() {
   const { projects, isLoading: projectsLoading } = useProjects()
-  const [manuallySelectedProjectId, setManuallySelectedProjectId] = useState<string | null>(null)
+  const [manuallySelectedProjectId, setManuallySelectedProjectId] = usePersistedState<string | null>(
+    "ccd:refactor-analysis-project",
+    null
+  )
   const analysisProjectId = manuallySelectedProjectId ?? projects[0]?.id ?? null
   const analysisProject = projects.find((p) => p.id === analysisProjectId) ?? null
 

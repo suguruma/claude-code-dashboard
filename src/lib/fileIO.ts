@@ -54,11 +54,24 @@ export function getAppDataRoot(): string {
   return process.env.CCD_DATA_DIR || process.cwd()
 }
 
+export function resolveProjectRoot(projectRoot: string): string {
+  return path.isAbsolute(projectRoot) ? projectRoot : path.join(getAppDataRoot(), projectRoot)
+}
+
 export function resolveProjectPath(projectRoot: string, fileName: string): string {
-  const base = path.isAbsolute(projectRoot)
-    ? projectRoot
-    : path.join(getAppDataRoot(), projectRoot)
-  return path.join(base, fileName)
+  return path.join(resolveProjectRoot(projectRoot), fileName)
+}
+
+/** 上書き前に同名バックアップ(`<file>.ccd-backup.<epoch ms>`)を作成する。元ファイルが無い場合は何もしない */
+export async function backupFile(filePath: string): Promise<string | null> {
+  try {
+    await fs.access(filePath)
+  } catch {
+    return null
+  }
+  const backupPath = `${filePath}.ccd-backup.${Date.now()}`
+  await fs.copyFile(filePath, backupPath)
+  return backupPath
 }
 
 /** 指定されたプロジェクトルートが、実際のClaude Codeグローバル設定（~/.claude）と一致するかを判定する */

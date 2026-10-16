@@ -1,22 +1,40 @@
 "use client"
 
 import { useState } from "react"
-import { Pencil, Trash2 } from "lucide-react"
+import { Archive, Pencil, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { format } from "date-fns"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Switch } from "@/components/ui/switch"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { SkillArchiveDialog } from "@/components/skills/SkillArchiveDialog"
 import { SkillMeta } from "@/lib/types"
+import { cn } from "@/lib/utils"
 
 interface SkillListCardProps {
   skill: SkillMeta
+  projectId: string | null
   onEdit: (skill: SkillMeta) => void
   onDelete: (dirName: string) => Promise<void>
+  onArchive: (dirName: string) => Promise<void>
+  onRestore: (dirName: string, model: string) => Promise<void>
+  onToggleEnabled: (dirName: string, enabled: boolean) => Promise<void>
 }
 
-export function SkillListCard({ skill, onEdit, onDelete }: SkillListCardProps) {
+export function SkillListCard({
+  skill,
+  projectId,
+  onEdit,
+  onDelete,
+  onArchive,
+  onRestore,
+  onToggleEnabled,
+}: SkillListCardProps) {
   const [busy, setBusy] = useState(false)
+  const [toggling, setToggling] = useState(false)
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false)
 
   async function handleDelete() {
     if (!confirm(`スキル "${skill.name}" を削除しますか？`)) return
@@ -31,8 +49,19 @@ export function SkillListCard({ skill, onEdit, onDelete }: SkillListCardProps) {
     }
   }
 
+  async function handleToggle(checked: boolean) {
+    setToggling(true)
+    try {
+      await onToggleEnabled(skill.dirName, checked)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "更新に失敗しました")
+    } finally {
+      setToggling(false)
+    }
+  }
+
   return (
-    <Card>
+    <Card className={cn(!skill.enabled && "opacity-60")}>
       <CardHeader className="flex flex-row items-start justify-between gap-2 pb-2">
         <div className="min-w-0">
           <CardTitle className="text-sm">{skill.title || skill.dirName}</CardTitle>
@@ -40,12 +69,22 @@ export function SkillListCard({ skill, onEdit, onDelete }: SkillListCardProps) {
             <p className="truncate font-mono text-xs text-muted-foreground">{skill.dirName}</p>
           )}
         </div>
-        <div className="flex flex-wrap justify-end gap-1">
-          {skill.targetModel && <Badge variant="outline">🎯 {skill.targetModel}</Badge>}
-          {skill.argumentSchema !== undefined && <Badge variant="outline">引数あり</Badge>}
-          {skill.hasReferences && <Badge variant="secondary">📎 references</Badge>}
-          {skill.hasScripts && <Badge variant="secondary">🔧 scripts</Badge>}
-          {skill.hasEvals && <Badge variant="secondary">✅ evals</Badge>}
+        <div className="flex shrink-0 items-center gap-2">
+          <div className="flex flex-wrap justify-end gap-1">
+            {skill.targetModel && <Badge variant="outline">🎯 {skill.targetModel}</Badge>}
+            {skill.argumentSchema !== undefined && <Badge variant="outline">引数あり</Badge>}
+            {skill.hasReferences && <Badge variant="secondary">📎 references</Badge>}
+            {skill.hasScripts && <Badge variant="secondary">🔧 scripts</Badge>}
+            {skill.hasEvals && <Badge variant="secondary">✅ evals</Badge>}
+          </div>
+          <Tooltip>
+            <TooltipTrigger render={<div />}>
+              <Switch checked={skill.enabled} disabled={toggling} onCheckedChange={handleToggle} />
+            </TooltipTrigger>
+            <TooltipContent>
+              {skill.enabled ? "有効（Claude Codeから呼び出し可能）" : "無効（呼び出し不可）"}
+            </TooltipContent>
+          </Tooltip>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -58,6 +97,16 @@ export function SkillListCard({ skill, onEdit, onDelete }: SkillListCardProps) {
           </p>
         )}
         <div className="flex items-center justify-end gap-1">
+          {skill.enabled && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7"
+              onClick={() => setArchiveDialogOpen(true)}
+            >
+              <Archive className="size-3.5" />
+            </Button>
+          )}
           <Button variant="ghost" size="icon" className="size-7" onClick={() => onEdit(skill)}>
             <Pencil className="size-3.5" />
           </Button>
@@ -72,6 +121,15 @@ export function SkillListCard({ skill, onEdit, onDelete }: SkillListCardProps) {
           </Button>
         </div>
       </CardContent>
+
+      <SkillArchiveDialog
+        open={archiveDialogOpen}
+        onOpenChange={setArchiveDialogOpen}
+        projectId={projectId}
+        skill={skill}
+        onArchive={onArchive}
+        onRestore={onRestore}
+      />
     </Card>
   )
 }

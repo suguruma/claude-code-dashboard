@@ -10,8 +10,37 @@ function skillsDir(project: ProjectConfig): string {
   return resolveProjectPath(project.path, "skills")
 }
 
-function skillMdPath(project: ProjectConfig, dirName: string): string {
-  return path.join(skillsDir(project), dirName, "SKILL.md")
+/**
+ * 無効化したスキルの退避先。Claude Codeは`skills/`配下を全て有効なスキルとして読み込むため、
+ * 「無効化」は実体をこのディレクトリへ移動することで実現する（frontmatterのフラグ等では発火を止められない）。
+ */
+function disabledSkillsDir(project: ProjectConfig): string {
+  return resolveProjectPath(project.path, "skills-disabled")
+}
+
+async function pathExists(p: string): Promise<boolean> {
+  try {
+    await fs.access(p)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** dirNameが`skills/`（有効）と`skills-disabled/`（無効）のどちらに実在するかを特定する */
+async function locateSkillDir(
+  project: ProjectConfig,
+  dirName: string
+): Promise<{ dir: string; enabled: boolean } | null> {
+  const activeDir = path.join(skillsDir(project), dirName)
+  if (await pathExists(path.join(activeDir, "SKILL.md"))) {
+    return { dir: activeDir, enabled: true }
+  }
+  const disabledDir = path.join(disabledSkillsDir(project), dirName)
+  if (await pathExists(path.join(disabledDir, "SKILL.md"))) {
+    return { dir: disabledDir, enabled: false }
+  }
+  return null
 }
 
 const SUPPORTING_DIRS = ["references", "scripts", "evals"] as const
@@ -21,10 +50,8 @@ const SUPPORTING_DIRS = ["references", "scripts", "evals"] as const
  * 有無を検知する。この可視化のみが目的で、無くても不正なSkillではない。
  */
 async function detectSupportingDirs(
-  project: ProjectConfig,
-  dirName: string
+  base: string
 ): Promise<Pick<SkillMeta, "hasReferences" | "hasScripts" | "hasEvals">> {
-  const base = path.join(skillsDir(project), dirName)
   const [hasReferences, hasScripts, hasEvals] = await Promise.all(
     SUPPORTING_DIRS.map(async (sub) => {
       try {
@@ -64,12 +91,12 @@ async function detectMtime(filePath: string): Promise<string | undefined> {
   }
 }
 
-async function readSkill(project: ProjectConfig, dirName: string): Promise<SkillMeta | null> {
-  const filePath = skillMdPath(project, dirName)
+async function readSkillAt(dir: string, dirName: string, enabled: boolean): Promise<SkillMeta | null> {
+  const filePath = path.join(dir, "SKILL.md")
   try {
     const content = await fs.readFile(filePath, "utf-8")
     const { data, body } = parseFrontmatter(content)
-    const supportingDirs = await detectSupportingDirs(project, dirName)
+    const supportingDirs = await detectSupportingDirs(dir)
     const createdAt =
       typeof data.created === "string" ? data.created : await detectCreatedAt(filePath)
     const updatedAt =
@@ -86,12 +113,19 @@ async function readSkill(project: ProjectConfig, dirName: string): Promise<Skill
       ...supportingDirs,
       createdAt,
       updatedAt,
+      enabled,
     }
   } catch (err) {
     const nodeErr = err as NodeJS.ErrnoException
     if (nodeErr.code === "ENOENT") return null
     throw new FileIOError(`${dirName}/SKILL.md の読み込みに失敗しました: ${String(err)}`)
   }
+}
+
+async function readSkill(project: ProjectConfig, dirName: string): Promise<SkillMeta | null> {
+  const located = await locateSkillDir(project, dirName)
+  if (!located) return null
+  return readSkillAt(located.dir, dirName, located.enabled)
 }
 
 function buildFrontmatterData(skill: SkillMeta): Record<string, unknown> {
@@ -105,19 +139,24 @@ function buildFrontmatterData(skill: SkillMeta): Record<string, unknown> {
   return data
 }
 
-export async function listSkills(project: ProjectConfig): Promise<SkillMeta[]> {
-  const dir = skillsDir(project)
-  let dirNames: string[]
+async function listSubdirNames(dir: string): Promise<string[]> {
   try {
     const dirents = await fs.readdir(dir, { withFileTypes: true })
-    dirNames = dirents.filter((d) => d.isDirectory()).map((d) => d.name)
+    return dirents.filter((d) => d.isDirectory()).map((d) => d.name)
   } catch (err) {
     const nodeErr = err as NodeJS.ErrnoException
     if (nodeErr.code === "ENOENT") return []
-    throw new FileIOError(`skills ディレクトリの読み込みに失敗しました: ${String(err)}`)
+    throw new FileIOError(`ディレクトリの読み込みに失敗しました: ${String(err)}`)
   }
+}
 
-  const skills = await Promise.all(dirNames.map((name) => readSkill(project, name)))
+export async function listSkills(project: ProjectConfig): Promise<SkillMeta[]> {
+  const activeNames = await listSubdirNames(skillsDir(project))
+  const disabledNames = await listSubdirNames(disabledSkillsDir(project))
+  // 通常は有効・無効のどちらか一方にしか存在しないが、念のため重複時は有効側を優先する
+  const allNames = [...activeNames, ...disabledNames.filter((n) => !activeNames.includes(n))]
+
+  const skills = await Promise.all(allNames.map((name) => readSkill(project, name)))
   return skills.filter((s): s is SkillMeta => s !== null)
 }
 
@@ -157,9 +196,10 @@ export async function createSkill(
     body: input.body.trim(),
     createdAt: now,
     updatedAt: now,
+    enabled: true,
   }
   await writeTextFile(
-    skillMdPath(project, input.dirName),
+    path.join(skillsDir(project), input.dirName, "SKILL.md"),
     serializeFrontmatter(buildFrontmatterData(skill), skill.body)
   )
   return skill
@@ -177,7 +217,9 @@ export async function updateSkill(
   }
 ): Promise<SkillMeta> {
   validateSkillDirName(dirName)
-  const existing = await readSkill(project, dirName)
+  const located = await locateSkillDir(project, dirName)
+  if (!located) throw new Error("スキルが見つかりません")
+  const existing = await readSkillAt(located.dir, dirName, located.enabled)
   if (!existing) throw new Error("スキルが見つかりません")
 
   const updated: SkillMeta = {
@@ -193,7 +235,7 @@ export async function updateSkill(
   }
 
   await writeTextFile(
-    skillMdPath(project, dirName),
+    path.join(located.dir, "SKILL.md"),
     serializeFrontmatter(buildFrontmatterData(updated), updated.body)
   )
   return updated
@@ -212,15 +254,16 @@ export async function renameSkill(
   }
 
   validateSkillDirName(newDirName)
-  const existing = await readSkill(project, oldDirName)
+  const located = await locateSkillDir(project, oldDirName)
+  if (!located) throw new Error("スキルが見つかりません")
+  const existing = await readSkillAt(located.dir, oldDirName, located.enabled)
   if (!existing) throw new Error("スキルが見つかりません")
   const conflict = await readSkill(project, newDirName)
   if (conflict) throw new Error(`スキル "${newDirName}" は既に存在します`)
 
-  await fs.rename(
-    path.join(skillsDir(project), oldDirName),
-    path.join(skillsDir(project), newDirName)
-  )
+  // リネームは有効/無効の状態を変えない(元と同じツリー内で移動する)
+  const newPath = path.join(path.dirname(located.dir), newDirName)
+  await fs.rename(located.dir, newPath)
 
   const updated: SkillMeta = {
     ...existing,
@@ -230,7 +273,7 @@ export async function renameSkill(
   }
 
   await writeTextFile(
-    skillMdPath(project, newDirName),
+    path.join(newPath, "SKILL.md"),
     serializeFrontmatter(buildFrontmatterData(updated), updated.body)
   )
   return updated
@@ -238,7 +281,41 @@ export async function renameSkill(
 
 export async function deleteSkill(project: ProjectConfig, dirName: string): Promise<void> {
   validateSkillDirName(dirName)
-  const existing = await readSkill(project, dirName)
-  if (!existing) throw new Error("スキルが見つかりません")
-  await fs.rm(path.join(skillsDir(project), dirName), { recursive: true, force: true })
+  const located = await locateSkillDir(project, dirName)
+  if (!located) throw new Error("スキルが見つかりません")
+  await fs.rm(located.dir, { recursive: true, force: true })
+}
+
+/** スキルを`skills/`から`skills-disabled/`へ移動し、Claude Codeに読み込まれないようにする */
+export async function disableSkill(project: ProjectConfig, dirName: string): Promise<SkillMeta> {
+  validateSkillDirName(dirName)
+  const located = await locateSkillDir(project, dirName)
+  if (!located) throw new Error("スキルが見つかりません")
+  if (!located.enabled) throw new Error("既に無効化されています")
+
+  const destDir = disabledSkillsDir(project)
+  await fs.mkdir(destDir, { recursive: true })
+  const destPath = path.join(destDir, dirName)
+  await fs.rename(located.dir, destPath)
+
+  const skill = await readSkillAt(destPath, dirName, false)
+  if (!skill) throw new Error("無効化後にスキルの読み込みに失敗しました")
+  return skill
+}
+
+/** スキルを`skills-disabled/`から`skills/`へ戻し、再びClaude Codeに読み込まれるようにする */
+export async function enableSkill(project: ProjectConfig, dirName: string): Promise<SkillMeta> {
+  validateSkillDirName(dirName)
+  const located = await locateSkillDir(project, dirName)
+  if (!located) throw new Error("スキルが見つかりません")
+  if (located.enabled) throw new Error("既に有効化されています")
+
+  const destDir = skillsDir(project)
+  await fs.mkdir(destDir, { recursive: true })
+  const destPath = path.join(destDir, dirName)
+  await fs.rename(located.dir, destPath)
+
+  const skill = await readSkillAt(destPath, dirName, true)
+  if (!skill) throw new Error("有効化後にスキルの読み込みに失敗しました")
+  return skill
 }

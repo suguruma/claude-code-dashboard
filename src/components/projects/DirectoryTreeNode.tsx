@@ -12,13 +12,22 @@ interface DirectoryTreeNodeProps {
   depth: number
   selectedPath: string | null
   onSelect: (path: string) => void
+  previewPath?: string | null
+  onPreviewFile?: (path: string) => void
 }
 
-export function DirectoryTreeNode({ entry, depth, selectedPath, onSelect }: DirectoryTreeNodeProps) {
+export function DirectoryTreeNode({
+  entry,
+  depth,
+  selectedPath,
+  onSelect,
+  previewPath,
+  onPreviewFile,
+}: DirectoryTreeNodeProps) {
   const [expanded, setExpanded] = useState(false)
   const isDir = entry.type === "directory"
   const { entries, isLoading, error } = useDirBrowser(entry.path, expanded && isDir)
-  const isSelected = selectedPath === entry.path
+  const isSelected = isDir ? selectedPath === entry.path : previewPath === entry.path
 
   return (
     <div>
@@ -46,10 +55,10 @@ export function DirectoryTreeNode({ entry, depth, selectedPath, onSelect }: Dire
           type="button"
           className={cn(
             "flex min-w-0 flex-1 items-center gap-1.5 truncate text-left",
-            !isDir && "cursor-default text-muted-foreground"
+            !isDir && "text-muted-foreground"
           )}
-          onClick={() => isDir && onSelect(entry.path)}
-          disabled={!isDir}
+          onClick={() => (isDir ? onSelect(entry.path) : onPreviewFile?.(entry.path))}
+          disabled={!isDir && !onPreviewFile}
         >
           {isDir ? (
             <Folder className="size-3.5 shrink-0 text-muted-foreground" />
@@ -92,6 +101,8 @@ export function DirectoryTreeNode({ entry, depth, selectedPath, onSelect }: Dire
               depth={depth + 1}
               selectedPath={selectedPath}
               onSelect={onSelect}
+              previewPath={previewPath}
+              onPreviewFile={onPreviewFile}
             />
           ))}
         </div>
