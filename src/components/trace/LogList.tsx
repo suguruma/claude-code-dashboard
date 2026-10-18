@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { cn } from "@/lib/utils"
 import { ExecutionLogEntry, ExecutionLogStatus } from "@/lib/types"
 
@@ -34,14 +35,15 @@ const STATUS_VARIANT: Record<ExecutionLogStatus, "secondary" | "destructive"> = 
 
 export function LogList({ logs, selectedTaskId, onSelect, onDelete }: LogListProps) {
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<{ taskId: string; taskName: string } | null>(null)
 
-  async function handleDelete(e: React.MouseEvent, taskId: string, taskName: string) {
-    e.stopPropagation()
-    if (!confirm(`実行ログ "${taskName}" を削除しますか？この操作は取り消せません。`)) return
-    setDeletingId(taskId)
+  async function handleConfirmDelete() {
+    if (!deleteTarget) return
+    setDeletingId(deleteTarget.taskId)
     try {
-      await onDelete(taskId)
-      toast.success("実行ログを削除しました")
+      await onDelete(deleteTarget.taskId)
+      toast.success("実行ログを削除しました（「設定 & システム情報」のバックアップから戻せます）")
+      setDeleteTarget(null)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "削除に失敗しました")
     } finally {
@@ -51,6 +53,20 @@ export function LogList({ logs, selectedTaskId, onSelect, onDelete }: LogListPro
 
   return (
     <div className="space-y-1.5">
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(o) => !o && setDeleteTarget(null)}
+        title="実行ログを削除しますか？"
+        description={
+          <>
+            「{deleteTarget?.taskName}」を execution_log.json から削除します。削除前の execution_log.json は自動で
+            バックアップされ、「設定 & システム情報」の「バックアップ」から元に戻せます。
+          </>
+        }
+        confirmLabel="削除する"
+        confirming={deletingId !== null}
+        onConfirm={handleConfirmDelete}
+      />
       {logs.map((log) => (
         <div
           key={log.task_id}
@@ -95,7 +111,10 @@ export function LogList({ logs, selectedTaskId, onSelect, onDelete }: LogListPro
           </button>
           <button
             type="button"
-            onClick={(e) => handleDelete(e, log.task_id, log.task_name)}
+            onClick={(e) => {
+              e.stopPropagation()
+              setDeleteTarget({ taskId: log.task_id, taskName: log.task_name })
+            }}
             disabled={deletingId === log.task_id}
             aria-label="この実行ログを削除"
             className="absolute right-2 top-2 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100 focus-visible:opacity-100"

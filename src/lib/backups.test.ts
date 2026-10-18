@@ -100,3 +100,96 @@ describe("restoreBackup", () => {
     await expect(restoreBackup(project, "../../.claude.json")).rejects.toThrow("不正なファイル名です")
   })
 })
+
+describe("ダッシュボードの退避(.ccd-backup.<epoch>)の一覧と復元", () => {
+  const BACKUP_TS = 1_800_000_000_000
+
+  it("プロジェクト直下の退避(CLAUDE.md・execution_log.json等)が、kind=ccd・元のファイル名つきで一覧に出る", async () => {
+    const project = await makeProject()
+    await fs.writeFile(path.join(project.path, `CLAUDE.md.ccd-backup.${BACKUP_TS}`), "旧CLAUDE")
+    await fs.writeFile(path.join(project.path, `execution_log.json.ccd-backup.${BACKUP_TS + 1000}`), "旧ログ")
+    await fs.writeFile(path.join(project.path, "CLAUDE.md"), "現在")
+
+    const backups = await listBackups(project)
+
+    expect(backups.map((b) => [b.kind, b.originalName, b.timestampMs])).toEqual([
+      ["ccd", "execution_log.json", BACKUP_TS + 1000],
+      ["ccd", "CLAUDE.md", BACKUP_TS],
+    ])
+  })
+
+  it("Claude Code自身のbackups/と、ダッシュボードの退避が一緒に新しい順で並ぶ", async () => {
+    const project = await makeProject()
+    await fs.mkdir(path.join(project.path, "backups"))
+    await fs.writeFile(path.join(project.path, "backups", ".claude.json.backup.1700000000000"), "{}")
+    await fs.writeFile(path.join(project.path, `settings.json.ccd-backup.${BACKUP_TS}`), "{}")
+
+    const backups = await listBackups(project)
+
+    expect(backups.map((b) => b.kind)).toEqual(["ccd", "claude-json"])
+  })
+
+  it("1つ上の .claude.json の退避(復元の直前に作られるもの)も一覧に出る。他のファイルの退避は拾わない", async () => {
+    const project = await makeGlobalLikeProject()
+    const parent = path.dirname(project.path)
+    await fs.writeFile(path.join(parent, `.claude.json.ccd-backup.${BACKUP_TS}`), "{}")
+    await fs.writeFile(path.join(parent, `other.json.ccd-backup.${BACKUP_TS}`), "{}")
+
+    const backups = await listBackups(project)
+
+    expect(backups).toHaveLength(1)
+    expect(backups[0]).toMatchObject({ kind: "ccd", originalName: ".claude.json" })
+  })
+
+  it("ccdの退避を復元すると、元のファイルが退避時の内容に戻る", async () => {
+    const project = await makeProject()
+    const target = path.join(project.path, "CLAUDE.md")
+    await fs.writeFile(path.join(project.path, `CLAUDE.md.ccd-backup.${BACKUP_TS}`), "削除前の内容")
+    await fs.writeFile(target, "削除後の内容")
+
+    await restoreBackup(project, `CLAUDE.md.ccd-backup.${BACKUP_TS}`, "ccd")
+
+    expect(await fs.readFile(target, "utf-8")).toBe("削除前の内容")
+  })
+
+  it("復元の直前の内容も退避されるので、復元そのものも一覧から取り消せる", async () => {
+    const project = await makeProject()
+    const target = path.join(project.path, "settings.json")
+    await fs.writeFile(path.join(project.path, `settings.json.ccd-backup.${BACKUP_TS}`), "古い")
+    await fs.writeFile(target, "復元前の現在")
+
+    await restoreBackup(project, `settings.json.ccd-backup.${BACKUP_TS}`, "ccd")
+
+    const backups = await listBackups(project)
+    const fresh = backups.find((b) => b.timestampMs !== BACKUP_TS)
+    expect(fresh).toBeDefined()
+    expect(await fs.readFile(path.join(project.path, fresh!.fileName), "utf-8")).toBe("復元前の現在")
+  })
+
+  it("元のファイルが消えていても(削除後)、退避から復元して作り直せる", async () => {
+    const project = await makeProject()
+    await fs.writeFile(path.join(project.path, `rules.json.ccd-backup.${BACKUP_TS}`), "戻したい")
+
+    await restoreBackup(project, `rules.json.ccd-backup.${BACKUP_TS}`, "ccd")
+
+    expect(await fs.readFile(path.join(project.path, "rules.json"), "utf-8")).toBe("戻したい")
+  })
+
+  it("一覧に無い名前・パス区切りを含む名前は拒否する", async () => {
+    const project = await makeProject()
+    await expect(restoreBackup(project, `CLAUDE.md.ccd-backup.${BACKUP_TS}`, "ccd")).rejects.toThrow("見つかりません")
+    await expect(restoreBackup(project, "../evil.ccd-backup.1800000000000", "ccd")).rejects.toThrow("不正なファイル名です")
+    const withBackslash = ["a", "b"].join(String.fromCharCode(92))
+    await expect(restoreBackup(project, withBackslash, "ccd")).rejects.toThrow("不正なファイル名です")
+  })
+
+  it("kindを取り違えて指定しても、別の種類の退避は復元されない", async () => {
+    const project = await makeGlobalLikeProject()
+    await fs.mkdir(path.join(project.path, "backups"), { recursive: true })
+    await fs.writeFile(path.join(project.path, "backups", ".claude.json.backup.1800000000000"), "{}")
+    await fs.writeFile(path.join(project.path, `CLAUDE.md.ccd-backup.${BACKUP_TS}`), "x")
+
+    await expect(restoreBackup(project, ".claude.json.backup.1800000000000", "ccd")).rejects.toThrow("見つかりません")
+    await expect(restoreBackup(project, `CLAUDE.md.ccd-backup.${BACKUP_TS}`, "claude-json")).rejects.toThrow("見つかりません")
+  })
+})

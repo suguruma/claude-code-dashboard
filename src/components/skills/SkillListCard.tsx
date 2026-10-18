@@ -7,6 +7,7 @@ import { format } from "date-fns"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { SkillArchiveDialog } from "@/components/skills/SkillArchiveDialog"
@@ -35,13 +36,14 @@ export function SkillListCard({
   const [busy, setBusy] = useState(false)
   const [toggling, setToggling] = useState(false)
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
 
   async function handleDelete() {
-    if (!confirm(`スキル "${skill.name}" を削除しますか？`)) return
     setBusy(true)
     try {
       await onDelete(skill.dirName)
-      toast.success("スキルを削除しました")
+      toast.success("スキルを削除しました（「削除済みスキル」から復元できます）")
+      setDeleteConfirmOpen(false)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "削除に失敗しました")
     } finally {
@@ -114,13 +116,28 @@ export function SkillListCard({
             variant="ghost"
             size="icon"
             className="size-7 text-destructive hover:text-destructive"
-            onClick={handleDelete}
+            onClick={() => setDeleteConfirmOpen(true)}
             disabled={busy}
           >
             <Trash2 className="size-3.5" />
           </Button>
         </div>
       </CardContent>
+
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        onOpenChange={setDeleteConfirmOpen}
+        title="スキルを削除しますか？"
+        description={
+          <>
+            「{skill.title || skill.name}」を削除します。削除したスキルは Claude Code から呼び出せなくなりますが、
+            完全には消えず、スキル管理の「削除済みスキル」から元に戻せます。
+          </>
+        }
+        confirmLabel="削除する"
+        confirming={busy}
+        onConfirm={handleDelete}
+      />
 
       <SkillArchiveDialog
         open={archiveDialogOpen}

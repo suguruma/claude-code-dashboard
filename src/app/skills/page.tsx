@@ -1,16 +1,18 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Archive, Plus } from "lucide-react"
+import { Archive, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { useProjects } from "@/hooks/useProjects"
 import { useSkills } from "@/hooks/useSkills"
+import { useSkillTrash } from "@/hooks/useSkillTrash"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { CategorySection } from "@/components/skills/CategorySection"
 import { SkillListCard } from "@/components/skills/SkillListCard"
 import { SkillFormDialog } from "@/components/skills/SkillFormDialog"
+import { SkillTrashDialog } from "@/components/skills/SkillTrashDialog"
 import { SimilarSkillsAlert } from "@/components/skills/SimilarSkillsAlert"
 import { SkillMeta } from "@/lib/types"
 import { SKILL_CATEGORIES, UNCATEGORIZED } from "@/lib/skillCategories"
@@ -32,6 +34,14 @@ export default function SkillsPage() {
     disableSkill,
     enableSkill,
   } = useSkills(selectedProjectId)
+
+  const {
+    items: trashItems,
+    trashPath,
+    isLoading: trashLoading,
+    restoreTrashedSkill,
+  } = useSkillTrash(selectedProjectId)
+  const [trashOpen, setTrashOpen] = useState(false)
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingSkill, setEditingSkill] = useState<SkillMeta | null>(null)
@@ -154,6 +164,10 @@ export default function SkillsPage() {
           </p>
         </div>
         <div className="flex shrink-0 gap-2">
+          <Button variant="outline" onClick={() => setTrashOpen(true)}>
+            <Trash2 className="size-4" />
+            削除済みスキル{trashItems.length > 0 && `（${trashItems.length}）`}
+          </Button>
           <Button variant="outline" onClick={() => setArchiveAllOpen(true)} disabled={skills.length === 0}>
             <Archive className="size-4" />
             すべてアーカイブ
@@ -214,6 +228,15 @@ export default function SkillsPage() {
         onOpenChange={setDialogOpen}
         initialSkill={editingSkill}
         onSubmit={handleSubmit}
+      />
+
+      <SkillTrashDialog
+        open={trashOpen}
+        onOpenChange={setTrashOpen}
+        items={trashItems}
+        trashPath={trashPath}
+        isLoading={trashLoading}
+        onRestore={restoreTrashedSkill}
       />
 
       <ConfirmDialog

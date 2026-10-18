@@ -2,16 +2,17 @@
 
 import useSWR from "swr"
 import { apiMutate, fetcher } from "@/lib/fetcher"
-import { BackupEntry } from "@/lib/types"
+import { BackupEntry, BackupKind } from "@/lib/types"
 
 export function useBackups(projectId: string | null) {
   const key = projectId ? `/api/backups?projectId=${encodeURIComponent(projectId)}` : null
   const { data, error, isLoading, mutate } = useSWR<{ backups: BackupEntry[] }>(key, fetcher)
 
-  async function restoreBackup(fileName: string) {
+  async function restoreBackup(fileName: string, kind: BackupKind) {
     if (!projectId) throw new Error("プロジェクトが選択されていません")
     await apiMutate(`/api/backups/restore?projectId=${encodeURIComponent(projectId)}`, "POST", {
       fileName,
+      kind,
     })
     await mutate()
   }

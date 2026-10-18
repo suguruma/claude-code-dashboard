@@ -8,6 +8,7 @@ import { CSS } from "@dnd-kit/utilities"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import {
   Tooltip,
   TooltipContent,
@@ -25,6 +26,7 @@ interface RuleCardProps {
 
 export function RuleCard({ rule, onToggle, onEdit, onDelete }: RuleCardProps) {
   const [busy, setBusy] = useState(false)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: rule.id,
   })
@@ -48,7 +50,8 @@ export function RuleCard({ rule, onToggle, onEdit, onDelete }: RuleCardProps) {
     setBusy(true)
     try {
       await onDelete(rule.id)
-      toast.success("ルールを削除しました")
+      toast.success("ルールを削除しました（「設定 & システム情報」のバックアップから戻せます）")
+      setDeleteConfirmOpen(false)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "削除に失敗しました")
     } finally {
@@ -92,13 +95,28 @@ export function RuleCard({ rule, onToggle, onEdit, onDelete }: RuleCardProps) {
             variant="ghost"
             size="icon"
             className="size-7 text-destructive hover:text-destructive"
-            onClick={handleDelete}
+            onClick={() => setDeleteConfirmOpen(true)}
             disabled={busy}
           >
             <Trash2 className="size-3.5" />
           </Button>
         </div>
       </CardContent>
+
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        onOpenChange={setDeleteConfirmOpen}
+        title="ルールを削除しますか？"
+        description={
+          <>
+            「{rule.category}」を CLAUDE.md から削除します。削除前の CLAUDE.md は自動でバックアップされ、
+            「設定 & システム情報」の「バックアップ」から元に戻せます。
+          </>
+        }
+        confirmLabel="削除する"
+        confirming={busy}
+        onConfirm={handleDelete}
+      />
     </Card>
   )
 }

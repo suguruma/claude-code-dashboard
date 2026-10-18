@@ -115,6 +115,20 @@ export interface ArchivedSkillVersion {
   updatedAt?: string
 }
 
+/** 削除したスキルの退避(`skills-trash/<名前>-<日時>/`)。復元は画面の「削除済みスキル」から行う */
+export interface TrashedSkill {
+  /** 退避先のフォルダ名。復元の指定に使う */
+  id: string
+  dirName: string
+  deletedAt: string
+  /** 削除したとき `skills/`(有効)にあったか。復元は同じ側へ戻す */
+  wasEnabled: boolean
+  title?: string
+  description?: string
+  /** 退避先の絶対パス */
+  path: string
+}
+
 export interface TradeOff {
   option_a: string
   option_b: string
@@ -258,11 +272,20 @@ export interface SettingsView {
   raw: Record<string, unknown>
 }
 
-/** `.claude/backups/*.backup.*` の一覧 */
+/**
+ * "claude-json": Claude Code本体が `backups/` に作る `.claude.json` の退避。
+ * "ccd": このダッシュボードが書き換え・削除の直前に作る `<ファイル名>.ccd-backup.<epoch>`。
+ */
+export type BackupKind = "claude-json" | "ccd"
+
+/** バックアップ画面の一覧の1件（`.claude/backups/*.backup.*` と `*.ccd-backup.<epoch>`） */
 export interface BackupEntry {
   fileName: string
   timestampMs: number | null
   sizeBytes: number
+  kind: BackupKind
+  /** kind が "ccd" のとき、復元先になる元のファイル名（例: CLAUDE.md） */
+  originalName?: string
 }
 
 /** `.claude/plugins/blocklist.json` */

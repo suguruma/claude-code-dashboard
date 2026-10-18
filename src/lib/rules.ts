@@ -1,5 +1,5 @@
 import { parseClaudeMd, serializeClaudeMd } from "./claudeMdParser"
-import { readTextFile, resolveProjectPath, writeTextFile } from "./fileIO"
+import { backupFile, readTextFile, resolveProjectPath, writeTextFile } from "./fileIO"
 import { ProjectConfig, Rule } from "./types"
 
 async function readParsed(project: ProjectConfig) {
@@ -8,7 +8,13 @@ async function readParsed(project: ProjectConfig) {
   return { claudeMdPath, ...parseClaudeMd(content) }
 }
 
+/**
+ * CLAUDE.mdへの書き込みはすべてここを通る(追加・編集・有効/無効の切り替え・削除・並べ替え)。
+ * 書き換える前に必ず現在の内容を `CLAUDE.md.ccd-backup.<epoch>` として退避し、「設定 & システム情報」の
+ * 「バックアップ」から戻せるようにする。退避に失敗したときは、書き込まずにエラーにする。
+ */
 async function persist(claudeMdPath: string, preamble: string, rules: Rule[]): Promise<void> {
+  await backupFile(claudeMdPath)
   await writeTextFile(claudeMdPath, serializeClaudeMd(preamble, rules))
 }
 

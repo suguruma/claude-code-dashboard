@@ -1,6 +1,7 @@
-import { promises as fs } from "fs"
+import { constants as fsConstants, promises as fs } from "fs"
 import os from "os"
 import path from "path"
+import { selectExpired } from "./retention"
 
 export class FileIOError extends Error {}
 
@@ -62,16 +63,48 @@ export function resolveProjectPath(projectRoot: string, fileName: string): strin
   return path.join(resolveProjectRoot(projectRoot), fileName)
 }
 
-/** 上書き前に同名バックアップ(`<file>.ccd-backup.<epoch ms>`)を作成する。元ファイルが無い場合は何もしない */
+export const BACKUP_INFIX = ".ccd-backup."
+
+/**
+ * 上書き・削除の前に同名バックアップ(`<file>.ccd-backup.<epoch ms>`)を作成する。元ファイルが無い場合は何もしない。
+ * 同じミリ秒に続けて呼ばれても別の世代になるよう、既にあれば時刻を進めて作る。
+ * 作成後、同じファイルの古い退避を保持方針(retention.ts)に従って削除する。削除の失敗は無視する(退避の作成は成功している)。
+ * 退避の作成に失敗したときは例外を投げるので、呼び出し側は書き込み・削除を行わないこと。
+ */
 export async function backupFile(filePath: string): Promise<string | null> {
   try {
     await fs.access(filePath)
   } catch {
     return null
   }
-  const backupPath = `${filePath}.ccd-backup.${Date.now()}`
-  await fs.copyFile(filePath, backupPath)
-  return backupPath
+  let timestamp = Date.now()
+  for (;;) {
+    const backupPath = `${filePath}${BACKUP_INFIX}${timestamp}`
+    try {
+      await fs.copyFile(filePath, backupPath, fsConstants.COPYFILE_EXCL)
+      await pruneBackups(filePath).catch(() => undefined)
+      return backupPath
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err
+      timestamp += 1
+    }
+  }
+}
+
+/** `<file>.ccd-backup.<epoch ms>` の退避を、保持方針に従って古いものから削除する */
+export async function pruneBackups(filePath: string, nowMs = Date.now()): Promise<string[]> {
+  const dir = path.dirname(filePath)
+  const prefix = `${path.basename(filePath)}${BACKUP_INFIX}`
+  const candidates: { name: string; timestampMs: number }[] = []
+  for (const name of await fs.readdir(dir)) {
+    if (!name.startsWith(prefix)) continue
+    const suffix = name.slice(prefix.length)
+    if (!/^\d{10,}$/.test(suffix)) continue
+    candidates.push({ name, timestampMs: Number(suffix) })
+  }
+  const expired = selectExpired(candidates, nowMs)
+  await Promise.all(expired.map((name) => fs.rm(path.join(dir, name), { force: true })))
+  return expired
 }
 
 /** 指定されたプロジェクトルートが、実際のClaude Codeグローバル設定（~/.claude）と一致するかを判定する */

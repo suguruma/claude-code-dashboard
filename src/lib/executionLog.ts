@@ -1,4 +1,4 @@
-import { readJsonFile, resolveProjectPath, writeJsonFile } from "./fileIO"
+import { backupFile, readJsonFile, resolveProjectPath, writeJsonFile } from "./fileIO"
 import { createRule } from "./rules"
 import { ExecutionLogEntry, ExecutionLogFile, ProjectConfig } from "./types"
 
@@ -39,6 +39,8 @@ export async function getExecutionLogByTaskId(
  * 指定したtask_idのログエントリのみを削除し、残りのエントリで execution_log.json を上書きする。
  * 読み込み側の後方互換（単一オブジェクト/配列直下）に関わらず、書き込みは常に正式スキーマ
  * `{ logs: ExecutionLogEntry[] }` に統一する。
+ * 書き換える前に、現在の execution_log.json を `execution_log.json.ccd-backup.<epoch>` として退避する
+ * (「設定 & システム情報」の「バックアップ」から戻せる)。退避に失敗したときは削除しない。
  */
 export async function deleteExecutionLog(project: ProjectConfig, taskId: string): Promise<void> {
   const logs = await getExecutionLogs(project)
@@ -47,6 +49,7 @@ export async function deleteExecutionLog(project: ProjectConfig, taskId: string)
   }
   const remaining = logs.filter((l) => l.task_id !== taskId)
   const logPath = resolveProjectPath(project.path, "execution_log.json")
+  await backupFile(logPath)
   await writeJsonFile(logPath, { logs: remaining })
 }
 

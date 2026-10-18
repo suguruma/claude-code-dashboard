@@ -274,11 +274,35 @@ describe("createSkill / updateSkill / deleteSkill", () => {
     expect(advanced?.hasEvals).toBe(true)
   })
 
-  it("削除するとディレクトリごと消える", async () => {
+  it("削除すると skills/ からは消えるが、完全削除はせず skills/ の外の skills-trash/ に退避される", async () => {
     const project = await makeProject()
-    await createSkill(project, { dirName: "removable", description: "x", body: "" })
+    await createSkill(project, { dirName: "removable", description: "x", body: "本文" })
+    await fs.mkdir(path.join(project.path, "skills", "removable", "references"), { recursive: true })
+    await fs.writeFile(path.join(project.path, "skills", "removable", "references", "note.md"), "付属資料")
+
     await deleteSkill(project, "removable")
+
     expect(await getSkill(project, "removable")).toBeNull()
+    await expect(fs.access(path.join(project.path, "skills", "removable"))).rejects.toThrow()
+
+    const trashed = await fs.readdir(path.join(project.path, "skills-trash"))
+    expect(trashed).toHaveLength(1)
+    expect(trashed[0]).toMatch(/^removable-\d{8}-\d{6}$/)
+    // SKILL.md も付属ファイルも、そのまま退避先にある
+    const entryDir = path.join(project.path, "skills-trash", trashed[0])
+    expect(await fs.readFile(path.join(entryDir, "SKILL.md"), "utf-8")).toContain("本文")
+    expect(await fs.readFile(path.join(entryDir, "references", "note.md"), "utf-8")).toBe("付属資料")
+  })
+
+  it("無効化(skills-disabled)中のスキルを削除しても、退避される", async () => {
+    const project = await makeProject()
+    await createSkill(project, { dirName: "dormant", description: "x", body: "" })
+    await disableSkill(project, "dormant")
+
+    await deleteSkill(project, "dormant")
+
+    expect(await getSkill(project, "dormant")).toBeNull()
+    expect(await fs.readdir(path.join(project.path, "skills-trash"))).toHaveLength(1)
   })
 
   it("存在しないスキルの更新・削除はエラーになる", async () => {

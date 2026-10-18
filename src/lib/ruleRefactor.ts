@@ -1,6 +1,5 @@
-import { promises as fs } from "fs"
 import { parseClaudeMd, serializeClaudeMd } from "./claudeMdParser"
-import { readJsonFile, readTextFile, resolveProjectPath, writeTextFile } from "./fileIO"
+import { backupFile, readJsonFile, readTextFile, resolveProjectPath, writeTextFile } from "./fileIO"
 import {
   ProjectConfig,
   Rule,
@@ -110,18 +109,6 @@ export async function computeRefactorDiff(project: ProjectConfig): Promise<RuleR
   })
 
   return { generatedAt: proposalFile.generatedAt, items }
-}
-
-/** 上書き前に同名バックアップ(`<file>.ccd-backup.<epoch ms>`)を作成する。元ファイルが無い場合は何もしない */
-async function backupFile(filePath: string): Promise<string | null> {
-  try {
-    await fs.access(filePath)
-  } catch {
-    return null
-  }
-  const backupPath = `${filePath}.ccd-backup.${Date.now()}`
-  await fs.copyFile(filePath, backupPath)
-  return backupPath
 }
 
 export async function applyRefactorProposal(

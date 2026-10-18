@@ -277,4 +277,27 @@ describe("deleteExecutionLog", () => {
     const logs = await getExecutionLogs(project)
     expect(logs).toHaveLength(1)
   })
+
+  it("削除の前に、削除前の execution_log.json を .ccd-backup.<epoch> として退避する", async () => {
+    const project = await makeProject()
+    const original = JSON.stringify({ logs: [{ task_id: "t1" }, { task_id: "t2" }] })
+    await fs.writeFile(path.join(project.path, "execution_log.json"), original)
+
+    await deleteExecutionLog(project, "t1")
+
+    const backups = (await fs.readdir(project.path)).filter((f) => f.startsWith("execution_log.json.ccd-backup."))
+    expect(backups).toHaveLength(1)
+    // 退避は削除前の内容(t1もt2も含む)
+    expect(await fs.readFile(path.join(project.path, backups[0]), "utf-8")).toBe(original)
+    // 本体からは t1 が消えている
+    expect((await getExecutionLogs(project)).map((l) => l.task_id)).toEqual(["t2"])
+  })
+
+  it("存在しないtask_idの削除では、退避を作らない(何も書き換えていないため)", async () => {
+    const project = await makeProject()
+    await fs.writeFile(path.join(project.path, "execution_log.json"), JSON.stringify({ logs: [{ task_id: "t1" }] }))
+    await expect(deleteExecutionLog(project, "unknown")).rejects.toThrow()
+    const files = await fs.readdir(project.path)
+    expect(files.some((f) => f.includes(".ccd-backup."))).toBe(false)
+  })
 })

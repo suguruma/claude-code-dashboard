@@ -12,7 +12,10 @@ export async function POST(req: NextRequest) {
     if (typeof body.fileName !== "string" || !body.fileName.trim()) {
       return NextResponse.json({ error: "fileName は文字列で指定してください" }, { status: 400 })
     }
-    await restoreBackup(project, body.fileName)
+    if (body.kind !== undefined && body.kind !== "claude-json" && body.kind !== "ccd") {
+      return NextResponse.json({ error: "kind は claude-json または ccd で指定してください" }, { status: 400 })
+    }
+    await restoreBackup(project, body.fileName, body.kind)
     return NextResponse.json({ ok: true })
   } catch (err) {
     if (err instanceof ApiValidationError) {

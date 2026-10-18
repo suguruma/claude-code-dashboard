@@ -1,8 +1,9 @@
 "use client"
 
-import useSWR from "swr"
+import useSWR, { mutate as globalMutate } from "swr"
 import { apiMutate, fetcher } from "@/lib/fetcher"
 import { SkillMeta } from "@/lib/types"
+import { skillTrashKey } from "@/hooks/useSkillTrash"
 
 interface SkillsResponse {
   skills: SkillMeta[]
@@ -48,6 +49,8 @@ export function useSkills(projectId: string | null) {
     if (!projectId) throw new Error("プロジェクトが選択されていません")
     await apiMutate(`/api/skills/${dirName}?projectId=${encodeURIComponent(projectId)}`, "DELETE")
     await mutate()
+    // 削除したスキルは「削除済みスキル」へ移るので、その一覧も更新する
+    await globalMutate(skillTrashKey(projectId))
   }
 
   async function renameSkill(oldDirName: string, newDirName: string) {

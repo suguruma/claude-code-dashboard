@@ -2,6 +2,7 @@ import { promises as fs } from "fs"
 import path from "path"
 import { FileIOError, resolveProjectPath, writeTextFile } from "./fileIO"
 import { parseFrontmatter, serializeFrontmatter } from "./frontmatter"
+import { moveSkillToTrash } from "./skillTrash"
 import { ProjectConfig, SkillMeta } from "./types"
 
 const VALID_NAME_RE = /^[a-zA-Z0-9_-]+$/
@@ -279,11 +280,15 @@ export async function renameSkill(
   return updated
 }
 
+/**
+ * スキルを削除する。完全削除はせず、`skills-trash/<名前>-<日時>/` へ移す(`skills/` の外なので、
+ * Claude Codeからは呼び出せなくなる)。画面の「削除済みスキル」から復元できる。
+ */
 export async function deleteSkill(project: ProjectConfig, dirName: string): Promise<void> {
   validateSkillDirName(dirName)
   const located = await locateSkillDir(project, dirName)
   if (!located) throw new Error("スキルが見つかりません")
-  await fs.rm(located.dir, { recursive: true, force: true })
+  await moveSkillToTrash(project, dirName, located.dir, located.enabled)
 }
 
 /** スキルを`skills/`から`skills-disabled/`へ移動し、Claude Codeに読み込まれないようにする */

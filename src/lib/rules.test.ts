@@ -1,7 +1,7 @@
 import { promises as fs } from "fs"
 import os from "os"
 import path from "path"
-import { afterEach, describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { createRule, deleteRule, getRules, reorderRules, updateRule } from "./rules"
 import { ProjectConfig } from "./types"
 
@@ -74,6 +74,71 @@ describe("updateRule / deleteRule", () => {
 
     const claudeMd = await fs.readFile(path.join(project.path, "CLAUDE.md"), "utf-8")
     expect(claudeMd).not.toContain("消えるルール")
+  })
+})
+
+describe("書き換えの前の退避(CLAUDE.md.ccd-backup.<epoch>)", () => {
+  async function backupContents(project: ProjectConfig): Promise<string[]> {
+    const names = (await fs.readdir(project.path)).filter((f) => f.startsWith("CLAUDE.md.ccd-backup."))
+    names.sort((a, b) => Number(a.split(".").pop()) - Number(b.split(".").pop()))
+    return Promise.all(names.map((n) => fs.readFile(path.join(project.path, n), "utf-8")))
+  }
+
+  it("CLAUDE.mdがまだ無いときの最初の追加では、退避するものが無いので作らない", async () => {
+    const project = await makeProject()
+    await createRule(project, { category: "構成", content: "最初" })
+    expect(await backupContents(project)).toEqual([])
+  })
+
+  it("追加・編集・有効無効の切り替え・並べ替え・削除の、どれも書き換え前の内容を退避する", async () => {
+    const project = await makeProject()
+    const claudeMdPath = path.join(project.path, "CLAUDE.md")
+    await fs.writeFile(claudeMdPath, "# 前文\n\n## A\n内容A\n\n## B\n内容B\n")
+
+    const snapshots: string[] = []
+    const snap = async () => snapshots.push(await fs.readFile(claudeMdPath, "utf-8"))
+
+    await snap()
+    const created = await createRule(project, { category: "C", content: "内容C" })
+    await snap()
+    await updateRule(project, created.id, { content: "内容C改" })
+    await snap()
+    await updateRule(project, created.id, { enabled: false })
+    await snap()
+    const before = await getRules(project)
+    await reorderRules(project, [before[2].id, before[0].id, before[1].id])
+    await snap()
+    const [first] = await getRules(project)
+    await deleteRule(project, first.id)
+
+    // 5回の書き込みそれぞれについて、書き込み直前の内容が1世代ずつ退避されている
+    expect(await backupContents(project)).toEqual(snapshots)
+  })
+
+  it("削除で消えた見出しの内容は、退避から読み戻せる", async () => {
+    const project = await makeProject()
+    const rule = await createRule(project, { category: "守る", content: "大事なルール" })
+    await createRule(project, { category: "別", content: "別のルール" })
+
+    await deleteRule(project, rule.id)
+
+    expect(await fs.readFile(path.join(project.path, "CLAUDE.md"), "utf-8")).not.toContain("大事なルール")
+    const backups = await backupContents(project)
+    expect(backups[backups.length - 1]).toContain("大事なルール")
+  })
+
+  it("退避に失敗したときは、CLAUDE.mdを書き換えずにエラーにする", async () => {
+    const project = await makeProject()
+    const claudeMdPath = path.join(project.path, "CLAUDE.md")
+    const original = ["## A", "内容A", ""].join("\n")
+    await fs.writeFile(claudeMdPath, original)
+    const copy = vi.spyOn(fs, "copyFile").mockRejectedValueOnce(new Error("EACCES: 退避先に書けない"))
+    try {
+      await expect(createRule(project, { category: "B", content: "内容B" })).rejects.toThrow("EACCES")
+    } finally {
+      copy.mockRestore()
+    }
+    expect(await fs.readFile(claudeMdPath, "utf-8")).toBe(original)
   })
 })
 
