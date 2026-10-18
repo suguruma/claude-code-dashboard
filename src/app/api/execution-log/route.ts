@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { ApiValidationError, resolveRequestProject } from "@/lib/apiHelpers"
-import { getExecutionLogs } from "@/lib/executionLog"
+import { readExecutionLogs } from "@/lib/executionLog"
 import { FileIOError } from "@/lib/fileIO"
 
 export const dynamic = "force-dynamic"
@@ -8,9 +8,9 @@ export const dynamic = "force-dynamic"
 export async function GET(req: NextRequest) {
   try {
     const project = await resolveRequestProject(req)
-    const logs = await getExecutionLogs(project)
+    const { logs, skipped } = await readExecutionLogs(project)
     logs.sort((a, b) => (a.executed_at < b.executed_at ? 1 : -1))
-    return NextResponse.json({ logs })
+    return NextResponse.json({ logs, skipped })
   } catch (err) {
     if (err instanceof ApiValidationError) {
       return NextResponse.json({ error: err.message }, { status: 400 })

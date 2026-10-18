@@ -3,6 +3,7 @@ import {
   SEND_MATCH_WINDOW_MS,
   assembleFlow,
   emptySignals,
+  pairSends,
   pickLeader,
   type FlowSessionInput,
   type PeerSignal,
@@ -55,6 +56,146 @@ describe("pickLeader", () => {
     expect(pickLeader(list, "99_")).toBeNull()
     expect(pickLeader(list, "")).toBeNull()
     expect(pickLeader(list, "01_")?.id).toBe("s3")
+  })
+})
+
+describe("pairSends: 送信と受信の順番を保ち、組の数が最も多く、時刻の差の合計が最も小さい対応", () => {
+  const matchedOf = (sends: SendSignal[], receipts: PeerSignal[]) => [...pairSends(sends, receipts).matched.entries()].sort((a, b) => a[0] - b[0])
+
+  it("送信が抜けた場合: S1(0秒)・S2(30秒) と受信 R(31秒): R は近い S2 に対応し、S1 が送信側のみ（送信から見る向きだと R が S1 に対応してしまう）", () => {
+    const sends = [send(0, A, "S1"), send(30, A, "S2")]
+    const { matched, unmatched } = pairSends(sends, [peer(31, LEADER)])
+    expect(matched).toEqual(new Map([[0, at(30)]]))
+    expect(unmatched.map((s) => s.summary)).toEqual(["S1"])
+  })
+
+  it("送信が途中で1つ抜けた場合: S(0)・S(5)・S(10) のうち最初の1つが届かず、R(6)・R(11) だけ届く → R(6) は S(5)、R(11) は S(10)", () => {
+    const { matched, unmatched } = pairSends([send(0, A, "届かない"), send(5, A), send(10, A)], [peer(6, LEADER), peer(11, LEADER)])
+    expect(matched).toEqual(
+      new Map([
+        [0, at(5)],
+        [1, at(10)],
+      ])
+    )
+    expect(unmatched.map((s) => s.summary)).toEqual(["届かない"])
+  })
+
+  it("受信がまとめて遅れて届いた場合: S(0)・S(5)・S(10) に対して R(20)・R(21)・R(22) → 順番どおりに 0→20、5→21、10→22（逆順にならない）", () => {
+    const { matched, unmatched } = pairSends([send(0, A), send(5, A), send(10, A)], [peer(20, LEADER), peer(21, LEADER), peer(22, LEADER)])
+    expect(matched).toEqual(
+      new Map([
+        [0, at(0)],
+        [1, at(5)],
+        [2, at(10)],
+      ])
+    )
+    expect(unmatched).toEqual([])
+  })
+
+  it("対応は交差しない: S(0)・S(10) と R(12)・R(40) → 0→12、10→40（10→12、0→40 にはならない）", () => {
+    expect(matchedOf([send(0, A), send(10, A)], [peer(12, LEADER), peer(40, LEADER)])).toEqual([
+      [0, at(0)],
+      [1, at(10)],
+    ])
+  })
+
+  it("組の数が最も多い対応を先に選ぶ（差の合計だけを見ると、組の少ない対応が選ばれてしまう）", () => {
+    // 3組にできる（差の合計 48）が、1組だけ（S(10)–R(20)、差10）のほうが合計は小さい
+    const { matched } = pairSends([send(0, A), send(5, A), send(10, A)], [peer(20, LEADER), peer(21, LEADER), peer(22, LEADER)])
+    expect(matched.size).toBe(3)
+  })
+
+  it("組の数が同じなら、時刻の差の合計が小さいほう: S(0)・S(10) に R(11) だけ → S(10)", () => {
+    const { matched, unmatched } = pairSends([send(0, A, "遠い"), send(10, A, "近い")], [peer(11, LEADER)])
+    expect(matched).toEqual(new Map([[0, at(10)]]))
+    expect(unmatched.map((s) => s.summary)).toEqual(["遠い"])
+  })
+
+  it("送信は受信より前: 受信が送信より前の組は対応しない。同時刻は対応する", () => {
+    const early = pairSends([send(20, A)], [peer(18, LEADER)])
+    expect(early.matched.size).toBe(0)
+    expect(early.unmatched).toHaveLength(1)
+    expect(pairSends([send(20, A)], [peer(20, LEADER)]).matched).toEqual(new Map([[0, at(20)]]))
+  })
+
+  it("差が60秒以内なら対応し、超えると対応しない（送信側のみ・受信は対応なし）", () => {
+    expect(pairSends([send(0, A)], [peer(10, LEADER)])).toEqual({ matched: new Map([[0, at(0)]]), unmatched: [] })
+    expect(pairSends([send(0, A)], [peer(SEND_MATCH_WINDOW_MS / SEC, LEADER)]).matched.size).toBe(1)
+    const beyond = pairSends([send(0, A)], [peer(SEND_MATCH_WINDOW_MS / SEC + 1, LEADER)])
+    expect(beyond.matched.size).toBe(0)
+    expect(beyond.unmatched).toHaveLength(1)
+  })
+
+  it("1つの送信は2つの受信に対応しない。1つの受信に2つの送信も対応しない", () => {
+    const one = pairSends([send(10, A)], [peer(11, LEADER), peer(12, LEADER)])
+    expect(one.matched).toEqual(new Map([[0, at(10)]]))
+    const two = pairSends([send(10, A), send(12, A)], [peer(14, LEADER)])
+    expect(two.matched).toEqual(new Map([[0, at(12)]]))
+    expect(two.unmatched).toHaveLength(1)
+  })
+
+  it("送信と受信が同数で近いときは、時刻の順に1対1で対応する", () => {
+    const { matched, unmatched } = pairSends([send(100, A), send(130, A)], [peer(102, LEADER), peer(133, LEADER)])
+    expect(matched).toEqual(new Map([[0, at(100)], [1, at(130)]]))
+    expect(unmatched).toEqual([])
+  })
+
+  it("窓を超えて離れた2つのやりとりは、別々に対応する", () => {
+    expect(matchedOf([send(0, A), send(1000, A)], [peer(3, LEADER), peer(1004, LEADER)])).toEqual([
+      [0, at(0)],
+      [1, at(1000)],
+    ])
+  })
+
+  it("入力が空なら、何も対応しない。受信が時刻の昇順でなくても、時刻の順に対応する", () => {
+    expect(pairSends([], [])).toEqual({ matched: new Map(), unmatched: [] })
+    expect(pairSends([send(5, A)], [])).toEqual({ matched: new Map(), unmatched: [send(5, A)] })
+    expect(pairSends([], [peer(5, LEADER)])).toEqual({ matched: new Map(), unmatched: [] })
+    const { matched } = pairSends([send(0, A)], [peer(20, LEADER), peer(5, LEADER)])
+    expect(matched).toEqual(new Map([[1, at(0)]]))
+  })
+
+  it("送信の順が時刻の昇順でなくても、unmatched は入力の順で返る", () => {
+    const { unmatched } = pairSends([send(300, A, "後"), send(100, A, "前")], [])
+    expect(unmatched.map((s) => s.summary)).toEqual(["後", "前"])
+  })
+
+  it("多数（2000件ずつ）の連続した送信・受信でも、時間内に終わり、すべて順番どおりに対応する", () => {
+    const sends = Array.from({ length: 2000 }, (_, i) => send(i * 2, A))
+    const receipts = Array.from({ length: 2000 }, (_, i) => peer(i * 2 + 1, LEADER))
+    const startedAt = Date.now()
+    const { matched, unmatched } = pairSends(sends, receipts)
+    expect(Date.now() - startedAt).toBeLessThan(5000)
+    expect(unmatched).toEqual([])
+    expect(matched.size).toBe(2000)
+    expect(matched.get(1999)).toBe(at(1999 * 2))
+  })
+})
+
+describe("assembleFlow: 対応づけが指示の出来事に反映される", () => {
+  it("送信が1つ抜けて、受信が1つだけ: 受信は近い送信に対応し（sentAt がその送信の時刻）、抜けた送信は送信側のみの指示として残る", () => {
+    const result = assembleFlow({
+      leader: session(LEADER, { sends: [send(0, A, "S1"), send(30, A, "S2")] }),
+      members: [session(A, { peers: [peer(31, LEADER, "S2の要約")] })],
+      since: at(0),
+    })
+    expect(result.events.map((e) => (e.kind === "instruct" ? [e.receipt, e.sentAt, e.t] : e.kind))).toEqual([
+      ["sender-only", at(0), at(0)],
+      ["confirmed", at(30), at(31)],
+    ])
+  })
+
+  it("受信がまとめて遅れて届く: 3つの指示は、順番どおりの送信の時刻（sentAt）を持つ", () => {
+    const result = assembleFlow({
+      leader: session(LEADER, { sends: [send(0, A, "1つ目"), send(5, A, "2つ目"), send(10, A, "3つ目")] }),
+      members: [session(A, { peers: [peer(20, LEADER, "1つ目"), peer(21, LEADER, "2つ目"), peer(22, LEADER, "3つ目")] })],
+      since: at(0),
+    })
+    expect(result.events.map((e) => (e.kind === "instruct" ? [e.summary, e.receipt, e.sentAt] : e.kind))).toEqual([
+      ["1つ目", "confirmed", at(0)],
+      ["2つ目", "confirmed", at(5)],
+      ["3つ目", "confirmed", at(10)],
+    ])
   })
 })
 

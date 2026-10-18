@@ -1,8 +1,10 @@
 import { Archive, CalendarClock, Folder, ListChecks, MessageSquareText, OctagonAlert, Pin, SquareTerminal, Users } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
+import { isInstructionProvisional } from "@/lib/desktopInstruction"
 import type { DesktopSessionSummary } from "@/lib/desktopSessionTypes"
 import { ContextBar } from "./ContextBar"
+import { InstructionPendingBadge } from "./InstructionPendingBadge"
 import { SendCountBadge, SendLimitNotice } from "./Messaging"
 import { DesktopStatusBadge } from "./statusMeta"
 import { ORIGIN_LABEL, formatAgo } from "./format"
@@ -15,6 +17,8 @@ interface SessionRowProps {
 
 export function SessionRow({ session: s, highContextRatio, onSelect }: SessionRowProps) {
   const instruction = s.latestInstruction
+  // 起動直後の暫定の要約のあいだ、人以外の本文は確定した値ではない（全体の解析が終わると人の指示に置き換わりうる）
+  const provisional = isInstructionProvisional(s)
   // 人の指示を表示している間に、他セッション・通知からの入力が届いていたら、その旨を添える
   const newerOtherInput =
     instruction?.origin === "human" && s.latestInputOrigin !== null && s.latestInputOrigin !== "human"
@@ -90,16 +94,21 @@ export function SessionRow({ session: s, highContextRatio, onSelect }: SessionRo
               </p>
             )}
 
-            {instruction ? (
+            {instruction || provisional ? (
               <p className="flex min-w-0 items-start gap-1.5 text-xs">
                 <MessageSquareText className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-                {instruction.origin !== "human" && (
+                {instruction && instruction.origin !== "human" && (
                   <Badge variant="outline" className="shrink-0">
                     <Users aria-hidden />
                     {ORIGIN_LABEL[instruction.origin]}
                   </Badge>
                 )}
-                <span className="min-w-0 truncate">{instruction.excerpt || "（本文なし）"}</span>
+                {provisional && <InstructionPendingBadge />}
+                {instruction && (
+                  <span className={cn("min-w-0 truncate", provisional && "text-muted-foreground")}>
+                    {instruction.excerpt || "（本文なし）"}
+                  </span>
+                )}
                 {newerOtherInput && s.latestInputOrigin && (
                   <span className="shrink-0 text-muted-foreground">
                     ／その後に{ORIGIN_LABEL[s.latestInputOrigin]}からの入力あり

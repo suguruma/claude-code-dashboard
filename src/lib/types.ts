@@ -113,6 +113,11 @@ export interface SimilarSkillPair {
 export interface ArchivedSkillVersion {
   model: string
   updatedAt?: string
+  /**
+   * 「切り替え前の自動退避」のときだけ付く、退避した時刻(epoch ms)。同じモデルのアーカイブへ切り替えるとき、
+   * 切り替え前の今の内容をアーカイブ一覧に残したもの。モデル別のアーカイブ（1モデルに1件）には付かない
+   */
+  switchBackupAt?: number
 }
 
 /** 削除したスキルの退避(`skills-trash/<名前>-<日時>/`)。復元は画面の「削除済みスキル」から行う */
@@ -164,10 +169,14 @@ export interface TrialStep {
   note: string
 }
 
+/**
+ * 各項目は、スキルが書いたログでは揃っているが、手書き・他のツールが書いたログでは欠けていることがある。
+ * 欠けているときは、画面は該当の表示を省く（値を作らない）。
+ */
 export interface AgentsDiscussion {
-  consensus_rate: number
-  conflict_point: string
-  trade_offs: TradeOff[]
+  consensus_rate?: number
+  conflict_point?: string
+  trade_offs?: TradeOff[]
   assigned_agents?: AssignedAgent[]
   trial_process?: TrialStep[]
   /**
@@ -200,7 +209,8 @@ export interface ExecutionLogEntry {
   status?: ExecutionLogStatus
   one_shot_score: number
   summary: string
-  agents_discussion: AgentsDiscussion
+  /** 無いログがある（手書き・他のツールが書いたもの）。無いときは、エージェント間の議論の欄を出さない */
+  agents_discussion?: AgentsDiscussion
   user_interventions: UserIntervention[]
   next_golden_prompt: string
   suggested_new_rules: SuggestedNewRule[]
@@ -286,6 +296,16 @@ export interface BackupEntry {
   kind: BackupKind
   /** kind が "ccd" のとき、復元先になる元のファイル名（例: CLAUDE.md） */
   originalName?: string
+  /**
+   * スキルの SKILL.md の退避だけに付く、プロジェクトからの相対のフォルダ（例: skills/sample-skill）。
+   * 別のスキルの退避が同じ名前になりうるため、退避の同一性は fileName と location の組で見る。
+   */
+  location?: string
+  /**
+   * location があるとき、退避の SKILL.md に書かれている `name:`。フォルダ名と違えば、改名前の内容
+   * （復元すると、フォルダ名はそのまま、`name:` だけが古い名前に戻る）
+   */
+  skillName?: string
 }
 
 /** `.claude/plugins/blocklist.json` */

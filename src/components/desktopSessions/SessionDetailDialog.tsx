@@ -11,8 +11,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { useDesktopSessionDetail } from "@/hooks/useDesktopSessions"
+import { isInstructionProvisional } from "@/lib/desktopInstruction"
 import type { TaskStatus } from "@/lib/desktopSessionTypes"
+import { cn } from "@/lib/utils"
 import { ContextBar } from "./ContextBar"
+import { InstructionPendingBadge } from "./InstructionPendingBadge"
 import { SendCountBadge, SendLimitNotice } from "./Messaging"
 import { DesktopStatusBadge } from "./statusMeta"
 import { ORIGIN_LABEL, formatAgo, formatDateTime } from "./format"
@@ -40,6 +43,8 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 export function SessionDetailDialog({ sessionId, highContextRatio, onClose }: SessionDetailDialogProps) {
   const { detail, error, isLoading } = useDesktopSessionDetail(sessionId)
+  // 起動直後の暫定の要約のあいだ、人以外の指示の本文は確定した値ではない
+  const provisional = detail ? isInstructionProvisional(detail) : false
 
   return (
     <Dialog open={sessionId !== null} onOpenChange={(open) => !open && onClose()}>
@@ -124,14 +129,23 @@ export function SessionDetailDialog({ sessionId, highContextRatio, onClose }: Se
             <div className="space-y-1">
               <h3 className="text-sm font-medium">最新の指示</h3>
               {detail.latestInstruction ? (
-                <p className="text-sm">
+                <p className={cn("text-sm", provisional && "text-muted-foreground")}>
                   <Badge variant="outline" className="mr-1.5">
                     {ORIGIN_LABEL[detail.latestInstruction.origin]}
                   </Badge>
+                  {provisional && (
+                    <span className="mr-1.5 inline-flex align-middle">
+                      <InstructionPendingBadge />
+                    </span>
+                  )}
                   {detail.latestInstruction.excerpt || "（本文なし）"}
                   <span className="ml-1.5 text-xs text-muted-foreground">
                     {formatAgo(detail.latestInstruction.at)}
                   </span>
+                </p>
+              ) : provisional ? (
+                <p className="text-sm text-muted-foreground">
+                  <InstructionPendingBadge />
                 </p>
               ) : (
                 <p className="text-sm text-muted-foreground">表示できる指示がありません。</p>

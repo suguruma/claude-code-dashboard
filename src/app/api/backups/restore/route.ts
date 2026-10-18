@@ -15,7 +15,10 @@ export async function POST(req: NextRequest) {
     if (body.kind !== undefined && body.kind !== "claude-json" && body.kind !== "ccd") {
       return NextResponse.json({ error: "kind は claude-json または ccd で指定してください" }, { status: 400 })
     }
-    await restoreBackup(project, body.fileName, body.kind)
+    if (body.location !== undefined && typeof body.location !== "string") {
+      return NextResponse.json({ error: "location は文字列で指定してください" }, { status: 400 })
+    }
+    await restoreBackup(project, body.fileName, body.kind, body.location)
     return NextResponse.json({ ok: true })
   } catch (err) {
     if (err instanceof ApiValidationError) {

@@ -2,7 +2,7 @@
 
 import useSWR, { mutate as globalMutate } from "swr"
 import { apiMutate, fetcher } from "@/lib/fetcher"
-import { SkillMeta } from "@/lib/types"
+import { ArchivedSkillVersion, SkillMeta } from "@/lib/types"
 import { skillTrashKey } from "@/hooks/useSkillTrash"
 
 interface SkillsResponse {
@@ -80,10 +80,11 @@ export function useSkills(projectId: string | null) {
     }
   }
 
-  async function restoreSkillVersion(dirName: string, model: string) {
+  async function restoreSkillVersion(dirName: string, model: string, switchBackupAt?: number) {
     if (!projectId) throw new Error("プロジェクトが選択されていません")
     await apiMutate(`/api/skills/${dirName}/restore?projectId=${encodeURIComponent(projectId)}`, "POST", {
       model,
+      switchBackupAt,
     })
     await mutate()
   }
@@ -117,7 +118,7 @@ export function useSkills(projectId: string | null) {
 }
 
 interface ArchivedVersionsResponse {
-  versions: { model: string; updatedAt?: string }[]
+  versions: ArchivedSkillVersion[]
 }
 
 export function useSkillArchiveVersions(projectId: string | null, dirName: string | null) {

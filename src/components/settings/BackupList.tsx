@@ -24,7 +24,22 @@ interface BackupSection {
 interface BackupListProps {
   backups: BackupEntry[]
   isGlobalConfig?: boolean
-  onRestore: (fileName: string, kind: BackupKind) => Promise<void>
+  onRestore: (fileName: string, kind: BackupKind, location?: string) => Promise<void>
+}
+
+/**
+ * 改名前のスキルの退避なら、その古い名前を返す（退避の SKILL.md の `name:` が、今のフォルダ名と違うとき）。
+ * 復元すると、フォルダ名はそのまま、SKILL.md の `name:` だけが古い名前に戻る。
+ */
+function renamedFrom(backup: BackupEntry): string | null {
+  if (!backup.location || backup.skillName === undefined) return null
+  const folderName = backup.location.slice(backup.location.indexOf("/") + 1)
+  return backup.skillName !== folderName ? backup.skillName : null
+}
+
+/** 一覧に出す名前。スキルの退避は、どのスキルのものか分かるよう、フォルダも付ける */
+function displayName(backup: BackupEntry): string {
+  return backup.location ? `${backup.location}/${backup.fileName}` : backup.fileName
 }
 
 export function BackupList({ backups, isGlobalConfig, onRestore }: BackupListProps) {
@@ -39,7 +54,7 @@ export function BackupList({ backups, isGlobalConfig, onRestore }: BackupListPro
     if (!restoreTarget) return
     setRestoring(true)
     try {
-      await onRestore(restoreTarget.fileName, restoreTarget.kind)
+      await onRestore(restoreTarget.fileName, restoreTarget.kind, restoreTarget.location)
       toast.success("バックアップから復元しました")
       setRestoreTarget(null)
     } catch (err) {
@@ -53,7 +68,7 @@ export function BackupList({ backups, isGlobalConfig, onRestore }: BackupListPro
     {
       kind: "ccd",
       title: "このダッシュボードの退避（編集・削除の直前）",
-      note: `ルール(CLAUDE.md)・設定・実行ログなどを書き換える・削除する直前の内容です。同じファイルにつき新しい順に${RETENTION_MAX_COUNT}世代まで、${RETENTION_MAX_AGE_DAYS}日より古いものは自動で削除されます（直近${RETENTION_ALWAYS_KEEP}世代は期間にかかわらず残ります）。`,
+      note: `ルール(CLAUDE.md)・設定・実行ログ・スキル本体(SKILL.md。編集・改名・インポートで上書きする直前)などを、書き換える・削除する直前の内容です。同じファイルにつき新しい順に${RETENTION_MAX_COUNT}世代まで、${RETENTION_MAX_AGE_DAYS}日より古いものは自動で削除されます（直近${RETENTION_ALWAYS_KEEP}世代は期間にかかわらず残ります）。`,
       entries: backups.filter((b) => b.kind === "ccd"),
     },
     {
@@ -65,8 +80,12 @@ export function BackupList({ backups, isGlobalConfig, onRestore }: BackupListPro
   ]
   const sections = allSections.filter((s) => s.entries.length > 0)
 
+  const restoredName = restoreTarget ? renamedFrom(restoreTarget) : null
+  const restoreFolderName = restoreTarget?.location?.slice(restoreTarget.location.indexOf("/") + 1)
   const restoreTargetName =
-    restoreTarget?.kind === "ccd" ? (restoreTarget.originalName ?? "元のファイル") : ".claude.json"
+    restoreTarget?.kind === "ccd"
+      ? `${restoreTarget.location ? `${restoreTarget.location}/` : ""}${restoreTarget.originalName ?? "元のファイル"}`
+      : ".claude.json"
 
   return (
     <>
@@ -79,11 +98,13 @@ export function BackupList({ backups, isGlobalConfig, onRestore }: BackupListPro
             </div>
             {section.entries.map((backup) => (
               <div
-                key={backup.fileName}
+                key={displayName(backup)}
                 className="flex items-center justify-between gap-3 rounded-md border p-2.5 text-xs"
               >
                 <div className="min-w-0 flex-1 space-y-0.5">
-                  <p className="truncate font-mono">{backup.fileName}</p>
+                  <p className="truncate font-mono" title={displayName(backup)}>
+                    {displayName(backup)}
+                  </p>
                   <p className="text-muted-foreground">
                     {backup.timestampMs
                       ? format(new Date(backup.timestampMs), "yyyy-MM-dd HH:mm:ss")
@@ -117,7 +138,7 @@ export function BackupList({ backups, isGlobalConfig, onRestore }: BackupListPro
         title="このバックアップから復元しますか？"
         description={
           <>
-            「{restoreTarget?.fileName}」の内容で {restoreTargetName} を上書きします。
+            「{restoreTarget ? displayName(restoreTarget) : ""}」の内容で {restoreTargetName} を上書きします。
             {isGlobalConfig && (
               <span className="mt-1 block font-medium text-destructive">
                 {restoreTarget?.kind === "ccd"
@@ -126,6 +147,11 @@ export function BackupList({ backups, isGlobalConfig, onRestore }: BackupListPro
               </span>
             )}
             現在の {restoreTargetName} は復元前に自動でバックアップされます。
+            {restoredName !== null && (
+              <span className="mt-1 block font-medium text-[var(--status-warning)]">
+                {`このバックアップは改名前の内容です（name: ${restoredName}）。復元すると、フォルダ名は「${restoreFolderName}」のまま、SKILL.md の name だけが「${restoredName}」に戻ります。`}
+              </span>
+            )}
           </>
         }
         confirmLabel="復元する"

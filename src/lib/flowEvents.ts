@@ -150,27 +150,106 @@ interface Instruction {
 }
 
 /**
- * 親が子へ送った記録と、子の側の peer 行(60秒以内で最も近いもの)を対応づける。
- * matched: peer 行の添字 → 対応した送信記録の時刻 / unmatched: 子の側に対応する peer 行が無い送信記録
+ * 親が子へ送った記録と、子の側の peer 行（受信）を対応づける。
+ * 送信と受信の順番を保ったまま（交差させず）、次の順に最良の対応を選ぶ。
+ *   1. 対応する組の数が最も多い
+ *   2. 同数なら、組の時刻の差（受信 − 送信）の合計が最も小さい
+ * 組にできるのは、送信が受信より前（同時刻を含む）で、差が SEND_MATCH_WINDOW_MS 以内のものだけ。
+ * 受信が確認できない送信が混ざったときは、近い送信に受信が対応し（送信の抜けに強い）、
+ * 受信がまとめて遅れて届いたときは、順番どおりに対応する（送信から見て最も近い受信を取る向きだと、順番が逆になる）。
+ * matched: peer 行の添字 → 対応した送信記録の時刻 / unmatched: 子の側に対応する peer 行が無い送信記録（入力の順）
  */
-function pairSends(sends: SendSignal[], confirmed: PeerSignal[]): { matched: Map<number, number>; unmatched: SendSignal[] } {
+export function pairSends(sends: SendSignal[], confirmed: PeerSignal[]): { matched: Map<number, number>; unmatched: SendSignal[] } {
   const matched = new Map<number, number>()
-  const unmatched: SendSignal[] = []
-  for (const s of sends) {
-    let best = -1
-    let bestGap = Number.POSITIVE_INFINITY
-    for (let i = 0; i < confirmed.length; i++) {
-      if (matched.has(i)) continue
-      const gap = Math.abs(confirmed[i].t - s.t)
-      if (gap <= SEND_MATCH_WINDOW_MS && gap < bestGap) {
-        best = i
-        bestGap = gap
-      }
+  const used = new Set<number>()
+
+  // 送信・受信を時刻の順に並べ、隣り合う出来事の間が窓より空いたところで区切る。窓を超えて離れた送信と受信は組にならないので、
+  // 区切りをまたぐ組は無く、区切りごとに別々に解いてよい（組み合わせの表が大きくなるのを避ける）。同時刻は送信を先にする
+  const events = [
+    ...sends.map((s, i) => ({ t: s.t, isSend: true, i })),
+    ...confirmed.map((p, i) => ({ t: p.t, isSend: false, i })),
+  ].sort((a, b) => a.t - b.t || (a.isSend === b.isSend ? a.i - b.i : a.isSend ? -1 : 1))
+
+  let sendIdx: number[] = []
+  let receiptIdx: number[] = []
+  const solveSegment = () => {
+    for (const [si, ri] of pairSegment(sends, sendIdx, confirmed, receiptIdx)) {
+      used.add(si)
+      matched.set(ri, sends[si].t)
     }
-    if (best >= 0) matched.set(best, s.t)
-    else unmatched.push(s)
+    sendIdx = []
+    receiptIdx = []
   }
-  return { matched, unmatched }
+  let prevT = Number.NEGATIVE_INFINITY
+  for (const e of events) {
+    if (e.t - prevT > SEND_MATCH_WINDOW_MS) solveSegment()
+    if (e.isSend) sendIdx.push(e.i)
+    else receiptIdx.push(e.i)
+    prevT = e.t
+  }
+  solveSegment()
+
+  return { matched, unmatched: sends.filter((_, j) => !used.has(j)) }
+}
+
+/**
+ * 時刻の昇順に並んだ送信・受信（それぞれの添字の列）の間で、順番を保つ最良の対応を求める（pairSends の説明の順）。
+ * 返す値は [送信の添字, 受信の添字] の列。
+ */
+function pairSegment(sends: SendSignal[], sendIdx: number[], confirmed: PeerSignal[], receiptIdx: number[]): [number, number][] {
+  const n = sendIdx.length
+  const m = receiptIdx.length
+  if (n === 0 || m === 0) return []
+
+  // count[i][j]・cost[i][j]: 先頭 i 件の送信と先頭 j 件の受信での、最良の対応の組数と、差の合計
+  // from: その最良に至った手 (1: 送信 i を使わない / 2: 受信 j を使わない / 3: 送信 i と受信 j を組にする)
+  const width = m + 1
+  const count = new Int32Array((n + 1) * width)
+  const cost = new Float64Array((n + 1) * width)
+  const from = new Uint8Array((n + 1) * width)
+  for (let i = 1; i <= n; i++) {
+    for (let j = 1; j <= m; j++) {
+      const here = i * width + j
+      let bestCount = count[here - width]
+      let bestCost = cost[here - width]
+      let bestFrom = 1
+      if (count[here - 1] > bestCount || (count[here - 1] === bestCount && cost[here - 1] < bestCost)) {
+        bestCount = count[here - 1]
+        bestCost = cost[here - 1]
+        bestFrom = 2
+      }
+      const gap = confirmed[receiptIdx[j - 1]].t - sends[sendIdx[i - 1]].t
+      if (gap >= 0 && gap <= SEND_MATCH_WINDOW_MS) {
+        const pairCount = count[here - width - 1] + 1
+        const pairCost = cost[here - width - 1] + gap
+        if (pairCount > bestCount || (pairCount === bestCount && pairCost < bestCost)) {
+          bestCount = pairCount
+          bestCost = pairCost
+          bestFrom = 3
+        }
+      }
+      count[here] = bestCount
+      cost[here] = bestCost
+      from[here] = bestFrom
+    }
+  }
+
+  const pairs: [number, number][] = []
+  let i = n
+  let j = m
+  while (i > 0 && j > 0) {
+    const move = from[i * width + j]
+    if (move === 3) {
+      pairs.push([sendIdx[i - 1], receiptIdx[j - 1]])
+      i--
+      j--
+    } else if (move === 1) {
+      i--
+    } else {
+      j--
+    }
+  }
+  return pairs
 }
 
 /** 親(指揮役、または3層目の親の子)から子への指示の一覧(受信を確認できたものと、送信側の記録だけのもの)を、時刻の昇順で返す */

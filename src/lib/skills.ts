@@ -1,7 +1,8 @@
 import { promises as fs } from "fs"
 import path from "path"
-import { FileIOError, resolveProjectPath, writeTextFile } from "./fileIO"
+import { FileIOError, backupFile, resolveProjectPath, writeTextFile } from "./fileIO"
 import { parseFrontmatter, serializeFrontmatter } from "./frontmatter"
+import { assertValidModelName } from "./skillArchivePaths"
 import { moveSkillToTrash } from "./skillTrash"
 import { ProjectConfig, SkillMeta } from "./types"
 
@@ -183,6 +184,7 @@ export async function createSkill(
   }
 ): Promise<SkillMeta> {
   validateSkillDirName(input.dirName)
+  if (input.targetModel) assertValidModelName(input.targetModel)
   const existing = await readSkill(project, input.dirName)
   if (existing) throw new Error(`スキル "${input.dirName}" は既に存在します`)
 
@@ -218,6 +220,7 @@ export async function updateSkill(
   }
 ): Promise<SkillMeta> {
   validateSkillDirName(dirName)
+  if (patch.targetModel) assertValidModelName(patch.targetModel)
   const located = await locateSkillDir(project, dirName)
   if (!located) throw new Error("スキルが見つかりません")
   const existing = await readSkillAt(located.dir, dirName, located.enabled)
@@ -235,10 +238,11 @@ export async function updateSkill(
     updatedAt: new Date().toISOString(),
   }
 
-  await writeTextFile(
-    path.join(located.dir, "SKILL.md"),
-    serializeFrontmatter(buildFrontmatterData(updated), updated.body)
-  )
+  // 書き換える前に、今の SKILL.md を `SKILL.md.ccd-backup.<epoch>` として退避する(設定画面のバックアップから戻せる)。
+  // 退避に失敗したときは例外になり、SKILL.md は書き換えない
+  const skillMdPath = path.join(located.dir, "SKILL.md")
+  await backupFile(skillMdPath)
+  await writeTextFile(skillMdPath, serializeFrontmatter(buildFrontmatterData(updated), updated.body))
   return updated
 }
 
@@ -261,6 +265,10 @@ export async function renameSkill(
   if (!existing) throw new Error("スキルが見つかりません")
   const conflict = await readSkill(project, newDirName)
   if (conflict) throw new Error(`スキル "${newDirName}" は既に存在します`)
+
+  // 書き換える前に、今の SKILL.md を退避する。フォルダ名を変える前に作るので、退避ファイルはフォルダごと新しい名前へ移る。
+  // 退避に失敗したときは例外になり、フォルダ名も SKILL.md も変えない
+  await backupFile(path.join(located.dir, "SKILL.md"))
 
   // リネームは有効/無効の状態を変えない(元と同じツリー内で移動する)
   const newPath = path.join(path.dirname(located.dir), newDirName)

@@ -35,13 +35,16 @@ export function DesktopStatusBadge({ status, reason }: { status: DesktopSessionS
   const { label, Icon, color, estimated } = STATUS_META[status]
   return (
     <span
-      // max-w-full: 狭いカード(組織図の3層目など)で、バッジが枠の外に出ないよう、親の幅までで折り返す
-      className="inline-flex max-w-full shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium"
+      // max-w-full: 狭いカード(組織図の3層目など)で、バッジが枠の外に出ないよう、親の幅までで折り返す。
+      // 折り返すときは、アイコン＋ラベル（例「中断の可能性」）をひと塊にして途中で折らず、「（推定）」だけが次の行へ落ちる
+      className="inline-flex max-w-full shrink-0 flex-wrap items-center gap-x-1 rounded-full border px-2 py-0.5 text-xs font-medium"
       title={reason}
     >
-      <Icon className="size-3.5" style={{ color }} aria-hidden />
-      {label}
-      {estimated && <span className="font-normal text-muted-foreground">（推定）</span>}
+      <span className="inline-flex items-center gap-1 whitespace-nowrap">
+        <Icon className="size-3.5" style={{ color }} aria-hidden />
+        {label}
+      </span>
+      {estimated && <span className="whitespace-nowrap font-normal text-muted-foreground">（推定）</span>}
     </span>
   )
 }

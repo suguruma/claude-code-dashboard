@@ -25,7 +25,7 @@ export default function TracePage() {
   const analysisProjectId = manuallySelectedProjectId ?? projects[0]?.id ?? null
   const analysisProject = projects.find((p) => p.id === analysisProjectId) ?? null
 
-  const { logs, isLoading, error, saveSuggestedRules, deleteLog, mutate } =
+  const { logs, skipped, isLoading, error, saveSuggestedRules, deleteLog, mutate } =
     useExecutionLogs(analysisProjectId)
   const [manuallySelectedTaskId, setManuallySelectedTaskId] = useState<string | null>(null)
   const selectedTaskId = manuallySelectedTaskId ?? logs[0]?.task_id ?? null
@@ -59,6 +59,8 @@ export default function TracePage() {
   }
 
   const selectedEntry = logs.find((l) => l.task_id === selectedTaskId) ?? null
+  // 手書き・他のツールが書いたログには、無いことがある
+  const discussion = selectedEntry?.agents_discussion
 
   return (
     <div className="space-y-6">
@@ -81,6 +83,15 @@ export default function TracePage() {
         <Alert variant="destructive">
           <AlertTitle>読み込みエラー</AlertTitle>
           <AlertDescription>{error.message}</AlertDescription>
+        </Alert>
+      )}
+
+      {skipped > 0 && (
+        <Alert>
+          <AlertTitle>表示できないエントリがあります（{skipped}件）</AlertTitle>
+          <AlertDescription>
+            execution_log.json に、task_id が無い（または文字列・数値でない）エントリがあります。画面には出せませんが、ファイルには残っています。
+          </AlertDescription>
         </Alert>
       )}
 
@@ -117,39 +128,48 @@ export default function TracePage() {
                 )}
               </div>
 
-              <div className="space-y-2">
-                <h3 className="text-sm font-medium">エージェント構成</h3>
-                <AgentOrgChart
-                  agents={selectedEntry.agents_discussion.assigned_agents ?? []}
-                  chainOfCommand={selectedEntry.agents_discussion.chain_of_command}
-                />
-              </div>
-
-              <Separator />
-
-              <ConsensusMeter
-                label="エージェント間 全体合意度"
-                value={selectedEntry.agents_discussion.consensus_rate}
-              />
-
-              <Separator />
-
-              <div className="space-y-2">
-                <h3 className="text-sm font-medium">対立点とトレードオフ</h3>
-                <TradeOffCompare
-                  conflictPoint={selectedEntry.agents_discussion.conflict_point}
-                  tradeOffs={selectedEntry.agents_discussion.trade_offs}
-                />
-              </div>
-
-              {(selectedEntry.agents_discussion.trial_process?.length ?? 0) > 0 && (
+              {discussion ? (
                 <>
-                  <Separator />
                   <div className="space-y-2">
-                    <h3 className="text-sm font-medium">試行錯誤・リトライの過程</h3>
-                    <TrialProcessTimeline steps={selectedEntry.agents_discussion.trial_process ?? []} />
+                    <h3 className="text-sm font-medium">エージェント構成</h3>
+                    <AgentOrgChart
+                      agents={discussion.assigned_agents ?? []}
+                      chainOfCommand={discussion.chain_of_command}
+                    />
                   </div>
+
+                  {typeof discussion.consensus_rate === "number" && (
+                    <>
+                      <Separator />
+                      <ConsensusMeter label="エージェント間 全体合意度" value={discussion.consensus_rate} />
+                    </>
+                  )}
+
+                  {(discussion.conflict_point !== undefined || (discussion.trade_offs?.length ?? 0) > 0) && (
+                    <>
+                      <Separator />
+                      <div className="space-y-2">
+                        <h3 className="text-sm font-medium">対立点とトレードオフ</h3>
+                        <TradeOffCompare
+                          conflictPoint={discussion.conflict_point ?? ""}
+                          tradeOffs={discussion.trade_offs ?? []}
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {(discussion.trial_process?.length ?? 0) > 0 && (
+                    <>
+                      <Separator />
+                      <div className="space-y-2">
+                        <h3 className="text-sm font-medium">試行錯誤・リトライの過程</h3>
+                        <TrialProcessTimeline steps={discussion.trial_process ?? []} />
+                      </div>
+                    </>
+                  )}
                 </>
+              ) : (
+                <p className="text-sm text-muted-foreground">このログには、エージェント間の議論の記録がありません。</p>
               )}
 
               {selectedEntry.user_interventions.length > 0 && (

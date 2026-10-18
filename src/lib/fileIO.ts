@@ -107,6 +107,25 @@ export async function pruneBackups(filePath: string, nowMs = Date.now()): Promis
   return expired
 }
 
+/**
+ * `<dir>.ccd-backup.<epoch ms>` というフォルダの退避を、保持方針(retention.ts)に従って古いものから削除する(フォルダ版)。
+ * 消すのは、同じ親フォルダにある「<dir名><infix><数字>」だけ(infix の既定は `.ccd-backup.`)。本体(`<dir>`)と、名前の違うフォルダ・ファイルには触れない。
+ */
+export async function pruneDirBackups(dirPath: string, nowMs = Date.now(), infix = BACKUP_INFIX): Promise<string[]> {
+  const parent = path.dirname(dirPath)
+  const prefix = `${path.basename(dirPath)}${infix}`
+  const candidates: { name: string; timestampMs: number }[] = []
+  for (const dirent of await fs.readdir(parent, { withFileTypes: true })) {
+    if (!dirent.isDirectory() || !dirent.name.startsWith(prefix)) continue
+    const suffix = dirent.name.slice(prefix.length)
+    if (!/^\d{10,}$/.test(suffix)) continue
+    candidates.push({ name: dirent.name, timestampMs: Number(suffix) })
+  }
+  const expired = selectExpired(candidates, nowMs)
+  await Promise.all(expired.map((name) => fs.rm(path.join(parent, name), { recursive: true, force: true })))
+  return expired
+}
+
 /** 指定されたプロジェクトルートが、実際のClaude Codeグローバル設定（~/.claude）と一致するかを判定する */
 export function isGlobalClaudeConfig(projectRoot: string): boolean {
   const base = path.isAbsolute(projectRoot)

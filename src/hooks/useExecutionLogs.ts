@@ -4,11 +4,16 @@ import useSWR from "swr"
 import { apiMutate, fetcher } from "@/lib/fetcher"
 import { ExecutionLogFile } from "@/lib/types"
 
+/** API の応答。skipped は、task_id が無いなどで表示できずに除いた要素の数 */
+interface ExecutionLogResponse extends ExecutionLogFile {
+  skipped?: number
+}
+
 export function useExecutionLogs(projectId: string | null) {
   const key = projectId
     ? `/api/execution-log?projectId=${encodeURIComponent(projectId)}`
     : null
-  const { data, error, isLoading, mutate } = useSWR<ExecutionLogFile>(key, fetcher)
+  const { data, error, isLoading, mutate } = useSWR<ExecutionLogResponse>(key, fetcher)
 
   async function saveSuggestedRules(taskId: string, targetProjectId?: string): Promise<number> {
     if (!projectId) throw new Error("プロジェクトが選択されていません")
@@ -31,6 +36,7 @@ export function useExecutionLogs(projectId: string | null) {
 
   return {
     logs: data?.logs ?? [],
+    skipped: data?.skipped ?? 0,
     isLoading,
     error,
     mutate,

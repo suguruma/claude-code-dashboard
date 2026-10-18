@@ -16,7 +16,10 @@ export async function POST(
     if (typeof body.model !== "string") {
       return NextResponse.json({ error: "model は文字列で指定してください" }, { status: 400 })
     }
-    await restoreArchivedVersion(project, dirName, body.model)
+    if (body.switchBackupAt !== undefined && !Number.isInteger(body.switchBackupAt)) {
+      return NextResponse.json({ error: "switchBackupAt は整数で指定してください" }, { status: 400 })
+    }
+    await restoreArchivedVersion(project, dirName, body.model, body.switchBackupAt)
     return NextResponse.json({ ok: true })
   } catch (err) {
     if (err instanceof ApiValidationError) {
@@ -26,7 +29,7 @@ export async function POST(
       return NextResponse.json({ error: err.message }, { status: 500 })
     }
     const message = err instanceof Error ? err.message : "予期しないエラーが発生しました"
-    const status = message.includes("見つかりません") ? 404 : 500
+    const status = message.includes("見つかりません") ? 404 : message.includes("不正な") ? 400 : 500
     return NextResponse.json({ error: message }, { status })
   }
 }

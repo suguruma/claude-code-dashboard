@@ -2,6 +2,7 @@ import path from "path"
 import { parseClaudeMd, serializeClaudeMd } from "./claudeMdParser"
 import { backupFile, readTextFile, resolveProjectPath, writeTextFile } from "./fileIO"
 import { serializeFrontmatter } from "./frontmatter"
+import { isDotOnlyName } from "./skillArchivePaths"
 import { listSkills, validateSkillDirName } from "./skills"
 import {
   ExportBundle,
@@ -78,6 +79,11 @@ export function validateBundle(input: unknown): ExportBundle {
     ) {
       throw new Error("スキルの形式が不正です")
     }
+    const targetModel = typeof s.targetModel === "string" ? s.targetModel : undefined
+    // `.` だけの対象モデルは、アーカイブのフォルダ名がプロジェクトの外を指すので受け付けない（他人から受け取ったファイルで起きうる）
+    if (targetModel !== undefined && isDotOnlyName(targetModel)) {
+      throw new Error(`スキル「${s.dirName}」の対象モデルが不正です（. だけの名前は使えません）`)
+    }
     return {
       dirName: s.dirName,
       name: s.name,
@@ -85,7 +91,7 @@ export function validateBundle(input: unknown): ExportBundle {
       argumentSchema: s.argumentSchema,
       category: typeof s.category === "string" ? s.category : undefined,
       title: typeof s.title === "string" ? s.title : undefined,
-      targetModel: typeof s.targetModel === "string" ? s.targetModel : undefined,
+      targetModel,
       createdAt: typeof s.createdAt === "string" ? s.createdAt : undefined,
       updatedAt: typeof s.updatedAt === "string" ? s.updatedAt : undefined,
       body: s.body,
@@ -229,7 +235,10 @@ export async function applyImport(
 
   // dirNameの形式検証はパストラバーサル対策のため必須。クライアントの選択有無に関わらず再検証する
   const selectedSkills = bundle.skills.filter(
-    (s) => selection.skillDirNames.includes(s.dirName) && isValidSkillDirName(s.dirName)
+    (s) =>
+      selection.skillDirNames.includes(s.dirName) &&
+      isValidSkillDirName(s.dirName) &&
+      (s.targetModel === undefined || !isDotOnlyName(s.targetModel))
   )
   for (const incoming of selectedSkills) {
     const filePath = path.join(resolveProjectPath(project.path, "skills"), incoming.dirName, "SKILL.md")

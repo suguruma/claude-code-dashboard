@@ -3,8 +3,10 @@ const { spawn } = require("child_process")
 const path = require("path")
 const fs = require("fs")
 const http = require("http")
-const { pickPort } = require("./port")
+const { PREFERRED_PORT, pickPort } = require("./port")
 const { isAllowedExternalUrl } = require("./externalUrl")
+const { appOriginOf, isTrustedIpcEvent, navigationDecision } = require("./origin")
+const { createNoticeSlot, portFallbackNotice } = require("./startupNotice")
 
 const isDev = !app.isPackaged
 
@@ -14,6 +16,10 @@ if (process.platform === "win32") app.setAppUserModelId("com.claudecodedashboard
 let serverProcess = null
 let mainWindow = null
 let splashWindow = null
+/** この起動で決まったアプリのオリジン(http://127.0.0.1:<ポート>)。ポートが決まるまでは null で、そのあいだは何も許可しない */
+let appOrigin = null
+/** 優先ポートが使えなかったときの、画面上部の帯の情報。画面が最初に読み取ったときに渡して消す */
+const startupNotice = createNoticeSlot()
 
 /**
  * 起動所要時間の記録が無い初回起動時に使う既定の見積り。portable exeは起動のたびに
@@ -173,6 +179,8 @@ async function startServer(progress) {
   progress?.reach("seed")
 
   const { port, isPreferred } = await pickPort()
+  appOrigin = appOriginOf(port)
+  startupNotice.set(portFallbackNotice({ port, isPreferred, preferredPort: PREFERRED_PORT }))
   if (!isPreferred) {
     console.warn(
       `[port] 優先ポートが使えないため、空いているポート ${port} で起動します。` +
@@ -219,12 +227,21 @@ async function startServer(progress) {
 }
 
 /**
+ * IPCの送り元の確認。すべてのハンドラーで最初に通す。
+ * 本アプリのメインウィンドウのメインフレームで、そのページのオリジン(event.senderFrame の URL)がアプリのものであるときだけ受け付ける。
+ * （外部のページが開いてしまった場合や、子フレームから呼ばれた場合に、ファイルの読み取り・通知・外部アプリの起動を許さない）
+ */
+function isTrustedSender(event) {
+  return Boolean(mainWindow) && isTrustedIpcEvent(event, mainWindow.webContents, appOrigin)
+}
+
+/**
  * インポート機能の「ファイルを選択」で、<input type="file">のクリックが
  * ネイティブダイアログを開かない環境が報告された（項目6）ため、
  * dialog.showOpenDialogを直接呼び出す経路を用意する。
  */
-ipcMain.handle("dialog:pick-import-file", async () => {
-  if (!mainWindow) return null
+ipcMain.handle("dialog:pick-import-file", async (event) => {
+  if (!isTrustedSender(event)) return null
   const result = await dialog.showOpenDialog(mainWindow, {
     title: "インポートするJSONファイルを選択",
     filters: [{ name: "JSON", extensions: ["json"] }],
@@ -249,13 +266,13 @@ const NOTIFICATION_SESSION_ID = /^[A-Za-z0-9_-]{1,100}$/
 const liveNotifications = new Set()
 
 ipcMain.handle("desktop-notify:supported", (event) => {
-  if (!mainWindow || event.sender !== mainWindow.webContents) return false
+  if (!isTrustedSender(event)) return false
   return Notification.isSupported()
 })
 
 ipcMain.handle("desktop-notify:show", (event, payload) => {
   // 本アプリのウィンドウ以外からの要求は受け付けない
-  if (!mainWindow || event.sender !== mainWindow.webContents) return { ok: false }
+  if (!isTrustedSender(event)) return { ok: false }
   if (!Notification.isSupported()) return { ok: false }
   const title = typeof payload?.title === "string" ? payload.title.slice(0, 120) : ""
   const body = typeof payload?.body === "string" ? payload.body.slice(0, 240) : ""
@@ -285,15 +302,66 @@ ipcMain.handle("desktop-notify:show", (event, payload) => {
  * 本アプリのウィンドウからの要求で、かつ許可したURLの形式(electron/externalUrl.js)に完全に一致するときだけ開く。
  */
 ipcMain.handle("shell:open-external", async (event, url) => {
-  if (!mainWindow || event.sender !== mainWindow.webContents) return { ok: false }
-  if (!isAllowedExternalUrl(url)) return { ok: false }
+  if (!isTrustedSender(event)) return { ok: false }
+  return { ok: await openAllowedExternal(url) }
+})
+
+/**
+ * 起動の通知（優先ポートが使えず別のポートで起動したときの帯）を、画面に1回だけ渡す。渡したあとは空になるので、
+ * 画面を再読み込みしても、同じ起動の間に2回は出ない。通知が無ければ null。
+ */
+ipcMain.handle("startup:notice", (event) => {
+  if (!isTrustedSender(event)) return null
+  return startupNotice.take()
+})
+
+/** 許可リスト（electron/externalUrl.js）にあるURLだけを、既定のアプリ・ブラウザで開く。開けたかを返す */
+async function openAllowedExternal(url) {
+  if (!isAllowedExternalUrl(url)) return false
   try {
     await shell.openExternal(url)
-    return { ok: true }
+    return true
   } catch {
-    return { ok: false }
+    return false
   }
-})
+}
+
+/** 同じURLを短い間に続けて開かない（1回の移動で、複数のイベントが同じURLを知らせても、1回だけ開く） */
+const OPEN_DEDUPE_MS = 1000
+let lastOpened = { url: "", at: 0 }
+function openAllowedExternalOnce(url) {
+  const now = Date.now()
+  if (lastOpened.url === url && now - lastOpened.at < OPEN_DEDUPE_MS) return
+  lastOpened = { url, at: now }
+  void openAllowedExternal(url)
+}
+
+/**
+ * ウィンドウが、アプリのオリジン(http://127.0.0.1:<ポート>)の外へ移動すること・新しい窓を開くことを止める。
+ * すべての webContents（メイン・スプラッシュ）に付ける。アプリ内のリンクが外部のページを開いてしまうと、そのページに
+ * preload の electronAPI が渡るため、移動そのものを止めておく。
+ * 許可リスト（electron/externalUrl.js）にある外部URL（claude:// のセッションのリンクなど）だけは、窓では開かず、
+ * 既定のアプリ・ブラウザで開く。それ以外は何も開かない。
+ */
+function guardNavigation(contents) {
+  const blockUnlessApp = (details) => {
+    const decision = navigationDecision(details.url, appOrigin)
+    if (decision === "allow") return
+    details.preventDefault()
+    if (decision === "external") openAllowedExternalOnce(details.url)
+  }
+  contents.on("will-navigate", blockUnlessApp)
+  contents.on("will-frame-navigate", blockUnlessApp)
+  contents.on("will-redirect", (details) => {
+    if (navigationDecision(details.url, appOrigin) !== "allow") details.preventDefault()
+  })
+  contents.setWindowOpenHandler(({ url }) => {
+    if (navigationDecision(url, appOrigin) === "external") openAllowedExternalOnce(url)
+    return { action: "deny" }
+  })
+}
+
+app.on("web-contents-created", (_event, contents) => guardNavigation(contents))
 
 async function createWindow() {
   const startedAt = Date.now()
@@ -340,7 +408,27 @@ async function createWindow() {
   }
 }
 
-app.whenReady().then(createWindow)
+/**
+ * 開いている窓を前に出す。2つ目の起動を見つけたときに使う。メインウィンドウがまだ表示される前（起動中）は、スプラッシュを前に出す。
+ */
+function bringExistingWindowToFront() {
+  const mainReady = mainWindow && !mainWindow.isDestroyed() && (mainWindow.isVisible() || mainWindow.isMinimized())
+  const target = mainReady ? mainWindow : splashWindow && !splashWindow.isDestroyed() ? splashWindow : null
+  if (!target) return
+  if (target.isMinimized()) target.restore()
+  target.show()
+  target.focus()
+}
+
+// 二重起動の防止。同じデータフォルダ（userData）で2つ目を起動すると、サーバーも窓も作らずに終了し、
+// 開いている窓を前に出す。2つのサーバーが同じ設定ファイルを同時に書き換えるのと、優先ポートが埋まって
+// 画面の設定（localStorage）が別扱いになるのを避ける。
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+} else {
+  app.on("second-instance", bringExistingWindowToFront)
+  app.whenReady().then(createWindow)
+}
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit()

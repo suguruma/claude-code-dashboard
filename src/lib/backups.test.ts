@@ -3,7 +3,9 @@ import os from "os"
 import path from "path"
 import { afterEach, describe, expect, it } from "vitest"
 import { listBackups, restoreBackup } from "./backups"
-import { ProjectConfig } from "./types"
+import { applyImport } from "./exportImport"
+import { createSkill, renameSkill, updateSkill } from "./skills"
+import { ExportBundle, ProjectConfig } from "./types"
 
 const cleanupDirs: string[] = []
 
@@ -191,5 +193,162 @@ describe("ダッシュボードの退避(.ccd-backup.<epoch>)の一覧と復元"
 
     await expect(restoreBackup(project, ".claude.json.backup.1800000000000", "ccd")).rejects.toThrow("見つかりません")
     await expect(restoreBackup(project, `CLAUDE.md.ccd-backup.${BACKUP_TS}`, "claude-json")).rejects.toThrow("見つかりません")
+  })
+})
+
+describe("スキル本体(SKILL.md)の退避の一覧と復元", () => {
+  const BACKUP_TS = 1_800_000_000_000
+  const bundleOf = (skills: { dirName: string; body: string }[]): ExportBundle => ({
+    version: 1,
+    exportedAt: "now",
+    sourceProjectName: "src",
+    rules: [],
+    skills: skills.map((s) => ({ dirName: s.dirName, name: s.dirName, description: "新", body: s.body })),
+  })
+
+  async function writeSkill(project: ProjectConfig, root: "skills" | "skills-disabled", dirName: string, body: string) {
+    await fs.mkdir(path.join(project.path, root, dirName), { recursive: true })
+    await fs.writeFile(path.join(project.path, root, dirName, "SKILL.md"), `---\nname: ${dirName}\ndescription: 旧\n---\n\n${body}\n`)
+  }
+
+  it("インポートで上書きしたスキルの退避が、location(skills/<名前>)・originalName(SKILL.md)つきで一覧に出る", async () => {
+    const project = await makeProject()
+    await writeSkill(project, "skills", "sample-skill", "旧本文")
+
+    await applyImport(project, bundleOf([{ dirName: "sample-skill", body: "新本文" }]), {
+      ruleCategories: [],
+      skillDirNames: ["sample-skill"],
+    })
+
+    const backups = await listBackups(project)
+    expect(backups).toHaveLength(1)
+    expect(backups[0]).toMatchObject({ kind: "ccd", originalName: "SKILL.md", location: "skills/sample-skill" })
+  })
+
+  it("復元すると SKILL.md が上書き前の内容に戻り、復元前の内容も退避される", async () => {
+    const project = await makeProject()
+    await writeSkill(project, "skills", "sample-skill", "旧本文")
+    await applyImport(project, bundleOf([{ dirName: "sample-skill", body: "新本文" }]), {
+      ruleCategories: [],
+      skillDirNames: ["sample-skill"],
+    })
+    const [backup] = await listBackups(project)
+    const skillMd = path.join(project.path, "skills", "sample-skill", "SKILL.md")
+    expect(await fs.readFile(skillMd, "utf-8")).toContain("新本文")
+
+    await restoreBackup(project, backup.fileName, "ccd", backup.location)
+
+    expect(await fs.readFile(skillMd, "utf-8")).toContain("旧本文")
+    const after = await listBackups(project)
+    expect(after).toHaveLength(2)
+    const fresh = after.find((b) => b.fileName !== backup.fileName)
+    expect(await fs.readFile(path.join(project.path, fresh!.location!, fresh!.fileName), "utf-8")).toContain("新本文")
+  })
+
+  it("無効化中(skills-disabled/)のスキルの退避も一覧に出て、復元できる", async () => {
+    const project = await makeProject()
+    await writeSkill(project, "skills-disabled", "off-skill", "現在")
+    await fs.writeFile(path.join(project.path, "skills-disabled", "off-skill", `SKILL.md.ccd-backup.${BACKUP_TS}`), "退避時の内容")
+
+    const [backup] = await listBackups(project)
+    expect(backup).toMatchObject({ originalName: "SKILL.md", location: "skills-disabled/off-skill" })
+
+    await restoreBackup(project, backup.fileName, "ccd", backup.location)
+    expect(await fs.readFile(path.join(project.path, "skills-disabled", "off-skill", "SKILL.md"), "utf-8")).toBe("退避時の内容")
+  })
+
+  it("別のスキルの退避が同じ時刻でも、両方が一覧に出て、それぞれ自分のスキルへ復元される", async () => {
+    const project = await makeProject()
+    for (const name of ["skill-a", "skill-b"]) {
+      await writeSkill(project, "skills", name, "現在")
+      await fs.writeFile(path.join(project.path, "skills", name, `SKILL.md.ccd-backup.${BACKUP_TS}`), `${name}の退避`)
+    }
+
+    const backups = await listBackups(project)
+    expect(backups.map((b) => b.location).sort()).toEqual(["skills/skill-a", "skills/skill-b"])
+    expect(new Set(backups.map((b) => b.fileName)).size).toBe(1)
+
+    await restoreBackup(project, `SKILL.md.ccd-backup.${BACKUP_TS}`, "ccd", "skills/skill-b")
+
+    expect(await fs.readFile(path.join(project.path, "skills", "skill-b", "SKILL.md"), "utf-8")).toBe("skill-bの退避")
+    expect(await fs.readFile(path.join(project.path, "skills", "skill-a", "SKILL.md"), "utf-8")).toContain("現在")
+  })
+
+  it("location を付けずにスキルの退避の名前だけを渡しても、復元されない", async () => {
+    const project = await makeProject()
+    await writeSkill(project, "skills", "sample-skill", "現在")
+    await fs.writeFile(path.join(project.path, "skills", "sample-skill", `SKILL.md.ccd-backup.${BACKUP_TS}`), "退避")
+
+    await expect(restoreBackup(project, `SKILL.md.ccd-backup.${BACKUP_TS}`, "ccd")).rejects.toThrow("見つかりません")
+  })
+
+  it("不正な location（.. ・絶対パス・階層が違う・存在しない組）は拒否され、何も書き換わらない", async () => {
+    const project = await makeProject()
+    await writeSkill(project, "skills", "sample-skill", "現在")
+    await fs.writeFile(path.join(project.path, "skills", "sample-skill", `SKILL.md.ccd-backup.${BACKUP_TS}`), "退避")
+    const name = `SKILL.md.ccd-backup.${BACKUP_TS}`
+
+    for (const bad of ["skills/..", "skills/../x", "../skills/sample-skill", "/skills/sample-skill", "skills/a/b", "other/sample-skill", "skills\\sample-skill", ""]) {
+      await expect(restoreBackup(project, name, "ccd", bad)).rejects.toThrow("不正な場所です")
+    }
+    // 形は正しいが、そのスキルには無い組
+    await expect(restoreBackup(project, name, "ccd", "skills/no-such-skill")).rejects.toThrow("見つかりません")
+    await expect(restoreBackup(project, name, "ccd", "skills-disabled/sample-skill")).rejects.toThrow("見つかりません")
+    // claude-json には location を付けられない
+    await expect(restoreBackup(project, name, "claude-json", "skills/sample-skill")).rejects.toThrow("不正な場所です")
+
+    expect(await fs.readFile(path.join(project.path, "skills", "sample-skill", "SKILL.md"), "utf-8")).toContain("現在")
+  })
+
+  it("スキルのフォルダの退避は SKILL.md のものだけを拾う（ほかのファイルの退避・フォルダは拾わない）", async () => {
+    const project = await makeProject()
+    await writeSkill(project, "skills", "sample-skill", "現在")
+    await fs.writeFile(path.join(project.path, "skills", "sample-skill", `notes.md.ccd-backup.${BACKUP_TS}`), "x")
+    await fs.mkdir(path.join(project.path, "skills", "sample-skill", `SKILL.md.ccd-backup.${BACKUP_TS + 1}`))
+
+    expect(await listBackups(project)).toEqual([])
+  })
+})
+
+describe("スキルの退避の name（改名前の内容かどうか）", () => {
+  it("改名前の退避は、SKILL.md に書かれている古い名前が skillName に入り、フォルダ名と違う。編集だけの退避は、フォルダ名と同じ", async () => {
+    const project = await makeProject()
+    await createSkill(project, { dirName: "old-name", description: "d", body: "本文" })
+    await updateSkill(project, "old-name", { body: "編集後" })
+    await renameSkill(project, "old-name", "new-name")
+
+    const backups = await listBackups(project)
+
+    expect(backups).toHaveLength(2)
+    // 新しい順: 改名の直前（まだ old-name だった内容）、編集の直前（old-name だった内容）。どちらも改名前なので古い名前
+    expect(backups.map((b) => [b.location, b.skillName])).toEqual([
+      ["skills/new-name", "old-name"],
+      ["skills/new-name", "old-name"],
+    ])
+  })
+
+  it("改名したあとに編集した退避は、新しい名前が skillName に入る。name が書かれていない・読めない退避は skillName なし", async () => {
+    const project = await makeProject()
+    await createSkill(project, { dirName: "old-name", description: "d", body: "本文" })
+    await renameSkill(project, "old-name", "new-name")
+    await updateSkill(project, "new-name", { body: "改名後の編集" })
+    await fs.writeFile(path.join(project.path, "skills", "new-name", "SKILL.md.ccd-backup.1800000000000"), "frontmatter なし")
+
+    const backups = await listBackups(project)
+    const byTime = new Map(backups.map((b) => [b.timestampMs, b.skillName]))
+
+    expect(byTime.get(1800000000000)).toBeUndefined()
+    expect(backups.filter((b) => b.skillName === "new-name")).toHaveLength(1)
+    expect(backups.filter((b) => b.skillName === "old-name")).toHaveLength(1)
+  })
+
+  it("スキル以外の退避（CLAUDE.md など）には skillName が付かない", async () => {
+    const project = await makeProject()
+    await fs.writeFile(path.join(project.path, "CLAUDE.md.ccd-backup.1800000000000"), "---\nname: x\n---\n本文")
+
+    const [backup] = await listBackups(project)
+
+    expect(backup.skillName).toBeUndefined()
+    expect(backup.location).toBeUndefined()
   })
 })

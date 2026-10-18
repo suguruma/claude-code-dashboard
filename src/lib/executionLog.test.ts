@@ -2,7 +2,7 @@ import { promises as fs } from "fs"
 import os from "os"
 import path from "path"
 import { afterEach, describe, expect, it } from "vitest"
-import { deleteExecutionLog, getExecutionLogs, saveSuggestedRulesFromLog } from "./executionLog"
+import { deleteExecutionLog, getExecutionLogs, readExecutionLogs, saveSuggestedRulesFromLog } from "./executionLog"
 import { getRules } from "./rules"
 import { ProjectConfig } from "./types"
 
@@ -80,13 +80,13 @@ describe("getExecutionLogs 後方互換読み込み", () => {
     )
     const logs = await getExecutionLogs(project)
     expect(logs[0].status).toBe("completed")
-    expect(logs[0].agents_discussion.assigned_agents).toEqual([
+    expect(logs[0].agents_discussion?.assigned_agents).toEqual([
       { role: "検証者", reason_for_assignment: "ハルシネーション防止" },
     ])
-    expect(logs[0].agents_discussion.trial_process).toEqual([
+    expect(logs[0].agents_discussion?.trial_process).toEqual([
       { step: 1, action: "検索", result: "error", note: "出典が古い" },
     ])
-    expect(logs[0].agents_discussion.chain_of_command).toEqual(["オーナー", "AI社長（メインディレクター）"])
+    expect(logs[0].agents_discussion?.chain_of_command).toEqual(["オーナー", "AI社長（メインディレクター）"])
   })
 
   it("chain_of_commandが無い場合は指揮系統なしのフラットなチームとして扱える", async () => {
@@ -111,8 +111,8 @@ describe("getExecutionLogs 後方互換読み込み", () => {
       })
     )
     const logs = await getExecutionLogs(project)
-    expect(logs[0].agents_discussion.chain_of_command).toBeUndefined()
-    expect(logs[0].agents_discussion.assigned_agents).toHaveLength(2)
+    expect(logs[0].agents_discussion?.chain_of_command).toBeUndefined()
+    expect(logs[0].agents_discussion?.assigned_agents).toHaveLength(2)
   })
 
   it("persona / memory_context / tools / current_state（エージェントが保持する4種の情報）を保持する", async () => {
@@ -143,7 +143,7 @@ describe("getExecutionLogs 後方互換読み込み", () => {
       })
     )
     const logs = await getExecutionLogs(project)
-    const agent = logs[0].agents_discussion.assigned_agents?.[0]
+    const agent = logs[0].agents_discussion?.assigned_agents?.[0]
     expect(agent?.persona).toBe("論理的かつ厳格に市場性を評価する")
     expect(agent?.memory_context).toBe("docs/plan.mdの過去ラウンドを参照")
     expect(agent?.tools).toEqual(["WebSearch", "Read"])
@@ -165,8 +165,8 @@ describe("getExecutionLogs 後方互換読み込み", () => {
     )
     const logs = await getExecutionLogs(project)
     expect(logs[0].status).toBeUndefined()
-    expect(logs[0].agents_discussion.assigned_agents).toBeUndefined()
-    expect(logs[0].agents_discussion.trial_process).toBeUndefined()
+    expect(logs[0].agents_discussion?.assigned_agents).toBeUndefined()
+    expect(logs[0].agents_discussion?.trial_process).toBeUndefined()
   })
 })
 
@@ -299,5 +299,122 @@ describe("deleteExecutionLog", () => {
     await expect(deleteExecutionLog(project, "unknown")).rejects.toThrow()
     const files = await fs.readdir(project.path)
     expect(files.some((f) => f.includes(".ccd-backup."))).toBe(false)
+  })
+})
+
+describe("欠けた項目のある実行ログ（手書き・他のツールが書いたもの）", () => {
+  const complete = {
+    task_id: "complete",
+    task_name: "通常のログ",
+    executed_at: "2026-01-01",
+    one_shot_score: 90,
+    summary: "s",
+    agents_discussion: { consensus_rate: 80, conflict_point: "なし", trade_offs: [] },
+    user_interventions: [],
+    next_golden_prompt: "p",
+    suggested_new_rules: [],
+  }
+
+  async function writeLog(project: ProjectConfig, logs: unknown[]) {
+    await fs.writeFile(path.join(project.path, "execution_log.json"), JSON.stringify({ logs }, null, 2))
+  }
+
+  it("agents_discussion が無いエントリは、議論なしのまま読める（0%や空の議論を作らない）。配列の項目は空になる", async () => {
+    const project = await makeProject()
+    await writeLog(project, [{ task_id: "no-discussion", task_name: "n", executed_at: "2026-01-01", one_shot_score: 70, summary: "s", next_golden_prompt: "p" }])
+
+    const [entry] = await getExecutionLogs(project)
+
+    expect(entry.agents_discussion).toBeUndefined()
+    expect(entry.user_interventions).toEqual([])
+    expect(entry.suggested_new_rules).toEqual([])
+  })
+
+  it("agents_discussion の中の欠落（空オブジェクト・合意度なし・対立点なし・各配列が無い・型違い）でも、例外が出ない", async () => {
+    const project = await makeProject()
+    await writeLog(project, [
+      { ...complete, task_id: "empty-object", agents_discussion: {} },
+      { ...complete, task_id: "no-consensus", agents_discussion: { conflict_point: "x", trade_offs: [] } },
+      { ...complete, task_id: "bad-types", agents_discussion: { consensus_rate: "高い", conflict_point: 3, trade_offs: "なし", assigned_agents: {}, trial_process: "x", chain_of_command: 1 } },
+      { ...complete, task_id: "null-discussion", agents_discussion: null },
+    ])
+
+    const logs = await getExecutionLogs(project)
+    const byId = Object.fromEntries(logs.map((l) => [l.task_id, l]))
+
+    expect(logs).toHaveLength(4)
+    expect(byId["empty-object"].agents_discussion).toEqual({ trade_offs: [] })
+    expect(byId["no-consensus"].agents_discussion?.consensus_rate).toBeUndefined()
+    expect(byId["bad-types"].agents_discussion).toEqual({ trade_offs: [] })
+    expect(byId["null-discussion"].agents_discussion).toBeUndefined()
+  })
+
+  it("user_interventions・suggested_new_rules が配列でないときは空の配列にする。提案ルールの保存も落ちない", async () => {
+    const project = await makeProject()
+    await writeLog(project, [{ ...complete, task_id: "bad-arrays", user_interventions: "なし", suggested_new_rules: null }])
+    await fs.writeFile(path.join(project.path, "CLAUDE.md"), "")
+
+    const [entry] = await getExecutionLogs(project)
+    expect(entry.user_interventions).toEqual([])
+    expect(entry.suggested_new_rules).toEqual([])
+    expect(await saveSuggestedRulesFromLog(project, project, "bad-arrays")).toBe(0)
+  })
+
+  it("オブジェクトでない要素・task_id の無い（空・文字列と数値でない）要素は、画面に出さず、その数を skipped で返す。通常のエントリは出る", async () => {
+    const project = await makeProject()
+    await writeLog(project, [null, "text", 3, [], { task_name: "task_id なし" }, { task_id: "" }, { task_id: {} }, { task_id: null }, { task_id: Number.NaN }, complete])
+
+    expect((await getExecutionLogs(project)).map((l) => l.task_id)).toEqual(["complete"])
+    expect(await readExecutionLogs(project)).toMatchObject({ skipped: 9, logs: [{ task_id: "complete" }] })
+  })
+
+  it("task_id が数値のエントリは、文字列に直して出す。skipped には数えない。削除もできる", async () => {
+    const project = await makeProject()
+    const numeric = { task_name: "数値のID", task_id: 5, summary: "s" }
+    await writeLog(project, [numeric, complete])
+
+    const result = await readExecutionLogs(project)
+    expect(result.skipped).toBe(0)
+    expect(result.logs.map((l) => [l.task_id, l.task_name])).toEqual([
+      ["5", "数値のID"],
+      ["complete", "通常のログ"],
+    ])
+
+    await deleteExecutionLog(project, "5")
+    const raw = JSON.parse(await fs.readFile(path.join(project.path, "execution_log.json"), "utf-8"))
+    expect(raw).toEqual({ logs: [complete] })
+  })
+
+  it("表示できない要素があるログから1件を削除しても、表示できない要素はファイルに残る", async () => {
+    const project = await makeProject()
+    const unreadable = { task_name: "task_id なし" }
+    await writeLog(project, [unreadable, complete, { ...complete, task_id: "to-delete" }])
+
+    await deleteExecutionLog(project, "to-delete")
+
+    const raw = JSON.parse(await fs.readFile(path.join(project.path, "execution_log.json"), "utf-8"))
+    expect(raw).toEqual({ logs: [unreadable, complete] })
+  })
+
+  it("欠落のある別のエントリがあるログから1件を削除しても、残りのエントリは削除前と同じ（項目が加わらない・順序が変わらない）", async () => {
+    const project = await makeProject()
+    const sparse = { task_id: "sparse", task_name: "欠けたログ" }
+    const odd = { task_id: "odd", agents_discussion: { consensus_rate: "高い" }, user_interventions: "なし" }
+    const unreadable = { task_name: "task_id なし" }
+    await writeLog(project, [sparse, complete, null, odd, unreadable, { ...complete, task_id: "to-delete" }])
+
+    await deleteExecutionLog(project, "to-delete")
+
+    const raw = JSON.parse(await fs.readFile(path.join(project.path, "execution_log.json"), "utf-8"))
+    expect(raw).toEqual({ logs: [sparse, complete, null, odd, unreadable] })
+  })
+
+  it("単一オブジェクトの形で agents_discussion が無いログも読める", async () => {
+    const project = await makeProject()
+    await fs.writeFile(path.join(project.path, "execution_log.json"), JSON.stringify({ task_id: "single", task_name: "n" }))
+
+    const [entry] = await getExecutionLogs(project)
+    expect(entry.task_id).toBe("single")
+    expect(entry.agents_discussion).toBeUndefined()
   })
 })

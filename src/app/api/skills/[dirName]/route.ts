@@ -54,6 +54,6 @@ function handleError(err: unknown) {
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
   const message = err instanceof Error ? err.message : "予期しないエラーが発生しました"
-  const status = message === "スキルが見つかりません" ? 404 : 500
+  const status = message === "スキルが見つかりません" ? 404 : message.includes("不正な") ? 400 : 500
   return NextResponse.json({ error: message }, { status })
 }

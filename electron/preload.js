@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   notificationsSupported: () => ipcRenderer.invoke("desktop-notify:supported"),
   // Claude Desktopのセッションを claude:// のリンクで開く。許可するURLの形式はメインプロセス側で検証する
   openExternal: (url) => ipcRenderer.invoke("shell:open-external", url),
+  // 起動の通知（優先ポートが使えず別のポートで起動したとき、画面上部の帯に出す内容）。メインプロセスが1回だけ渡し、無ければ null
+  getStartupNotice: () => ipcRenderer.invoke("startup:notice"),
   // 通知をクリックされたとき、対象のセッションIDで呼ばれる。登録の解除関数を返す
   onNotificationOpen: (callback) => {
     const listener = (_event, sessionId) => callback(sessionId)
