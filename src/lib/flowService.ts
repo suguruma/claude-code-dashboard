@@ -2,6 +2,7 @@ import { mapLimit } from "./desktopSessions"
 import { getDesktopSessionService, type DesktopSessionService, type GroupSource } from "./desktopSessionService"
 import { assembleFlow, emptySignals, pickLeader, type FlowSessionInput } from "./flowEvents"
 import { FlowSignalReader } from "./flowReader"
+import { placeOrgTree } from "./flowTree"
 import {
   FLOW_DEFAULT_RANGE_MS,
   FLOW_MAX_RANGE_MS,
@@ -47,6 +48,9 @@ export interface FlowServiceOptions {
  * グループの組織図アニメーション用に、出来事の列を組み立てる。
  * セッションの一覧・グループ・会話ログの所在は DesktopSessionService のキャッシュを使い、
  * 会話ログの読み取りは FlowSignalReader が差分だけ行う。読み取り専用。
+ *
+ * 木は、指揮役(1層目)・グループ内の子(2層目)・2層目の子が作ったセッション(3層目。グループの外でもよい)。
+ * 親子の根拠は spawnedFrom.sessionId だけ(flowTree.ts)。指揮役がいないグループは、カードだけを並べて木を作らない。
  */
 export class FlowService {
   private readonly now: () => number
@@ -64,7 +68,7 @@ export class FlowService {
   async build(groupId: string, sinceInput?: number | null): Promise<FlowResponse | null> {
     const now = this.now()
     const since = normalizeSince(sinceInput, now)
-    const { group, sources } = await this.sessions.groupSources(groupId)
+    const { group, sources, outsiders } = await this.sessions.groupSources(groupId)
     if (!group) return null
 
     const prefix = this.sessions.orchestratorPrefix()
@@ -72,8 +76,25 @@ export class FlowService {
       sources.map((s) => ({ source: s, id: s.summary.id, title: s.summary.title, createdAt: s.summary.createdAt })),
       prefix
     )?.source
-    // 指揮役を先頭に、残りは作成日時の古い順
-    const ordered: GroupSource[] = leaderSource ? [leaderSource, ...sources.filter((s) => s !== leaderSource)] : sources
+    // 指揮役を先頭に、木に出るセッションを作成日時の古い順に並べる。parentOf は、木での親(指揮役がいなければ空)
+    const leaderId = leaderSource?.summary.id ?? null
+    const parentOf = new Map<string, string>()
+    let ordered: GroupSource[] = sources
+    if (leaderSource && leaderId) {
+      const candidates = [...sources.filter((s) => s !== leaderSource), ...outsiders]
+      const byId = new Map(candidates.map((s) => [s.summary.id, s] as const))
+      const placements = placeOrgTree({
+        leaderId,
+        sessions: candidates.map((s) => ({
+          id: s.summary.id,
+          createdAt: s.summary.createdAt,
+          parentId: s.summary.spawnedFromId,
+          inGroup: s.summary.group?.id === groupId,
+        })),
+      })
+      ordered = [leaderSource, ...placements.flatMap((p) => byId.get(p.id) ?? [])]
+      for (const p of placements) parentOf.set(p.id, p.parentId)
+    }
 
     // 組の判定には範囲より前の信号も使うので、読む期間は常に上限(24時間)にそろえる
     const horizon = now - FLOW_MAX_RANGE_MS
@@ -84,8 +105,14 @@ export class FlowService {
     })
 
     const leader = leaderSource ? inputs[0] : null
-    const members = leaderSource ? inputs.slice(1) : inputs
-    const assembled = assembleFlow({ leader, members, since })
+    const rest = leaderSource ? inputs.slice(1) : inputs
+    // 親が指揮役(または木に親がいない)なら2層目、そうでなければ、その親(2層目)の3層目
+    const members = rest.filter((s) => (parentOf.get(s.id) ?? leaderId) === leaderId)
+    const subs = rest.flatMap((s) => {
+      const parentId = parentOf.get(s.id)
+      return parentId && parentId !== leaderId ? [{ parentId, session: s }] : []
+    })
+    const assembled = assembleFlow({ leader, members, subs, since })
 
     const indexOf = new Map(inputs.map((s, i) => [s.id, i] as const))
     const tools: FlowToolSample[] = assembled.tools.map((b) => [b.t - since, indexOf.get(b.sid) ?? 0, b.ctx ?? -1, b.n])
@@ -101,6 +128,7 @@ export class FlowService {
         title: source.summary.title,
         model: source.summary.model,
         isLeader: leaderSource !== undefined && i === 0,
+        parentId: parentOf.get(id) ?? null,
         contextLimit: this.sessions.contextLimitOf(source.summary.model, seen),
         contextBefore: before,
       }
@@ -110,7 +138,7 @@ export class FlowService {
       generatedAt: now,
       since,
       group,
-      leaderId: leaderSource ? leaderSource.summary.id : null,
+      leaderId,
       prefix,
       members: flowMembers,
       events: assembled.events,

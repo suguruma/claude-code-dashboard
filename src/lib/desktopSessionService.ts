@@ -361,24 +361,32 @@ export class DesktopSessionService {
 
   /**
    * グループ内の、アーカイブされていないセッションと会話ログの所在(作成日時の古い順)。グループが無ければ group は null。
+   * outsiders は、組織図の3層目の候補: どのグループにも入っていない、アーカイブされていない、親(spawnedFromId)を持つセッション。
    * 一覧と同じ要約キャッシュを使うので、呼び出しのたびに読み直すのは変わったファイルだけ。
    */
-  async groupSources(groupId: string): Promise<{ group: { id: string; name: string } | null; sources: GroupSource[] }> {
+  async groupSources(
+    groupId: string
+  ): Promise<{ group: { id: string; name: string } | null; sources: GroupSource[]; outsiders: GroupSource[] }> {
     const list = await this.list()
     const group = list.groups.find((g) => g.id === groupId)
     const sources: GroupSource[] = []
+    const outsiders: GroupSource[] = []
     for (const b of this.built.values()) {
-      if (b.summary.group?.id !== groupId || b.summary.isArchived) continue
-      sources.push({ summary: b.summary, filePath: b.ref?.filePath ?? null })
+      if (b.summary.isArchived) continue
+      const source = { summary: b.summary, filePath: b.ref?.filePath ?? null }
+      if (b.summary.group?.id === groupId) sources.push(source)
+      else if (b.summary.group === null && b.summary.spawnedFromId !== null) outsiders.push(source)
     }
-    sources.sort((a, b) => {
+    const oldestFirst = (a: GroupSource, b: GroupSource) => {
       const ta = a.summary.createdAt ?? Number.POSITIVE_INFINITY
       const tb = b.summary.createdAt ?? Number.POSITIVE_INFINITY
       if (ta !== tb) return ta < tb ? -1 : 1
       return a.summary.id < b.summary.id ? -1 : 1
-    })
+    }
+    sources.sort(oldestFirst)
+    outsiders.sort(oldestFirst)
     const name = group?.name ?? sources[0]?.summary.group?.name
-    return { group: name !== undefined ? { id: groupId, name } : null, sources }
+    return { group: name !== undefined ? { id: groupId, name } : null, sources, outsiders }
   }
 
   async detail(id: string): Promise<DesktopSessionDetail | null> {
@@ -519,6 +527,7 @@ export class DesktopSessionService {
       queuedInputs: digest?.queued ?? 0,
       messaging: digest ? messagingOf(digest) : null,
       cliProcess: this.cliProcessOf(meta?.cliSessionId ?? ref?.sessionId ?? null),
+      spawnedFromId: meta?.spawnedFromId ?? null,
     }
     return { summary, tasks, ref, lastCompactionAt: digest?.lastCompactionAt ?? null }
   }

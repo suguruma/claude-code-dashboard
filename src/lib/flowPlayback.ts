@@ -1,4 +1,4 @@
-import { FLOW_WORK_FULL, type FlowEvent, type FlowMember, type FlowResponse } from "./flowTypes"
+import { FLOW_WORK_FULL, type FlowEvent, type FlowInstruct, type FlowMember, type FlowReceipt, type FlowResponse } from "./flowTypes"
 import { formatTokens } from "./usageFormat"
 
 /**
@@ -80,10 +80,14 @@ export interface MemberState {
 }
 
 export interface ChartCounts {
+  /** 指示・報告の本数。3層目の親子の間の出来事も含む(「出来事」の一覧・概要の数) */
   instructs: number
   reports: number
   ends: number
   working: number
+  /** うち、指揮役自身が出した指示・受けた報告(指揮役のカードの「指示 n／報告 n」)。3層目の出来事は含まない */
+  leaderInstructs: number
+  leaderReports: number
 }
 
 export interface ChartState {
@@ -179,6 +183,9 @@ export function stateAt(timeline: FlowTimeline, t: number): ChartState {
       for (const p of points) if (p.t >= lastInstruct.t && p.t <= until) toolCount += p.n
       if (outcome) phase = outcome.kind === "report" ? "reported" : "noreport"
       else if (lastTool && lastTool.t >= lastInstruct.t && t - lastTool.t <= WORKING_WINDOW_MS) phase = "working"
+    } else if (lastTool && t - lastTool.t <= WORKING_WINDOW_MS) {
+      // 親からの指示が無くても、直近にツールを呼んでいれば作業中(人の入力で動いている子・3層目の補助のセッション)。作業量は指示ごとの数なので0
+      phase = "working"
     }
 
     let recent = 0
@@ -196,11 +203,14 @@ export function stateAt(timeline: FlowTimeline, t: number): ChartState {
     }
   })
 
+  const leaderId = members.find((m) => m.isLeader)?.id ?? null
   const counts: ChartCounts = {
     instructs: visible.filter((e) => e.kind === "instruct").length,
     reports: visible.filter((e) => e.kind === "report").length,
     ends: visible.filter((e) => e.kind === "end").length,
     working: memberStates.filter((m, i) => !members[i].isLeader && m.phase === "working").length,
+    leaderInstructs: leaderId === null ? 0 : visible.filter((e) => e.kind === "instruct" && e.from === leaderId).length,
+    leaderReports: leaderId === null ? 0 : visible.filter((e) => e.kind === "report" && e.to === leaderId).length,
   }
   return { t, members: memberStates, counts }
 }
@@ -234,6 +244,16 @@ export function shouldAnimate(prefersReducedMotion: boolean): boolean {
   return !prefersReducedMotion
 }
 
+/**
+ * 指揮役のカードの状態の文言。指揮役自身が作業中かと、配下(2層目・3層目)の作業中の数(概要の「作業中」と同じ数)を、
+ * 「配下で」と付けて区別する。
+ */
+export function leaderPhaseText(selfWorking: boolean, subordinatesWorking: number): string {
+  const subordinates = subordinatesWorking > 0 ? `配下で${subordinatesWorking}件が作業中` : null
+  if (selfWorking) return subordinates ? `作業中・${subordinates}` : "作業中"
+  return subordinates ?? "待機中"
+}
+
 /** 「最後の出来事から」の経過の表示 */
 export function formatElapsed(ms: number): string {
   const sec = Math.max(0, Math.round(ms / 1000))
@@ -251,11 +271,14 @@ export function newEventsAfter(events: FlowEvent[], cursor: number): FlowEvent[]
   return events.filter((e) => e.t > cursor)
 }
 
-/** 出来事を見分けるキー(種別・時刻・関わるセッション) */
+/**
+ * 出来事を見分けるキー(種別・時刻・関わるセッション)。指示は、受け手の記録の時刻(t)ではなく、送信記録の時刻(sentAt)で見分ける。
+ * 送信側の記録だけで出した指示が、1〜2秒後に受け手の記録が書かれて確認済みになっても、同じ指示として扱うため。
+ */
 export function eventKey(e: FlowEvent): string {
   switch (e.kind) {
     case "instruct":
-      return `i|${e.t}|${e.from}|${e.to}`
+      return `i|${e.sentAt ?? e.t}|${e.from}|${e.to}`
     case "report":
       return `r|${e.t}|${e.from}`
     case "end":
@@ -267,20 +290,31 @@ export function eventKey(e: FlowEvent): string {
   }
 }
 
+/** 見た出来事のキー → 受信の状態。指示以外は "-"。送信側のみで流した指示が、あとで確認済みになったことを見つけるために覚える */
+export type SeenEvents = Map<string, FlowReceipt | "-">
+
 /**
- * まだ見ていない出来事だけを返し、見た出来事のキーを seen に足す。更新の間に会話ログへ遅れて書かれた出来事も、
- * 取りこぼさず、同じ出来事を2回流さない。seen が空のとき(最初の表示)は、過去の出来事を流さないよう、
- * 呼び出し側が先に markSeen で全件を登録する。
+ * まだ見ていない出来事(fresh)と、見た指示が確認済みになったもの(upgraded)を返し、seen に覚える。更新の間に会話ログへ
+ * 遅れて書かれた出来事も、取りこぼさず、同じ出来事を2回流さない。seen が空のとき(最初の表示)は、過去の出来事を流さないよう、
+ * 呼び出し側が先に呼んで、返り値を捨てる。
+ * upgraded は、すでに「受信未確認」の粒で流した指示の受信が、あとで確認できたもの。粒はもう流さず、
+ * 表示中のラベル・粒の「受信未確認」の印だけを、確認済みに切り替える。
  */
-export function selectUnseen(events: FlowEvent[], seen: Set<string>): FlowEvent[] {
+export function selectUnseen(events: FlowEvent[], seen: SeenEvents): { fresh: FlowEvent[]; upgraded: FlowInstruct[] } {
   const fresh: FlowEvent[] = []
+  const upgraded: FlowInstruct[] = []
   for (const e of events) {
     const key = eventKey(e)
-    if (seen.has(key)) continue
-    seen.add(key)
-    fresh.push(e)
+    const before = seen.get(key)
+    if (before === undefined) {
+      seen.set(key, e.kind === "instruct" ? e.receipt : "-")
+      fresh.push(e)
+    } else if (e.kind === "instruct" && e.receipt === "confirmed" && before === "sender-only") {
+      seen.set(key, "confirmed")
+      upgraded.push(e)
+    }
   }
-  return fresh
+  return { fresh, upgraded }
 }
 
 /** 前回までに見た時刻より後の、ツール呼び出しのまとまり */

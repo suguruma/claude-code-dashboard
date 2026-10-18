@@ -31,6 +31,11 @@ export interface FlowInstruct {
   /** 本文の先頭20文字(超えたら「…」) */
   summary: string
   receipt: FlowReceipt
+  /**
+   * 送り手の送信記録の時刻。送信側のみの指示は、t と同じ。受信を確認できた指示は、対応する送信記録があればその時刻(無ければ null)。
+   * 受信を確認する前(送信側のみ)と、確認できたあとで、t(受け手の記録の時刻)は変わるが、同じ指示だと見分けるために使う。
+   */
+  sentAt: number | null
 }
 
 /** 子から指揮役への報告。本文は持たない */
@@ -88,6 +93,11 @@ export interface FlowMember {
   model: string | null
   /** 指揮役か */
   isLeader: boolean
+  /**
+   * 木での親のセッションID。指揮役は null。2層目は指揮役、3層目は2層目のセッション(4層目以降は、2層目の祖先)。
+   * 指揮役がいないグループでは、全員 null(木を描かない)。
+   */
+  parentId: string | null
   /** コンテキストの上限(一覧と同じ、モデルごとの仮置き値)。不明は null */
   contextLimit: number | null
   /** 表示範囲の始まりより前の、最後のコンテキスト(トークン)。分からなければ null */
@@ -108,7 +118,10 @@ export interface FlowResponse {
   leaderId: string | null
   /** 指揮役を見つけるタイトルの接頭辞 */
   prefix: string
-  /** 指揮役を先頭に、グループ内のアーカイブされていないセッション */
+  /**
+   * 指揮役を先頭に、木に出るセッション(作成日時の古い順)。グループ内のアーカイブされていないセッションと、
+   * 2層目の子が作った、グループに入っていないセッション(3層目)。
+   */
   members: FlowMember[]
   /** 出来事。時刻の昇順 */
   events: FlowEvent[]

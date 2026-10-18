@@ -17,6 +17,7 @@ import {
   writeDesktopConfigs,
   writeMeta,
 } from "./desktopFixtures"
+import { eventKey, selectUnseen, type SeenEvents } from "./flowPlayback"
 import { FLOW_SINCE_TOLERANCE_MS, FlowService, normalizeSince, parseFlowParams } from "./flowService"
 import { FLOW_DEFAULT_RANGE_MS, FLOW_MAX_RANGE_MS, type FlowEvent, type FlowResponse } from "./flowTypes"
 
@@ -115,23 +116,33 @@ describe("FlowService: 合成データでの出来事（試験グループ）", 
     expect(f.group).toEqual({ id: sample.groups.a, name: "試験グループ" })
     expect(f.leaderId).toBe(exp.leader)
     expect(f.prefix).toBe("00_")
-    // 指揮役が先頭。ほかは作成日時の古い順（合成データは、作成順と名前順が食い違うように作ってある。名前順の並べ替えは画面側）
+    // 指揮役が先頭。ほかは作成日時の古い順（合成データは、作成順と名前順が食い違うように作ってある。名前順の並べ替えは画面側）。
+    // 3層目（補助のセッション）と、指揮役が作ったグループ外のセッション（2層目）も、同じ並びに入る
     expect(f.members.map((m) => [m.title, m.isLeader])).toEqual([
       ["00_リーダー_試験", true],
       ["03_検証", false],
       ["01_画面の修正", false],
       ["04_文書の整備", false],
       ["02_集計の作成", false],
+      ["補助B_表記ゆれの点検", false],
+      ["補助A_さらに下の確認", false],
+      ["補助C_件数の再計算", false],
+      ["補助D_書式の確認相手", false],
+      ["補助_臨時の調べもの", false],
     ])
 
+    // 指示・報告は、3層目の親子（画面の修正 ⇄ 補助B）の分を含む。指揮役自身の分は、その外
     const instructs = ofKind(f, "instruct")
     expect(instructs).toHaveLength(exp.instructs as number)
     expect(instructs.filter((e) => e.receipt === "confirmed")).toHaveLength(exp.confirmed as number)
     expect(instructs.filter((e) => e.receipt === "sender-only")).toHaveLength(exp.senderOnly as number)
-    expect(instructs.every((e) => e.from === exp.leader)).toBe(true)
+    expect(instructs.filter((e) => e.from === exp.leader)).toHaveLength(exp.leaderInstructs as number)
+    expect(instructs.filter((e) => e.from !== exp.leader).map((e) => [e.from, e.to])).toEqual([[sample.ids.screen, sample.ids.helperB]])
 
     const reports = ofKind(f, "report")
     expect(reports).toHaveLength(exp.reports as number)
+    expect(reports.filter((e) => e.to === exp.leader)).toHaveLength(exp.leaderReports as number)
+    expect(reports.filter((e) => e.to !== exp.leader).map((e) => [e.from, e.to])).toEqual([[sample.ids.helperB, sample.ids.screen]])
     const paired = reports.filter((r) => r.instructAt !== null)
     expect(paired).toHaveLength(exp.pairedReports as number)
     expect(paired.map((r) => r.tools)).toEqual(exp.pairedTools)
@@ -161,6 +172,21 @@ describe("FlowService: 合成データでの出来事（試験グループ）", 
     expect(senderOnly?.to).toBe(sample.ids.docs)
   })
 
+  it("実データと同じ形（前置きの一文＋タグ＋本文＋末尾の署名）の peer でも、指示・他グループ・外部の要約に、前置き・タグ・署名が残らない", async () => {
+    const { sample, flow } = await sampleService()
+    const f = (await flow.build(sample.groups.a)) as FlowResponse
+    const instructs = ofKind(f, "instruct").filter((e) => e.receipt === "confirmed")
+    const cross = ofKind(f, "cross")
+    expect(instructs.length).toBeGreaterThanOrEqual(8)
+    expect(cross).toHaveLength(2)
+    for (const e of [...instructs, ...cross]) {
+      expect(e.summary, e.summary).not.toMatch(/Another Claude|cross-session-message|送信元|[<>]/)
+      expect(e.summary.length).toBeGreaterThan(0)
+    }
+    expect(cross.map((e) => e.summary).sort()).toEqual(["ファイル配置の確認依頼です", "共有フォルダの整理をお願いします"])
+    expect(JSON.stringify(f)).not.toMatch(/Another Claude|cross-session-message|送信元/)
+  })
+
   it("受け手が作業中に届いた指示（queued_command・origin: peer）も受信の記録になり、送信側のみだった指示が確認済みになる", async () => {
     const { sample, flow } = await sampleService()
     const before = (await flow.build(sample.groups.a)) as FlowResponse
@@ -185,6 +211,16 @@ describe("FlowService: 合成データでの出来事（試験グループ）", 
     expect(ofKind(after, "instruct")).toHaveLength(ofKind(before, "instruct").length)
     expect(count(after, "confirmed")).toBe(count(before, "confirmed") + 1)
     expect(count(after, "sender-only")).toBe(count(before, "sender-only") - 1)
+
+    // 画面側の更新: 送信側のみで流した指示が確認済みになっても、粒を2回流さない（同じ指示のキー。印の切り替えだけ）
+    const confirmed = ofKind(after, "instruct").find((e) => e.sentAt === pending?.sentAt && e.receipt === "confirmed")
+    expect(confirmed?.t).toBe((pending?.t ?? 0) + 2_000)
+    expect(confirmed && eventKey(confirmed)).toBe(pending && eventKey(pending))
+    const seen: SeenEvents = new Map()
+    selectUnseen(before.events, seen)
+    const next = selectUnseen(after.events, seen)
+    expect(next.fresh.filter((e) => e.kind === "instruct")).toEqual([])
+    expect(next.upgraded.map((e) => e.to)).toEqual([sample.ids.docs])
   })
 
   it("ツール呼び出しのまとまりは数値の組。コンテキストの段階（80%超・90%超）と、作業中の子の最近の呼び出しが含まれる", async () => {
@@ -235,6 +271,128 @@ describe("FlowService: 合成データでの出来事（試験グループ）", 
   })
 })
 
+describe("FlowService: 3層目（子が作った補助のセッション）", () => {
+  it("木: 親が指揮役のもの（グループの内外）は2層目、2層目の子が作ったものは、グループの内外を問わず3層目。4層目は2層目の祖先の下", async () => {
+    const { sample, flow } = await sampleService()
+    const f = (await flow.build(sample.groups.a)) as FlowResponse
+    const exp = sample.expected.groupA
+    const tree = Object.fromEntries(f.members.filter((m) => !m.isLeader).map((m) => [m.id, m.parentId]))
+    // 期待値: セッション → [層, 親]。4層目（補助A。補助B が作った）は、2層目の祖先（画面の修正）の下
+    const expected = exp.tree as Record<string, [number, string]>
+    expect(tree).toEqual(Object.fromEntries(Object.entries(expected).map(([id, [, parent]]) => [id, parent])))
+    expect(f.members.find((m) => m.isLeader)?.parentId).toBeNull()
+    // 層は、親から決まる（指揮役の子=2、それ以外の親=3）
+    for (const [id, [depth, parent]] of Object.entries(expected)) {
+      const m = f.members.find((x) => x.id === id)
+      expect(m, id).toBeDefined()
+      expect(m?.parentId).toBe(parent)
+      expect(parent === exp.leader ? 2 : 3).toBe(depth)
+    }
+  })
+
+  it("木に出ないもの: 親が見つからないグループ外のセッション・アーカイブ済み・別グループ", async () => {
+    const { sample, flow } = await sampleService()
+    const f = (await flow.build(sample.groups.a)) as FlowResponse
+    const ids = new Set(f.members.map((m) => m.id))
+    for (const id of sample.expected.groupA.notInTree as string[]) expect(ids.has(id), id).toBe(false)
+    expect(ids.has(sample.ids.sideB)).toBe(false) // 別グループの3層目は、別グループの組織図にだけ出る
+    expect(JSON.stringify(f)).not.toContain(sample.ids.stray)
+  })
+
+  it("3層目の親子の間の指示・報告は、2層目と同じ規則（受信確認・組・作業量）で出る。3層目から指揮役への連絡は、他グループ扱いにならない", async () => {
+    const { sample, flow } = await sampleService()
+    const f = (await flow.build(sample.groups.a)) as FlowResponse
+    const toHelper = ofKind(f, "instruct").filter((e) => e.to === sample.ids.helperB)
+    expect(toHelper).toHaveLength(1)
+    expect(toHelper[0]).toMatchObject({ from: sample.ids.screen, receipt: "confirmed", summary: "表記ゆれがないか見てください" })
+    const fromHelper = ofKind(f, "report").filter((e) => e.from === sample.ids.helperB)
+    expect(fromHelper).toHaveLength(1)
+    expect(fromHelper[0]).toMatchObject({ to: sample.ids.screen, instructAt: toHelper[0].t })
+    // 作業6回 ＋ 報告の送信1回
+    expect(fromHelper[0].tools).toBe(7)
+    // 他グループの連絡は1件のまま（3層目の送信は含まない）
+    expect(ofKind(f, "cross").filter((e) => e.source === "other-group")).toHaveLength(sample.expected.groupA.crossOtherGroup as number)
+  })
+
+  it("3層目の peer が無くても、ツール呼び出しがあれば作業量のまとまりが出る。コンテキストの上限も持つ", async () => {
+    const { sample, flow } = await sampleService()
+    const f = (await flow.build(sample.groups.a)) as FlowResponse
+    const index = f.members.findIndex((m) => m.id === sample.ids.practiceD)
+    expect(index).toBeGreaterThan(0)
+    const mine = f.tools.filter((x) => x[1] === index)
+    expect(mine.length).toBeGreaterThan(0)
+    // いまの60秒以内までツールを呼んでいる（作業中になる）
+    const last = f.since + mine[mine.length - 1][0]
+    expect(f.generatedAt - last).toBeLessThanOrEqual(60_000)
+    expect(f.members[index].contextLimit).toBe(1_000_000)
+    // この子には、指示も報告も無い
+    expect(f.events.some((e) => ("to" in e && e.to === sample.ids.practiceD) || ("from" in e && e.from === sample.ids.practiceD))).toBe(false)
+  })
+
+  it("3層目の会話ログも差分読み: 変わっていないファイルは読み直さず、追記された分だけを読む", async () => {
+    const { sample, now, flow } = await sampleService()
+    await flow.build(sample.groups.a)
+    const first = flow.reader.bytesRead
+    expect(first).toBeGreaterThan(0)
+    await flow.build(sample.groups.a)
+    expect(flow.reader.bytesRead).toBe(first)
+
+    const file = path.join(sample.projectsRoot, "-sample-org-chart", `11111111-1111-4111-8111-${sample.ids.helperB.slice(-12)}.jsonl`)
+    const appended = toJsonl([assistantRow({ ts: new Date(now - 1000).toISOString(), stop: "tool_use", tools: [{ name: "Bash", input: {}, id: "toolu_sub_new" }] })])
+    await fs.appendFile(file, appended)
+    await flow.build(sample.groups.a)
+    expect(flow.reader.bytesRead - first).toBe(Buffer.byteLength(appended))
+  })
+
+  it("3層目のライブ: 親の会話ログに、3層目からの連絡を追記すると、報告として出る（指示と組にならない報告も、線は描く）", async () => {
+    const { sample, now, flow } = await sampleService()
+    const before = (await flow.build(sample.groups.a)) as FlowResponse
+    // 文書の整備（補助Dの親）の会話ログに、補助D（やりとりが無かった3層目）からの連絡を追記する
+    const file = path.join(sample.projectsRoot, "-sample-org-chart", `11111111-1111-4111-8111-${sample.ids.docs.slice(-12)}.jsonl`)
+    const row = {
+      type: "user",
+      timestamp: new Date(now - 2_000).toISOString(),
+      isSidechain: false,
+      isMeta: true,
+      origin: { kind: "peer", from: sample.ids.practiceD, hostInjected: true },
+      message: { role: "user", content: "補足の連絡です" },
+    }
+    await fs.appendFile(file, `${JSON.stringify(row)}\n`, "utf-8")
+    const after = (await flow.build(sample.groups.a)) as FlowResponse
+    const reportsOf = (f: FlowResponse) => ofKind(f, "report").filter((e) => e.from === sample.ids.practiceD)
+    expect(reportsOf(before)).toHaveLength(0)
+    const added = reportsOf(after)
+    expect(added).toHaveLength(1)
+    // 指示と組にならない報告も、線は描く（作業量0）
+    expect(added[0]).toMatchObject({ to: sample.ids.docs, instructAt: null, tools: 0 })
+  })
+
+  it("API の応答に、spawnedFrom のほかの項目（taskId・title・name）の値が含まれない（許可リスト）", async () => {
+    const root = await tmpDir()
+    const fx = await makeDesktopFixture(root)
+    await writeDesktopConfigs(fx, {
+      groups: [{ id: "cg-1", name: "試験", order: 1 }],
+      assignments: { [fakeSessionId(1)]: "cg-1", [fakeSessionId(2)]: "cg-1" },
+    })
+    await writeMeta(fx, makeMeta({ n: 1, title: "00_リーダー", createdAt: 1_000 }))
+    await writeMeta(fx, makeMeta({ n: 2, title: "01_子", createdAt: 2_000 }))
+    await writeMeta(fx, makeMeta({ n: 3, title: "補助", createdAt: 3_000, spawnedFromId: fakeSessionId(2) }))
+    const dir = path.join(fx.projectsRoot, "-sample")
+    await fs.mkdir(dir, { recursive: true })
+    for (const n of [1, 2, 3]) {
+      await fs.writeFile(path.join(dir, `${fakeCliId(n)}.jsonl`), toJsonl([humanRow("指示", { ts: tsAt(1) }), assistantRow({ ts: tsAt(2) })]))
+    }
+    const sessions = new DesktopSessionService({ dataDir: fx.dataDir, projectsRoot: fx.projectsRoot })
+    const f = await new FlowService(sessions).build("cg-1")
+    expect(f?.members.map((m) => [m.id, m.parentId])).toEqual([
+      [fakeSessionId(1), null],
+      [fakeSessionId(2), fakeSessionId(1)],
+      [fakeSessionId(3), fakeSessionId(2)],
+    ])
+    expect(JSON.stringify(f)).not.toContain(SENTINEL)
+  })
+})
+
 describe("FlowService: 別グループ・指揮役の判定・範囲", () => {
   it("別グループ（指揮役1・子1）は、自分のグループの出来事だけを返す", async () => {
     const { sample, flow } = await sampleService()
@@ -244,7 +402,12 @@ describe("FlowService: 別グループ・指揮役の判定・範囲", () => {
     expect(ofKind(f, "instruct")).toHaveLength(exp.instructs as number)
     expect(ofKind(f, "report")).toHaveLength(exp.reports as number)
     expect(ofKind(f, "cross")).toEqual([])
-    expect(f.members).toHaveLength(2)
+    // 別グループの木: 指揮役・子・子が作ったグループ外のセッション（3層目）。試験グループのセッションは混ざらない
+    expect(f.members.map((m) => m.title)).toEqual(["00_リーダー_別", "01_調査", "補助_別グループの下調べ"])
+    expect(Object.fromEntries(f.members.filter((m) => !m.isLeader).map((m) => [m.id, m.parentId]))).toEqual({
+      [sample.ids.research]: sample.ids.leaderB,
+      [sample.ids.sideB]: sample.ids.research,
+    })
   })
 
   it("存在しないグループは null", async () => {
@@ -263,7 +426,10 @@ describe("FlowService: 別グループ・指揮役の判定・範囲", () => {
     expect(f2.leaderId).toBeNull()
     expect(f2.members.every((m) => !m.isLeader)).toBe(true)
     expect(f2.events.filter((e) => e.kind !== "compact")).toEqual([])
-    expect(f2.members).toHaveLength(5)
+    // 指揮役がいなければ、木は作らない: グループ内のセッション（6件）だけを、親なしで並べる。グループ外のセッションは出さない
+    expect(f2.members).toHaveLength(6)
+    expect(f2.members.every((m) => m.parentId === null)).toBe(true)
+    expect(f2.members.some((m) => m.id === none.sample.ids.helperB || m.id === none.sample.ids.adhoc)).toBe(false)
   })
 
   it("範囲を狭めると、その範囲の出来事だけになる。範囲より前の指示と組になる報告は残る", async () => {

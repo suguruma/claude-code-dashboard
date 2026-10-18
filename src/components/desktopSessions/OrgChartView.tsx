@@ -14,12 +14,14 @@ import {
   formatCtxDelta,
   selectUnseen,
   shouldAnimate,
+  type SeenEvents,
   stateAt,
   timelineMarks,
   type EventLine,
   type FlowTimeline,
 } from "@/lib/flowPlayback"
-import { MEMBER_ORDERS, normalizeMemberOrder, orderMembers } from "@/lib/flowOrder"
+import { MEMBER_ORDERS, normalizeMemberOrder } from "@/lib/flowOrder"
+import { arrangeTree } from "@/lib/flowTree"
 import { FLOW_DEFAULT_RANGE_MS, type FlowResponse } from "@/lib/flowTypes"
 import { cn } from "@/lib/utils"
 import { formatJstTime } from "@/lib/usageFormat"
@@ -107,21 +109,25 @@ export function OrgChartView({ sessions, groups, highContextRatio, onSelect }: O
   }, [])
 
   // ---- ライブ: 新しい出来事だけを流す -------------------------------------------
-  const seen = useRef<{ key: string; keys: Set<string> }>({ key: "", keys: new Set() })
+  const seen = useRef<{ key: string; keys: SeenEvents }>({ key: "", keys: new Map() })
   useEffect(() => {
     if (mode !== "live" || !liveFlow) {
-      seen.current = { key: "", keys: new Set() }
+      seen.current = { key: "", keys: new Map() }
       return
     }
     const key = `${liveFlow.group.id}|${rangeMs}`
     if (seen.current.key !== key) {
       // 最初の表示(開いた直後・グループや範囲を変えた直後): 過去の出来事は流さず、全件を見たことにする
-      seen.current = { key, keys: new Set() }
+      seen.current = { key, keys: new Map() }
       selectUnseen(liveFlow.events, seen.current.keys)
       return
     }
-    const fresh = selectUnseen(liveFlow.events, seen.current.keys)
-    pushFx(fresh.map((event, i) => ({ event, delayMs: i * STAGGER_MS })))
+    const { fresh, upgraded } = selectUnseen(liveFlow.events, seen.current.keys)
+    // 「受信未確認」で流した指示が確認済みになったときは、粒をもう一度流さず、表示中の印だけを切り替える
+    pushFx([
+      ...upgraded.map((e) => ({ delayMs: 0, receiptConfirmed: { to: e.to, summary: e.summary } })),
+      ...fresh.map((event, i) => ({ event, delayMs: i * STAGGER_MS })),
+    ])
   }, [liveFlow, mode, rangeMs, pushFx])
 
   // ---- 表示する時刻と状態 ------------------------------------------------------
@@ -208,15 +214,11 @@ export function OrgChartView({ sessions, groups, highContextRatio, onSelect }: O
     return flow.members.map((member, i) => ({ member, state: chart.members[i], summary: summaryOf.get(member.id) ?? null }))
   }, [flow, chart, summaryOf])
   const leaderNode = nodes.find((n) => n.member.isLeader) ?? null
-  // 子のカードの並び順(指揮役は常に最上段)。名前順は、01_ 02_ 03_ の順になる自然順
-  const childNodes = useMemo(
-    () =>
-      orderMembers(
-        nodes.filter((n) => !n.member.isLeader),
-        memberOrder,
-        (n) => n.member.title
-      ),
-    [nodes, memberOrder]
+  // 子のカードの並び順(指揮役は常に最上段)。名前順は、01_ 02_ 03_ の順になる自然順。
+  // 2層目(指揮役の子)と、親ごとの3層目に、同じ規則を適用する
+  const { children: childNodes, subs: subNodes } = useMemo(
+    () => arrangeTree(nodes, { leaderId: flow?.leaderId ?? null, order: memberOrder }),
+    [nodes, memberOrder, flow?.leaderId]
   )
   const lines: EventLine[] = useMemo(() => (timeline ? eventLines(timeline, viewTime, titleOf, LOG_LIMIT) : []), [timeline, viewTime, titleOf])
   const markTimes = useMemo(
@@ -331,7 +333,8 @@ export function OrgChartView({ sessions, groups, highContextRatio, onSelect }: O
             groupId={groupId ?? undefined}
             leader={leaderNode}
             members={childNodes}
-            leaderStats={{ instructs: chart.counts.instructs, reports: chart.counts.reports, working: chart.counts.working }}
+            subs={subNodes}
+            leaderStats={{ instructs: chart.counts.leaderInstructs, reports: chart.counts.leaderReports, working: chart.counts.working }}
             highContextRatio={highContextRatio}
             referenceTime={viewTime}
             animate={animate}
@@ -342,7 +345,7 @@ export function OrgChartView({ sessions, groups, highContextRatio, onSelect }: O
                 <Alert className="mb-3" data-testid="org-no-leader">
                   <AlertTitle>指揮役のセッションが見つかりません</AlertTitle>
                   <AlertDescription>
-                    このグループには、タイトルが「{flow.prefix}」で始まるセッションがありません。カードだけを並べ、線は引きません。
+                    このグループには、タイトルが「{flow.prefix}」で始まるセッションがありません。カードだけを並べ、線は引きません（3層目も出しません）。
                     接頭辞は <code className="font-mono">config/desktop-sessions.json</code> の{" "}
                     <code className="font-mono">orchestratorPrefix</code> で変えられます。
                   </AlertDescription>
@@ -411,6 +414,9 @@ export function OrgChartView({ sessions, groups, highContextRatio, onSelect }: O
               </Legend>
               <Legend color="var(--flow-up)" line="solid">
                 報告（下から指揮役へ）。粒の大きさ＝作業量（ツール呼び出し回数。82回で最大）
+              </Legend>
+              <Legend color="var(--muted-foreground)" line="none">
+                3層目: 子が作った補助のセッション（例: 会話の練習相手）。子のカードの下に字下げして並べ、子から線でつなぐ。子との指示・報告は、同じ色の粒で流れる
               </Legend>
               <Legend color="var(--flow-cross)" line="dotted">
                 他のグループ・外部（CLI）から指揮役への連絡（点線）

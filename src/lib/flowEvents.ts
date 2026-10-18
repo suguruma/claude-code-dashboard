@@ -80,11 +80,20 @@ export interface ToolBucket {
   n: number
 }
 
+/** 3層目のセッション。親は2層目の子(`members` のどれか) */
+export interface SubSessionInput {
+  /** 親(2層目のセッション)のID */
+  parentId: string
+  session: FlowSessionInput
+}
+
 export interface AssembleInput {
   /** 指揮役。見つからなければ null(そのとき、指示・報告・終了・他グループの出来事は作らない) */
   leader: FlowSessionInput | null
-  /** 子(指揮役を除く) */
+  /** 子(2層目。指揮役を除く) */
   members: FlowSessionInput[]
+  /** 3層目。親(2層目の子)との間の指示・報告を、2層目と同じ規則で組み立てる */
+  subs?: SubSessionInput[]
   /** この時刻以降の出来事だけを返す。組の判定には、これより前の信号も使う */
   since: number
 }
@@ -136,35 +145,46 @@ interface Instruction {
   t: number
   summary: string
   receipt: "confirmed" | "sender-only"
+  /** 対応する送信記録の時刻(送信側のみは t と同じ。受信確認ありで対応する送信記録が無ければ null) */
+  sentAt: number | null
 }
 
-/** 指揮役が子へ送った記録のうち、子の側に対応する peer 行(60秒以内で最も近いもの)が無いものを返す */
-function senderOnly(sends: SendSignal[], confirmed: PeerSignal[]): SendSignal[] {
-  const used = new Set<number>()
+/**
+ * 親が子へ送った記録と、子の側の peer 行(60秒以内で最も近いもの)を対応づける。
+ * matched: peer 行の添字 → 対応した送信記録の時刻 / unmatched: 子の側に対応する peer 行が無い送信記録
+ */
+function pairSends(sends: SendSignal[], confirmed: PeerSignal[]): { matched: Map<number, number>; unmatched: SendSignal[] } {
+  const matched = new Map<number, number>()
   const unmatched: SendSignal[] = []
   for (const s of sends) {
     let best = -1
     let bestGap = Number.POSITIVE_INFINITY
     for (let i = 0; i < confirmed.length; i++) {
-      if (used.has(i)) continue
+      if (matched.has(i)) continue
       const gap = Math.abs(confirmed[i].t - s.t)
       if (gap <= SEND_MATCH_WINDOW_MS && gap < bestGap) {
         best = i
         bestGap = gap
       }
     }
-    if (best >= 0) used.add(best)
+    if (best >= 0) matched.set(best, s.t)
     else unmatched.push(s)
   }
-  return unmatched
+  return { matched, unmatched }
 }
 
-/** 子の指示の一覧(受信を確認できたものと、送信側の記録だけのもの)を、時刻の昇順で返す */
-function instructionsFor(leader: FlowSessionInput, member: FlowSessionInput): Instruction[] {
-  const confirmed = member.signals.peers.filter((p) => p.source === "local" && p.fromId === leader.id)
-  const sends = leader.signals.sends.filter((s) => s.targets.some((x) => x === member.id || x === member.title))
-  const list: Instruction[] = confirmed.map((p) => ({ t: p.t, summary: p.summary, receipt: "confirmed" as const }))
-  for (const s of senderOnly(sends, confirmed)) list.push({ t: s.t, summary: s.summary, receipt: "sender-only" })
+/** 親(指揮役、または3層目の親の子)から子への指示の一覧(受信を確認できたものと、送信側の記録だけのもの)を、時刻の昇順で返す */
+function instructionsFor(parent: FlowSessionInput, member: FlowSessionInput): Instruction[] {
+  const confirmed = member.signals.peers.filter((p) => p.source === "local" && p.fromId === parent.id)
+  const sends = parent.signals.sends.filter((s) => s.targets.some((x) => x === member.id || x === member.title))
+  const { matched, unmatched } = pairSends(sends, confirmed)
+  const list: Instruction[] = confirmed.map((p, i) => ({
+    t: p.t,
+    summary: p.summary,
+    receipt: "confirmed" as const,
+    sentAt: matched.get(i) ?? null,
+  }))
+  for (const s of unmatched) list.push({ t: s.t, summary: s.summary, receipt: "sender-only", sentAt: s.t })
   return list.sort((a, b) => a.t - b.t)
 }
 
@@ -209,82 +229,98 @@ function lastContextBefore(session: FlowSessionInput, since: number): number | n
   return ctx
 }
 
+/**
+ * 親と子の間の、指示・報告・「報告なしで終了」の出来事。指揮役と2層目の間も、2層目と3層目の間も、同じ規則で作る。
+ * 報告は、親の側の peer 行(送り手が子)から作る。
+ */
+function edgeEvents(parent: FlowSessionInput, member: FlowSessionInput): FlowEvent[] {
+  const events: FlowEvent[] = []
+  const instructions = instructionsFor(parent, member)
+  const reports = parent.signals.peers.filter((p) => p.source === "local" && p.fromId === member.id)
+  const usedReports = new Set<number>()
+
+  instructions.forEach((ins, i) => {
+    const windowEnd = i + 1 < instructions.length ? instructions[i + 1].t : Number.POSITIVE_INFINITY
+    const instruct: FlowInstruct = {
+      kind: "instruct",
+      t: ins.t,
+      from: parent.id,
+      to: member.id,
+      summary: ins.summary,
+      receipt: ins.receipt,
+      sentAt: ins.sentAt,
+    }
+    events.push(instruct)
+
+    const reportIndex = reports.findIndex((r, ri) => !usedReports.has(ri) && r.t >= ins.t && r.t < windowEnd)
+    if (reportIndex >= 0) {
+      usedReports.add(reportIndex)
+      const r = reports[reportIndex]
+      const report: FlowReport = {
+        kind: "report",
+        t: r.t,
+        from: member.id,
+        to: parent.id,
+        instructAt: ins.t,
+        tools: countIn(member.signals.tools, ins.t, r.t),
+        durationMs: r.t - ins.t,
+      }
+      events.push(report)
+      return
+    }
+    // 報告が付かない指示: 子のターンが終わっていれば「報告なしで終了」。終わっていなければ未了で、何も出さない
+    const endAt = member.signals.turnEnds.find((t) => t >= ins.t && t < windowEnd)
+    if (endAt !== undefined) {
+      const end: FlowEnd = {
+        kind: "end",
+        t: endAt,
+        sid: member.id,
+        instructAt: ins.t,
+        tools: countIn(member.signals.tools, ins.t, endAt),
+        durationMs: endAt - ins.t,
+      }
+      events.push(end)
+    }
+  })
+
+  // 組にならなかった報告(同じ窓の2通目以降・最初の指示より前)も、線は描く。作業量は0
+  reports.forEach((r, ri) => {
+    if (usedReports.has(ri)) return
+    events.push({
+      kind: "report",
+      t: r.t,
+      from: member.id,
+      to: parent.id,
+      instructAt: null,
+      tools: 0,
+      durationMs: 0,
+    } satisfies FlowReport)
+  })
+  return events
+}
+
 export function assembleFlow(input: AssembleInput): AssembleResult {
   const { leader, members, since } = input
+  const subs = leader ? (input.subs ?? []) : []
   const events: FlowEvent[] = []
-  const all = leader ? [leader, ...members] : members
+  const all = [...(leader ? [leader] : []), ...members, ...subs.map((s) => s.session)]
 
   if (leader) {
-    const memberIds = new Set(members.map((m) => m.id))
+    // 木の中のセッション(2層目・3層目)。ここに無い local の送り手だけが「他のグループ」
+    const treeIds = new Set([...members.map((m) => m.id), ...subs.map((s) => s.session.id)])
 
-    for (const member of members) {
-      const instructions = instructionsFor(leader, member)
-      const reports = leader.signals.peers.filter((p) => p.source === "local" && p.fromId === member.id)
-      const usedReports = new Set<number>()
-
-      instructions.forEach((ins, i) => {
-        const windowEnd = i + 1 < instructions.length ? instructions[i + 1].t : Number.POSITIVE_INFINITY
-        const instruct: FlowInstruct = {
-          kind: "instruct",
-          t: ins.t,
-          from: leader.id,
-          to: member.id,
-          summary: ins.summary,
-          receipt: ins.receipt,
-        }
-        events.push(instruct)
-
-        const reportIndex = reports.findIndex((r, ri) => !usedReports.has(ri) && r.t >= ins.t && r.t < windowEnd)
-        if (reportIndex >= 0) {
-          usedReports.add(reportIndex)
-          const r = reports[reportIndex]
-          const report: FlowReport = {
-            kind: "report",
-            t: r.t,
-            from: member.id,
-            to: leader.id,
-            instructAt: ins.t,
-            tools: countIn(member.signals.tools, ins.t, r.t),
-            durationMs: r.t - ins.t,
-          }
-          events.push(report)
-          return
-        }
-        // 報告が付かない指示: 子のターンが終わっていれば「報告なしで終了」。終わっていなければ未了で、何も出さない
-        const endAt = member.signals.turnEnds.find((t) => t >= ins.t && t < windowEnd)
-        if (endAt !== undefined) {
-          const end: FlowEnd = {
-            kind: "end",
-            t: endAt,
-            sid: member.id,
-            instructAt: ins.t,
-            tools: countIn(member.signals.tools, ins.t, endAt),
-            durationMs: endAt - ins.t,
-          }
-          events.push(end)
-        }
-      })
-
-      // 組にならなかった報告(同じ窓の2通目以降・最初の指示より前)も、線は描く。作業量は0
-      reports.forEach((r, ri) => {
-        if (usedReports.has(ri)) return
-        events.push({
-          kind: "report",
-          t: r.t,
-          from: member.id,
-          to: leader.id,
-          instructAt: null,
-          tools: 0,
-          durationMs: 0,
-        } satisfies FlowReport)
-      })
+    for (const member of members) events.push(...edgeEvents(leader, member))
+    const memberById = new Map(members.map((m) => [m.id, m] as const))
+    for (const sub of subs) {
+      const parent = memberById.get(sub.parentId)
+      if (parent) events.push(...edgeEvents(parent, sub.session))
     }
 
-    // 他のグループ・外部(CLI)からの、指揮役への連絡。子どうし・手戻しの形式は描かない
+    // 他のグループ・外部(CLI)からの、指揮役への連絡。木の中のセッション(子どうし・3層目から指揮役)・手戻しの形式は描かない
     for (const p of leader.signals.peers) {
       if (p.source === "external") {
         events.push({ kind: "cross", t: p.t, to: leader.id, source: "external", summary: p.summary } satisfies FlowCross)
-      } else if (p.source === "local" && p.fromId && p.fromId !== leader.id && !memberIds.has(p.fromId)) {
+      } else if (p.source === "local" && p.fromId && p.fromId !== leader.id && !treeIds.has(p.fromId)) {
         events.push({ kind: "cross", t: p.t, to: leader.id, source: "other-group", summary: p.summary } satisfies FlowCross)
       }
     }

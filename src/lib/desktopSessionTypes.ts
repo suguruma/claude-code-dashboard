@@ -134,6 +134,8 @@ export interface DesktopSessionSummary {
    * (Windows以外・取得に失敗・初回の取得前)。
    */
   cliProcess: "running" | "none" | "unknown"
+  /** このセッションを作った(spawnした)セッションのID。組織図の3層目(親子)の根拠。分からなければ null */
+  spawnedFromId: string | null
 }
 
 export interface DesktopSessionGroup {

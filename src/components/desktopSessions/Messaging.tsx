@@ -44,7 +44,7 @@ export function SendCountBadge({ messaging, className }: { messaging: DesktopSes
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-xs tabular-nums",
+        "inline-flex max-w-full shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-xs tabular-nums",
         style.className,
         className
       )}

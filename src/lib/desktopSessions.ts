@@ -46,6 +46,11 @@ export interface DesktopMeta {
   hasError: boolean
   /** エラーを記録した時刻。回復後もエラーの記録が残るため、その後に活動があったかの判断に使う */
   errorAt: number | null
+  /**
+   * このセッションを作った(spawnした)セッションのID。`spawnedFrom.sessionId` の、`local_…` の形に合うものだけ。
+   * 組織図の3層目(親子)の根拠にする。`spawnedFrom` のほかの項目(taskId・title・name など)は取り込まない。
+   */
+  spawnedFromId: string | null
 }
 
 export interface DesktopGroup {
@@ -168,6 +173,16 @@ const NEEDS_ACTION_EXCERPT_CHARS = 60
 const str = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null)
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null)
 
+/** Desktopのセッション識別子(`local_…`)の形 */
+const SESSION_ID_FORM = /^local_[A-Za-z0-9_-]+$/
+
+/** `spawnedFrom` から取り出すのは、親のセッションIDだけ。ID以外の項目・形に合わない値は捨てる */
+function spawnedFromIdOf(spawnedFrom: unknown): string | null {
+  if (!spawnedFrom || typeof spawnedFrom !== "object") return null
+  const id = (spawnedFrom as Record<string, unknown>).sessionId
+  return typeof id === "string" && SESSION_ID_FORM.test(id) ? id : null
+}
+
 /**
  * 生のメタデータから、表示に必要な項目だけを選んで写す(許可リスト方式、S3)。
  * ここで選ばなかった項目(ツール一覧・システムプロンプトの写し・MCP設定・権限の更新履歴など)は、
@@ -208,6 +223,7 @@ export function projectMeta(raw: unknown): DesktopMeta | null {
     lastAssistantUuid: str(r.lastAssistantUuid),
     hasError: typeof r.error === "string" ? r.error.length > 0 : r.error != null && r.error !== false,
     errorAt: num(r.errorAt),
+    spawnedFromId: spawnedFromIdOf(r.spawnedFrom),
   }
 }
 

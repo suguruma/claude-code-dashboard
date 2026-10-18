@@ -2,6 +2,7 @@ import { promises as fs } from "fs"
 import { readJsonlFrom } from "./jsonlReader"
 import { emptySignals, type PeerSource, type SessionSignals } from "./flowEvents"
 import { FLOW_SUMMARY_CHARS } from "./flowTypes"
+import { peerBodyOf } from "./peerMessage"
 import { isSendTool } from "./sessionMessaging"
 import { makeExcerpt } from "./transcriptDigest"
 
@@ -63,9 +64,9 @@ function bodyText(content: RawBlock[] | string | undefined): string {
   return content.find((b) => b.type === "text" && typeof b.text === "string")?.text ?? ""
 }
 
-/** 先頭と末尾のタグ(`<cross-session-message …>` など)を除いた本文の、先頭20文字 */
+/** 前置きの一文・包みのタグ・末尾の署名を除いた本文(`peerBodyOf`)の、先頭20文字 */
 function summaryOf(text: string): string {
-  return makeExcerpt(text.replace(/^<[^>]*>\s*/, "").replace(/\s*<\/[^>]*>\s*$/, ""), FLOW_SUMMARY_CHARS)
+  return makeExcerpt(peerBodyOf(text), FLOW_SUMMARY_CHARS)
 }
 
 /** 送信ツールの入力から、宛先の候補(ID・名前)を取り出す */

@@ -3,7 +3,7 @@
 import type { CSSProperties } from "react"
 import { cn } from "@/lib/utils"
 import type { DesktopSessionSummary } from "@/lib/desktopSessionTypes"
-import { formatElapsed, pulseSeconds, workRatio, type CardPhase, type MemberState } from "@/lib/flowPlayback"
+import { formatElapsed, leaderPhaseText, pulseSeconds, workRatio, type CardPhase, type MemberState } from "@/lib/flowPlayback"
 import { FLOW_WORK_FULL, type FlowMember } from "@/lib/flowTypes"
 import { ContextBar } from "./ContextBar"
 import { SendCountBadge, SendLimitNotice } from "./Messaging"
@@ -32,6 +32,8 @@ const PHASE_DOT: Record<CardPhase, string> = {
 }
 
 interface OrgCardProps {
+  /** 層: 1=指揮役 / 2=指揮役の子 / 3=子が作った補助のセッション(確認用の属性 `data-depth`) */
+  depth: 1 | 2 | 3
   member: FlowMember
   state: MemberState
   /** 一覧のセッション情報(状態バッジ・送信回数・要約)。一覧に無ければ null */
@@ -50,7 +52,7 @@ interface OrgCardProps {
  * 組織図のカード。カード全体を押すとセッション詳細が開く。送信上限の警告は「セッションを開く」ボタンを含むため、
  * ボタンの入れ子を避けて、押せる領域の外側に並べる。
  */
-export function OrgCard({ member, state, summary, highContextRatio, referenceTime, fx, leader, onSelect, cardRef }: OrgCardProps) {
+export function OrgCard({ depth, member, state, summary, highContextRatio, referenceTime, fx, leader, onSelect, cardRef }: OrgCardProps) {
   const limit = member.contextLimit ?? summary?.context?.limit ?? null
   const context =
     state.ctx !== null && limit
@@ -64,13 +66,12 @@ export function OrgCard({ member, state, summary, highContextRatio, referenceTim
   } as CSSProperties
 
   const phaseText = leader
-    ? leader.working > 0
-      ? `${leader.working}件が作業中`
-      : working
-        ? "作業中"
-        : "待機中"
+    ? leaderPhaseText(working, leader.working)
     : working
-      ? `作業中（ツール${state.tools}回）`
+      ? // 親からの指示が無いまま動いているとき(人の入力で動く子・3層目の補助のセッション)は、指示ごとの作業量が無い
+        state.tools > 0
+        ? `作業中（ツール${state.tools}回）`
+        : "作業中"
       : PHASE_TEXT[state.phase]
 
   return (
@@ -78,6 +79,8 @@ export function OrgCard({ member, state, summary, highContextRatio, referenceTim
       ref={cardRef}
       data-testid={leader ? "org-top" : "org-card"}
       data-session-id={member.id}
+      data-depth={depth}
+      data-parent-id={member.parentId ?? undefined}
       data-state={state.phase}
       data-flash={fx?.flash}
       style={style}

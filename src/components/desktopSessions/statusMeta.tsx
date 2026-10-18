@@ -35,7 +35,8 @@ export function DesktopStatusBadge({ status, reason }: { status: DesktopSessionS
   const { label, Icon, color, estimated } = STATUS_META[status]
   return (
     <span
-      className="inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium"
+      // max-w-full: 狭いカード(組織図の3層目など)で、バッジが枠の外に出ないよう、親の幅までで折り返す
+      className="inline-flex max-w-full shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium"
       title={reason}
     >
       <Icon className="size-3.5" style={{ color }} aria-hidden />

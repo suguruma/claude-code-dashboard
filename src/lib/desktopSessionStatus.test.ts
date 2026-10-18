@@ -26,6 +26,7 @@ function meta(overrides: Partial<DesktopMeta> = {}): DesktopMeta {
     lastAssistantUuid: null,
     hasError: false,
     errorAt: null,
+    spawnedFromId: null,
     ...overrides,
   }
 }

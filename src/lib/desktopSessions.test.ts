@@ -58,6 +58,7 @@ describe("projectMeta(許可リスト方式の射影、S3)", () => {
         "needsAction",
         "needsActionExcerpt",
         "permissionMode",
+        "spawnedFromId",
         "statusCategory",
         "summaryFor",
         "title",
@@ -98,6 +99,20 @@ describe("projectMeta(許可リスト方式の射影、S3)", () => {
     expect(projectMeta({})).toBeNull()
     expect(projectMeta(null)).toBeNull()
     expect(projectMeta("text")).toBeNull()
+  })
+
+  it("spawnedFrom からは、local_ の形に合う sessionId だけを取り込む。taskId・title・name など、ほかの項目は残らない", () => {
+    const meta = projectMeta(makeMeta({ n: 1, spawnedFromId: fakeSessionId(7) }))
+    expect(meta?.spawnedFromId).toBe(fakeSessionId(7))
+    expect(JSON.stringify(meta)).not.toContain(SENTINEL)
+    // spawnedFrom が無いセッション
+    expect(projectMeta(makeMeta({ n: 2 }))?.spawnedFromId).toBeNull()
+    // 形に合わない値・文字列でない値・sessionId が無い spawnedFrom は取り込まない
+    for (const bad of ["not-a-session", "", "local_", "local_a b", "../local_x", 7, null, { id: "x" }]) {
+      expect(projectMeta(makeMeta({ n: 3, spawnedFromId: bad }))?.spawnedFromId).toBeNull()
+    }
+    expect(projectMeta({ sessionId: "local_x", spawnedFrom: "local_y" })?.spawnedFromId).toBeNull()
+    expect(projectMeta({ sessionId: "local_x", spawnedFrom: { taskId: "t" } })?.spawnedFromId).toBeNull()
   })
 
   it("定期実行のセッションと、要対応の文が空のセッションを区別する", () => {

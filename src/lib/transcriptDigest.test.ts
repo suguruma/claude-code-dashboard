@@ -74,6 +74,14 @@ describe("最新の指示", () => {
     expect(d.latestInput?.excerpt).toBe("他からの依頼")
   })
 
+  it("実データの形（前置きの一文＋タグ＋本文＋末尾の署名）の他セッションの指示は、本文だけを抜粋にする（一覧の最新の指示も、組織図と同じ関数）", () => {
+    const body = `Another Claude session sent a message:\n<cross-session-message from="local_x" name="00_name">\n${"あ".repeat(70)}\n\n送信元：00_name\n</cross-session-message>`
+    const d = digestOf([humanRow("人の指示"), { ...humanRow(body, { origin: { kind: "peer", from: "local_x" } }), isMeta: true }])
+    expect(d.latestInput?.origin).toBe("peer")
+    expect(d.latestInput?.excerpt).toBe(`${"あ".repeat(60)}…`)
+    expect(d.latestHuman?.excerpt).toBe("人の指示")
+  })
+
   it("他セッション由来の行は isMeta が付く形式でも指示として拾う(タグなしの文字列)", () => {
     const peerRow = {
       ...humanRow("別セッションからの依頼です", { origin: { kind: "peer", from: "local_x" }, turnOrigin: "peer" }),
@@ -568,6 +576,9 @@ describe("作業中に届いた入力（queued_command）と送信回数の数�
     expect(notStopped(queuedCommandRow("<task-notification>完了</task-notification>", { origin: null, commandMode: "task-notification" }))).toBe(true)
     expect(notStopped(queuedCommandRow("<task-notification>完了</task-notification>", { origin: null }))).toBe(true)
     expect(notStopped(queuedCommandRow('<cross-session-message from="local_x">依頼</cross-session-message>', { origin: null }))).toBe(true)
+    // 前置きの一文が付く形でも、他セッションのメッセージとして数え直さない
+    const prefaced = 'Another Claude session sent a message:\n<cross-session-message from="local_x">依頼</cross-session-message>'
+    expect(notStopped(queuedCommandRow(prefaced, { origin: null }))).toBe(true)
     expect(notStopped(queuedCommandRow("<system-reminder>x</system-reminder>", { origin: null }))).toBe(true)
     expect(notStopped(queuedCommandRow("他の形式", { origin: null, commandMode: "other" }))).toBe(true)
     // 発信元の記録が無い古い形式の人の入力（user の行の古い形式と同じ扱い）

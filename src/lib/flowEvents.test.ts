@@ -58,6 +58,39 @@ describe("pickLeader", () => {
   })
 })
 
+describe("assembleFlow: 受信の記録が遅れて書かれる前後で、同じ指示だと分かる（sentAt）", () => {
+  it("送信側のみのときの t（送信記録の時刻）と、確認済みになったあとの sentAt が同じ。受け手の記録の時刻は t に出る", () => {
+    const sends = [send(100, A, "依頼です")]
+    const before = assembleFlow({ leader: session(LEADER, { sends }), members: [session(A)], since: at(0) })
+    const after = assembleFlow({
+      leader: session(LEADER, { sends }),
+      members: [session(A, { peers: [peer(102, LEADER, "依頼です")] })],
+      since: at(0),
+    })
+    expect(before.events).toEqual([{ kind: "instruct", t: at(100), from: LEADER, to: A, summary: "依頼です", receipt: "sender-only", sentAt: at(100) }])
+    expect(after.events).toEqual([{ kind: "instruct", t: at(102), from: LEADER, to: A, summary: "依頼です", receipt: "confirmed", sentAt: at(100) }])
+  })
+
+  it("同じ宛先への2つの送信: 1つ目だけ受信が確認できたとき、2つ目は送信側のまま。あとで2つ目の受信が書かれても、それぞれ自分の送信記録の時刻を持つ", () => {
+    const sends = [send(100, A, "1つ目"), send(130, A, "2つ目")]
+    const first = assembleFlow({ leader: session(LEADER, { sends }), members: [session(A, { peers: [peer(102, LEADER)] })], since: at(0) })
+    expect(first.events.map((e) => (e.kind === "instruct" ? [e.receipt, e.sentAt] : e.kind))).toEqual([
+      ["confirmed", at(100)],
+      ["sender-only", at(130)],
+    ])
+    const both = assembleFlow({ leader: session(LEADER, { sends }), members: [session(A, { peers: [peer(102, LEADER), peer(133, LEADER)] })], since: at(0) })
+    expect(both.events.map((e) => (e.kind === "instruct" ? [e.receipt, e.sentAt] : e.kind))).toEqual([
+      ["confirmed", at(100)],
+      ["confirmed", at(130)],
+    ])
+  })
+
+  it("対応する送信記録が無い（人の入力で動いたなど）受信の記録は、sentAt が null", () => {
+    const result = assembleFlow({ leader: session(LEADER), members: [session(A, { peers: [peer(10, LEADER)] })], since: at(0) })
+    expect(result.events[0]).toMatchObject({ receipt: "confirmed", sentAt: null })
+  })
+})
+
 describe("assembleFlow: 指示", () => {
   it("子の会話ログの peer 行（送り手が指揮役）1つから、受信確認ありの指示が1つできる", () => {
     const result = assembleFlow({
@@ -66,7 +99,7 @@ describe("assembleFlow: 指示", () => {
       since: at(0),
     })
     expect(result.events).toEqual([
-      { kind: "instruct", t: at(10), from: LEADER, to: A, summary: "最初の依頼", receipt: "confirmed" },
+      { kind: "instruct", t: at(10), from: LEADER, to: A, summary: "最初の依頼", receipt: "confirmed", sentAt: null },
     ])
   })
 
@@ -86,8 +119,8 @@ describe("assembleFlow: 指示", () => {
       since: at(0),
     })
     expect(result.events).toEqual([
-      { kind: "instruct", t: at(5), from: LEADER, to: A, summary: "IDで送信", receipt: "sender-only" },
-      { kind: "instruct", t: at(6), from: LEADER, to: B, summary: "名前で送信", receipt: "sender-only" },
+      { kind: "instruct", t: at(5), from: LEADER, to: A, summary: "IDで送信", receipt: "sender-only", sentAt: at(5) },
+      { kind: "instruct", t: at(6), from: LEADER, to: B, summary: "名前で送信", receipt: "sender-only", sentAt: at(6) },
     ])
   })
 
@@ -98,7 +131,8 @@ describe("assembleFlow: 指示", () => {
       since: at(0),
     })
     expect(result.events).toHaveLength(1)
-    expect(result.events[0]).toMatchObject({ kind: "instruct", t: at(15), summary: "届いた要約", receipt: "confirmed" })
+    // 受け手の記録の時刻(15秒)が t。対応した送信記録の時刻(10秒)が sentAt（送信側のみで出していた指示と、同じ指示だと分かる）
+    expect(result.events[0]).toMatchObject({ kind: "instruct", t: at(15), summary: "届いた要約", receipt: "confirmed", sentAt: at(10) })
   })
 
   it("60秒を超えて離れた送信は別の指示とみなす。1つの peer 行に2つの送信は対応づけない", () => {
@@ -306,5 +340,97 @@ describe("assembleFlow: ツール呼び出し・圧縮・範囲", () => {
       [30, "end"],
       [30, "report"],
     ])
+  })
+})
+
+describe("assembleFlow: 3層目", () => {
+  const SUB = "local_sub"
+  const SUB2 = "local_sub2"
+
+  it("3層目と親（2層目の子）の間の指示・報告・報告なしの終了は、2層目と同じ規則で出る（送り手・受け手は親）", () => {
+    const result = assembleFlow({
+      leader: session(LEADER),
+      members: [session(A, { sends: [send(20, SUB, "親から子へ")], peers: [peer(70, SUB)] })],
+      subs: [{ parentId: A, session: session(SUB, { peers: [peer(21, A, "親から子へ")], tools: tools(30, 40, 50), turnEnds: [at(80)] }) }],
+      since: at(0),
+    })
+    expect(result.events).toEqual([
+      { kind: "instruct", t: at(21), from: A, to: SUB, summary: "親から子へ", receipt: "confirmed", sentAt: at(20) },
+      { kind: "report", t: at(70), from: SUB, to: A, instructAt: at(21), tools: 3, durationMs: 49 * SEC },
+    ])
+
+    const noReport = assembleFlow({
+      leader: session(LEADER),
+      members: [session(A)],
+      subs: [{ parentId: A, session: session(SUB, { peers: [peer(21, A)], tools: tools(30, 40), turnEnds: [at(60)] }) }],
+      since: at(0),
+    })
+    expect(noReport.events.map((e) => e.kind)).toEqual(["instruct", "end"])
+    expect(noReport.events[1]).toMatchObject({ kind: "end", sid: SUB, tools: 2 })
+  })
+
+  it("指揮役が3層目へ送ったように見える記録・指揮役以外の peer は、3層目の指示にしない。受信の記録が無ければ、親の送信側のみ", () => {
+    const result = assembleFlow({
+      leader: session(LEADER, { sends: [send(10, SUB, "指揮役が直接送った")] }),
+      members: [session(A, { sends: [send(20, SUB, "親が送った")] })],
+      subs: [{ parentId: A, session: session(SUB, { peers: [peer(12, LEADER, "指揮役から")] }) }],
+      since: at(0),
+    })
+    const instructs = result.events.filter((e) => e.kind === "instruct")
+    // 3層目 SUB の指示になるのは、親 A からのものだけ（A の送信記録は、受け手の記録が無いので、送信側のみ）
+    expect(instructs).toEqual([{ kind: "instruct", t: at(20), from: A, to: SUB, summary: "親が送った", receipt: "sender-only", sentAt: at(20) }])
+  })
+
+  it("3層目から指揮役への連絡は、他グループの連絡にしない（木の中のセッション）。木に無い local の送り手だけが他グループ", () => {
+    const result = assembleFlow({
+      leader: session(LEADER, { peers: [peer(10, SUB, "3層目から"), peer(11, "local_elsewhere", "別グループ")] }),
+      members: [session(A)],
+      subs: [{ parentId: A, session: session(SUB) }],
+      since: at(0),
+    })
+    expect(result.events).toEqual([{ kind: "cross", t: at(11), to: LEADER, source: "other-group", summary: "別グループ" }])
+  })
+
+  it("3層目のツール呼び出し・圧縮・コンテキストも、2層目と同じように集める", () => {
+    const result = assembleFlow({
+      leader: session(LEADER),
+      members: [session(A, { tools: tools(5) })],
+      subs: [{ parentId: A, session: session(SUB, { tools: tools(6, 7), compacts: [{ t: at(8), pre: 900, post: 100 }] }) }],
+      since: at(6),
+    })
+    expect(result.tools.map((b) => b.sid).sort()).toEqual([SUB])
+    expect(result.events).toEqual([{ kind: "compact", t: at(8), sid: SUB, pre: 900, post: 100 }])
+    expect(result.contextBefore.get(SUB)).toBeNull()
+    expect(result.contextBefore.get(A)).toBe(1005)
+  })
+
+  it("同じ親の3層目が複数あっても、それぞれの指示・報告を別に組み立てる。親が members に無い3層目の出来事は作らない", () => {
+    const result = assembleFlow({
+      leader: session(LEADER),
+      members: [session(A, { peers: [peer(30, SUB), peer(31, SUB2)] })],
+      subs: [
+        { parentId: A, session: session(SUB, { peers: [peer(10, A)] }) },
+        { parentId: A, session: session(SUB2, { peers: [peer(12, A)] }) },
+        { parentId: "local_nobody", session: session("local_orphan", { peers: [peer(14, "local_nobody")] }) },
+      ],
+      since: at(0),
+    })
+    expect(result.events.map((e) => [e.kind, "to" in e ? e.to : "", "from" in e ? e.from : ""])).toEqual([
+      ["instruct", SUB, A],
+      ["instruct", SUB2, A],
+      ["report", A, SUB],
+      ["report", A, SUB2],
+    ])
+  })
+
+  it("指揮役がいなければ木を作らないので、3層目が渡されても無視する（出来事もツールも出ない）", () => {
+    const result = assembleFlow({
+      leader: null,
+      members: [session(A)],
+      subs: [{ parentId: A, session: session(SUB, { peers: [peer(5, A)], tools: tools(6) }) }],
+      since: at(0),
+    })
+    expect(result.events).toEqual([])
+    expect(result.tools).toEqual([])
   })
 })

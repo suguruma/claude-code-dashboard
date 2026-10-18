@@ -32,6 +32,7 @@ function session(id: string, overrides: Partial<DesktopSessionSummary> = {}): De
     queuedInputs: 0,
     messaging: null,
     cliProcess: "unknown",
+    spawnedFromId: null,
     ...overrides,
   }
 }

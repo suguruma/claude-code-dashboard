@@ -225,6 +225,36 @@ describe("DesktopSessionService.list", () => {
     expect(JSON.stringify(list.sessions[0])).not.toMatch(/promptAppendSnapshot|enabledMcpTools|remoteMcpServersConfig|toolSurfaceSnapshot|sessionPermissionUpdates/)
   })
 
+  it("親(spawnedFrom.sessionId)を一覧の要約に出す。spawnedFrom のほかの項目は出ない。組織図の3層目の候補（グループ外・親あり・アーカイブでない）を返す", async () => {
+    const fx = await fixture()
+    await writeMeta(fx, makeMeta({ n: 1, title: "指揮役" }))
+    await writeMeta(fx, makeMeta({ n: 2, title: "グループ外の子", createdAt: 2_000, spawnedFromId: fakeSessionId(1) }))
+    await writeMeta(fx, makeMeta({ n: 3, title: "親が見つからない", createdAt: 1_000, spawnedFromId: fakeSessionId(99) }))
+    await writeMeta(fx, makeMeta({ n: 4, title: "アーカイブ済み", spawnedFromId: fakeSessionId(1), isArchived: true }))
+    await writeMeta(fx, makeMeta({ n: 5, title: "親なし" }))
+    await writeMeta(fx, makeMeta({ n: 6, title: "別グループの子", spawnedFromId: fakeSessionId(1) }))
+    await writeMeta(fx, makeMeta({ n: 7, title: "形が違う親", spawnedFromId: "not-a-session" }))
+    await writeDesktopConfigs(fx, {
+      groups: [
+        { id: "cg-a", name: "A", order: 1 },
+        { id: "cg-b", name: "B", order: 2 },
+      ],
+      assignments: { [`code:${fakeSessionId(1)}`]: "cg-a", [`code:${fakeSessionId(6)}`]: "cg-b" },
+    })
+    const svc = service(fx)
+    const list = await svc.list()
+    const byTitle = (title: string) => list.sessions.find((s) => s.title === title)!
+    expect(byTitle("グループ外の子").spawnedFromId).toBe(fakeSessionId(1))
+    expect(byTitle("指揮役").spawnedFromId).toBeNull()
+    expect(byTitle("形が違う親").spawnedFromId).toBeNull()
+    expect(JSON.stringify(list)).not.toContain(SENTINEL)
+
+    const { sources, outsiders } = await svc.groupSources("cg-a")
+    expect(sources.map((s) => s.summary.title)).toEqual(["指揮役"])
+    // 古い順。アーカイブ済み・親が無い・別グループ・形が違う親は含めない
+    expect(outsiders.map((s) => s.summary.title)).toEqual(["親が見つからない", "グループ外の子"])
+  })
+
   it("読み取り専用で、config.json は開かず、書き込みもしない(S1・S5)", async () => {
     const fx = await fixture()
     await seed(fx)

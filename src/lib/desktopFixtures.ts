@@ -49,6 +49,8 @@ export interface MetaOptions {
   errorAt?: number
   scheduledTaskId?: string
   noCliSessionId?: boolean
+  /** このセッションを作ったセッションのID(`spawnedFrom.sessionId`)。形に合わない値も渡せる(取り込まれないことの確認用) */
+  spawnedFromId?: unknown
 }
 
 /** Desktop の local_*.json に近い形のメタデータ。返してはいけない項目には SENTINEL を入れる */
@@ -89,6 +91,11 @@ export function makeMeta(o: MetaOptions): Record<string, unknown> {
   if (o.error) meta.error = o.error
   if (o.errorAt !== undefined) meta.errorAt = o.errorAt
   if (o.scheduledTaskId) meta.scheduledTaskId = o.scheduledTaskId
+  if (o.spawnedFromId !== undefined) {
+    // sessionId 以外の項目(返してはいけない)には SENTINEL を入れる(S3)
+    meta.spawnedFrom = { sessionId: o.spawnedFromId, taskId: `task ${SENTINEL}`, title: `title ${SENTINEL}`, name: `name ${SENTINEL}` }
+    meta.sideSession = true
+  }
   return meta
 }
 

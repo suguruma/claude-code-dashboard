@@ -5,6 +5,7 @@ import type {
   InstructionOrigin,
   TaskStatus,
 } from "./desktopSessionTypes"
+import { isPeerMessage, peerBodyOf } from "./peerMessage"
 import { SEND_LIMIT, classifySendResult, isSendTool } from "./sessionMessaging"
 
 /**
@@ -229,7 +230,7 @@ export function queuedOriginOf(attachment: RawEntry["attachment"]): InstructionO
   if (attachment.commandMode === "task-notification") return "notification"
   const text = queuedPromptText(attachment.prompt).trimStart()
   if (text.startsWith("<task-notification")) return "notification"
-  if (text.startsWith("<cross-session-message")) return "peer"
+  if (isPeerMessage(text)) return "peer"
   if (SYSTEM_WRAPPER.test(text) || text.startsWith(CONTINUATION_MARK)) return "system"
   return attachment.commandMode === undefined || attachment.commandMode === "prompt" ? "human" : "system"
 }
@@ -435,7 +436,8 @@ export function applyEntry(d: TranscriptDigest, entry: RawEntry): void {
       // 他セッションからの入力(peer)は、システムが差し込む形式のため isMeta が付く。peer だけは指示として扱う
       if (entry.isMeta && origin !== "peer") return
       if (origin === "human" && (SYSTEM_WRAPPER.test(text) || text.startsWith(CONTINUATION_MARK))) return
-      const body = origin === "peer" ? text.replace(/^<[^>]*>\s*/, "") : text
+      // 他セッションからの入力は、前置きの一文・包みのタグ・末尾の署名を除いた本文を、抜粋にする(組織図の指示の要約と同じ関数)
+      const body = origin === "peer" ? peerBodyOf(text) : text
       const instruction: DigestInstruction = {
         excerpt: origin === "notification" ? "" : makeExcerpt(body, INSTRUCTION_EXCERPT_CHARS),
         origin,

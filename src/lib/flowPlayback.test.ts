@@ -14,11 +14,13 @@ import {
   eventLines,
   formatCtxDelta,
   formatElapsed,
+  leaderPhaseText,
   newEventsAfter,
   particleRadius,
   pulseSeconds,
   selectUnseen,
   shouldAnimate,
+  type SeenEvents,
   stateAt,
   timelineMarks,
   workRatio,
@@ -34,9 +36,9 @@ const A = "local_a"
 const B = "local_b"
 
 const members: FlowMember[] = [
-  { id: LEADER, title: "00_リーダー", model: null, isLeader: true, contextLimit: 1000, contextBefore: 100 },
-  { id: A, title: "01_A", model: null, isLeader: false, contextLimit: 1000, contextBefore: 200 },
-  { id: B, title: "02_B", model: null, isLeader: false, contextLimit: 1000, contextBefore: null },
+  { id: LEADER, title: "00_リーダー", model: null, isLeader: true, parentId: null, contextLimit: 1000, contextBefore: 100 },
+  { id: A, title: "01_A", model: null, isLeader: false, parentId: LEADER, contextLimit: 1000, contextBefore: 200 },
+  { id: B, title: "02_B", model: null, isLeader: false, parentId: LEADER, contextLimit: 1000, contextBefore: null },
 ]
 
 function flow(events: FlowEvent[], tools: Array<[number, number, number, number]> = [], generatedAt = at(1000)): FlowResponse {
@@ -53,7 +55,7 @@ function flow(events: FlowEvent[], tools: Array<[number, number, number, number]
   }
 }
 
-const instruct = (sec: number, to: string, summary = "指示"): FlowEvent => ({ kind: "instruct", t: at(sec), from: LEADER, to, summary, receipt: "confirmed" })
+const instruct = (sec: number, to: string, summary = "指示"): FlowEvent => ({ kind: "instruct", t: at(sec), from: LEADER, to, summary, receipt: "confirmed", sentAt: null })
 const report = (sec: number, from: string, instructSec: number | null, tools = 0): FlowEvent => ({
   kind: "report",
   t: at(sec),
@@ -70,6 +72,85 @@ const end = (sec: number, sid: string, instructSec: number, tools = 0): FlowEven
   instructAt: at(instructSec),
   tools,
   durationMs: (sec - instructSec) * SEC,
+})
+
+describe("stateAt: 3層目（子が作った補助のセッション）", () => {
+  const C = "local_c" // A の3層目（指示のやりとりがある）
+  const D = "local_d" // A の3層目（指示のやりとりが無い。人の入力で動く）
+  const withSubs: FlowMember[] = [
+    ...members,
+    { id: C, title: "補助C", model: null, isLeader: false, parentId: A, contextLimit: 1000, contextBefore: null },
+    { id: D, title: "補助D", model: null, isLeader: false, parentId: A, contextLimit: 1000, contextBefore: null },
+  ]
+  const fromA = (sec: number, to: string): FlowEvent => ({ kind: "instruct", t: at(sec), from: A, to, summary: "Aから", receipt: "confirmed", sentAt: null })
+  const toA = (sec: number, from: string, instructSec: number, tools: number): FlowEvent => ({
+    kind: "report",
+    t: at(sec),
+    from,
+    to: A,
+    instructAt: at(instructSec),
+    tools,
+    durationMs: (sec - instructSec) * SEC,
+  })
+  const timeline = buildTimeline({
+    ...flow(
+      [instruct(10, A), fromA(20, C), toA(80, C, 20, 4), instruct(100, B), report(150, B, 100, 2)],
+      [
+        [30, 3, 100, 1],
+        [40, 3, 110, 1],
+        [50, 3, 120, 1],
+        [60, 3, 130, 1],
+        [300, 4, 50, 1], // D: 指示が無いまま、ツールを呼んでいる
+      ]
+    ),
+    members: withSubs,
+  })
+  const stateOf = (t: number, id: string) => stateAt(timeline, t).members.find((m) => m.id === id)!
+
+  it("3層目も、親からの指示・報告で、2層目と同じ規則の状態になる（作業中→報告済み。作業量は指示以降の回数）", () => {
+    const working = stateOf(at(45), C)
+    expect(working.phase).toBe("working")
+    expect(working.tools).toBe(2)
+    expect(working.lastInstruct).toBe("Aから")
+    const reported = stateOf(at(90), C)
+    expect(reported.phase).toBe("reported")
+    expect(reported.tools).toBe(4)
+  })
+
+  it("親からの指示が無くても、直近1分以内にツールを呼んでいれば作業中（作業量は0）。1分を超えると待機", () => {
+    expect(stateOf(at(310), D).phase).toBe("working")
+    expect(stateOf(at(310), D).tools).toBe(0)
+    expect(stateOf(at(310), D).lastInstruct).toBeNull()
+    expect(stateOf(at(300) + WORKING_WINDOW_MS, D).phase).toBe("working")
+    expect(stateOf(at(300) + WORKING_WINDOW_MS + 1, D).phase).toBe("idle")
+    // ツールを呼ぶ前は待機
+    expect(stateOf(at(290), D).phase).toBe("idle")
+  })
+
+  it("指示が無い2層目の子も、同じ規則で作業中になる（人の入力で動いている子）", () => {
+    const t = buildTimeline(flow([], [[100, 2, 10, 1]]))
+    expect(stateAt(t, at(110)).members.find((m) => m.id === B)!.phase).toBe("working")
+  })
+
+  it("指揮役の「指示・報告」の数は、指揮役自身の分だけ。概要の数は、3層目の出来事も含む", () => {
+    const counts = stateAt(timeline, at(200)).counts
+    // 指示: 指揮役→A、A→C、指揮役→B の3本。報告: C→A、B→指揮役 の2本
+    expect(counts.instructs).toBe(3)
+    expect(counts.reports).toBe(2)
+    expect(counts.leaderInstructs).toBe(2)
+    expect(counts.leaderReports).toBe(1)
+  })
+
+  it("作業中の数は、3層目も含む", () => {
+    expect(stateAt(timeline, at(45)).counts.working).toBe(1) // C
+    expect(stateAt(timeline, at(310)).counts.working).toBe(1) // D
+  })
+
+  it("出来事の一覧の文言も、3層目の親子で同じ規則（指示は → 子、報告は ← 子）", () => {
+    const title = (id: string) => withSubs.find((m) => m.id === id)?.title ?? id
+    expect(describeEvent(fromA(20, C), title)).toMatchObject({ label: "指示", text: expect.stringContaining("→ 補助C") })
+    expect(describeEvent(toA(80, C, 20, 4), title)).toMatchObject({ label: "報告", text: expect.stringContaining("← 補助C") })
+  })
 })
 
 describe("stateAt: カードの状態", () => {
@@ -165,9 +246,10 @@ describe("stateAt: カードの状態", () => {
   })
 
   it("件数は、その時刻までの出来事（指示・報告・終了）と作業中の子の数", () => {
-    expect(stateAt(timeline, at(105)).counts).toEqual({ instructs: 1, reports: 1, ends: 0, working: 0 })
-    expect(stateAt(timeline, at(255)).counts).toEqual({ instructs: 2, reports: 1, ends: 0, working: 1 })
-    expect(stateAt(timeline, at(600)).counts).toEqual({ instructs: 3, reports: 1, ends: 1, working: 0 })
+    // 3層目が無ければ、指揮役自身の指示・報告の数は、全体の数と同じ
+    expect(stateAt(timeline, at(105)).counts).toEqual({ instructs: 1, reports: 1, ends: 0, working: 0, leaderInstructs: 1, leaderReports: 1 })
+    expect(stateAt(timeline, at(255)).counts).toEqual({ instructs: 2, reports: 1, ends: 0, working: 1, leaderInstructs: 2, leaderReports: 1 })
+    expect(stateAt(timeline, at(600)).counts).toEqual({ instructs: 3, reports: 1, ends: 1, working: 0, leaderInstructs: 3, leaderReports: 1 })
   })
 
   it("同じ時刻なら、出来事を順に積み上げた状態と一致する（ライブと振り返りの一貫性）", () => {
@@ -237,22 +319,70 @@ describe("ライブ: 新しい出来事だけを選ぶ", () => {
 
 describe("ライブ: まだ見ていない出来事だけを選ぶ（キーで重複を避ける）", () => {
   it("最初の表示で全件を見たことにすれば、過去の出来事は流れない。あとから増えた出来事と、遅れて書かれた出来事だけが新しい", () => {
-    const seen = new Set<string>()
+    const seen: SeenEvents = new Map()
     const first = [instruct(10, A), report(20, A, 10)]
     selectUnseen(first, seen) // 最初の表示: 呼び出し側は結果を捨てる(流さない)
-    expect(selectUnseen(first, seen)).toEqual([])
+    expect(selectUnseen(first, seen)).toEqual({ fresh: [], upgraded: [] })
 
     // 次の取得: 新しい指示と、時刻は古いが今回初めて現れた報告（書き込みが遅れた）
     const next = [instruct(5, B), ...first, instruct(30, B)]
-    const fresh = selectUnseen(next, seen)
+    const { fresh, upgraded } = selectUnseen(next, seen)
     expect(fresh.map((e) => e.t)).toEqual([at(5), at(30)])
-    expect(selectUnseen(next, seen)).toEqual([])
+    expect(upgraded).toEqual([])
+    expect(selectUnseen(next, seen)).toEqual({ fresh: [], upgraded: [] })
   })
 
   it("キーは種別・時刻・関わるセッションで決まる。同じ時刻でも、宛先が違えば別の出来事", () => {
     expect(eventKey(instruct(10, A))).not.toBe(eventKey(instruct(10, B)))
     expect(eventKey(instruct(10, A))).toBe(eventKey(instruct(10, A, "別の要約")))
     expect(eventKey(report(10, A, 1))).not.toBe(eventKey(end(10, A, 1)))
+  })
+})
+
+describe("ライブ: 受信未確認で流した指示が、あとで確認済みになっても、粒を2回流さない", () => {
+  // 送信側の記録（t=100秒）だけで「受信未確認」の指示を流し、1〜2秒後に受け手の記録（t=102秒）が書かれて確認済みになる
+  const senderOnly: FlowEvent = { kind: "instruct", t: at(100), from: LEADER, to: A, summary: "依頼です", receipt: "sender-only", sentAt: at(100) }
+  const confirmed: FlowEvent = { kind: "instruct", t: at(102), from: LEADER, to: A, summary: "依頼です", receipt: "confirmed", sentAt: at(100) }
+
+  it("同じ指示のキーは、受信確認の前後で変わらない（受け手の記録の時刻ではなく、送信記録の時刻で見分ける）", () => {
+    expect(eventKey(confirmed)).toBe(eventKey(senderOnly))
+    // 送信記録が無い確認済みは、自分の時刻で見分ける
+    expect(eventKey({ ...confirmed, sentAt: null })).not.toBe(eventKey(senderOnly))
+    // 同じ宛先への別の指示（送信記録の時刻が違う）は別の指示
+    expect(eventKey({ ...confirmed, sentAt: at(160), t: at(162) })).not.toBe(eventKey(senderOnly))
+  })
+
+  it("確認済みになったときは、fresh に出さず、upgraded として返す（1回だけ）。ほかの出来事は、これまでどおり fresh", () => {
+    const seen: SeenEvents = new Map()
+    selectUnseen([], seen)
+    // 1回目の更新: 送信側のみ → 粒を流す
+    const first = selectUnseen([senderOnly], seen)
+    expect(first.fresh).toEqual([senderOnly])
+    expect(first.upgraded).toEqual([])
+    // 受け手の記録が書かれた更新: 同じ指示が確認済みになった。粒は流さず、印だけ切り替える
+    const second = selectUnseen([confirmed, report(130, A, 102)], seen)
+    expect(second.fresh.map((e) => e.kind)).toEqual(["report"])
+    expect(second.upgraded).toEqual([confirmed])
+    // それ以降の更新では、何も出ない
+    expect(selectUnseen([confirmed, report(130, A, 102)], seen)).toEqual({ fresh: [], upgraded: [] })
+  })
+
+  it("送信側のみで流していない（最初から確認済みで現れた）指示は、普通に fresh。確認済みから送信側のみには戻らない", () => {
+    const seen: SeenEvents = new Map()
+    const direct = selectUnseen([confirmed], seen)
+    expect(direct.fresh).toEqual([confirmed])
+    expect(direct.upgraded).toEqual([])
+    // 送信側のみの指示が、確認済みのあとにまた現れても、何も出さない
+    expect(selectUnseen([senderOnly], seen)).toEqual({ fresh: [], upgraded: [] })
+  })
+
+  it("別の指示（同じ宛先への、送信記録の時刻が違うもの）は、受信未確認が残っていても、別の出来事として流す", () => {
+    const seen: SeenEvents = new Map()
+    selectUnseen([senderOnly], seen)
+    const another: FlowEvent = { kind: "instruct", t: at(132), from: LEADER, to: A, summary: "次の依頼", receipt: "confirmed", sentAt: at(130) }
+    const { fresh, upgraded } = selectUnseen([senderOnly, another], seen)
+    expect(fresh).toEqual([another])
+    expect(upgraded).toEqual([])
   })
 })
 
@@ -345,5 +475,31 @@ describe("出来事の一覧の文言", () => {
     expect(lines[0].text).toContain("指示60")
     expect(eventLines(timeline, at(5), titleOf).map((l) => l.t)).toEqual([at(5), at(4), at(3), at(2), at(1)])
     expect(eventLines(timeline, at(0), titleOf)).toEqual([])
+  })
+})
+
+describe("leaderPhaseText: 指揮役のカードの状態の文言", () => {
+  it("配下の作業中の数は「配下で」と付けて、指揮役自身の作業中と区別する", () => {
+    expect(leaderPhaseText(false, 0)).toBe("待機中")
+    expect(leaderPhaseText(true, 0)).toBe("作業中")
+    expect(leaderPhaseText(false, 3)).toBe("配下で3件が作業中")
+    expect(leaderPhaseText(true, 2)).toBe("作業中・配下で2件が作業中")
+  })
+
+  it("配下の数は、概要の「作業中」と同じ数（指揮役を除くセッション。3層目を含む）", () => {
+    const members: FlowMember[] = [
+      { id: "L", title: "00_リーダー", model: null, isLeader: true, parentId: null, contextLimit: 1000, contextBefore: null },
+      { id: "A", title: "01_A", model: null, isLeader: false, parentId: "L", contextLimit: 1000, contextBefore: null },
+      { id: "C", title: "補助C", model: null, isLeader: false, parentId: "A", contextLimit: 1000, contextBefore: null },
+    ]
+    const timeline = buildTimeline({
+      ...flow([], [[50, 0, 100, 1], [50, 1, 100, 1], [55, 2, 100, 1]]),
+      members,
+    })
+    const state = stateAt(timeline, at(60))
+    // 指揮役・2層目・3層目のすべてが、直近1分以内にツールを呼んでいる。配下は2件で、指揮役自身は別に数える
+    expect(state.counts.working).toBe(2)
+    expect(state.members[0].phase).toBe("working")
+    expect(leaderPhaseText(state.members[0].phase === "working", state.counts.working)).toBe("作業中・配下で2件が作業中")
   })
 })

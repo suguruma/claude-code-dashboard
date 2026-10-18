@@ -57,6 +57,33 @@ describe("peer行（他のセッションから届いた入力）", () => {
     ])
   })
 
+  it("実データの形（前置きの一文＋タグ＋本文＋末尾の署名）でも、要約は本文の先頭20文字になる（前置き・タグ・署名が残らない）", () => {
+    const real = (body: string, attrs = 'from="local_x" name="00_name"') =>
+      `Another Claude session sent a message:\n<cross-session-message ${attrs}>\n${body}\n\n送信元：00_name\n</cross-session-message>`
+    const s = signalsOf([
+      peerRow(real("ログイン画面のエラー表示を直してください。それ以外にも沢山ある"), FROM_LEADER, 1),
+      peerRow(real("外部からの短い依頼", 'from="uds:x" from-session="s" from-name="cli" from-mode="uds"'), "uds:\\\\.\\pipe\\synthetic", 2),
+      peerRow(real("## 見出しのある依頼\n詳細は次のとおり"), FROM_LEADER, 3),
+      peerRow('Another Claude session sent a message:\n<cross-session-message from="x"></cross-session-message>', FROM_LEADER, 4),
+      // タグが付かず、前置きの一文と本文だけの形
+      peerRow("Another Claude session sent a message:\nタグの無い形の依頼です", FROM_LEADER, 5),
+    ])
+    expect(s.peers.map((p) => p.summary)).toEqual([
+      "ログイン画面のエラー表示を直してください…",
+      "外部からの短い依頼",
+      "見出しのある依頼 詳細は次のとおり",
+      "",
+      "タグの無い形の依頼です",
+    ])
+    expect(JSON.stringify(s)).not.toMatch(/Another Claude|cross-session-message|送信元/)
+  })
+
+  it("作業中に届いた形（queued_command。前置きが無く、タグから始まる）も、同じ規則で要約する", () => {
+    const prompt = '<cross-session-message from="local_x" name="00_name">\n作業中に届いた依頼です。ログイン画面を直してください\n\n送信元：00_name\n</cross-session-message>'
+    const s = signalsOf([queuedCommandRow(prompt, { ts: tsAt(1), origin: { kind: "peer", from: FROM_LEADER } })])
+    expect(s.peers).toEqual([{ t: Date.parse(tsAt(1)), fromId: FROM_LEADER, source: "local", summary: "作業中に届いた依頼です。ログイン画面を直…" }])
+  })
+
   it("指示の本文は、20文字より後ろを保持しない（目印の文字列が信号に残らない）", () => {
     const s = signalsOf([peerRow(`${"あ".repeat(20)}${SENTINEL}`, FROM_LEADER)])
     expect(s.peers[0].summary).toBe(`${"あ".repeat(20)}…`)

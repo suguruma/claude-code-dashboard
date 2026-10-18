@@ -13,7 +13,11 @@
  *   試験グループ: 指揮役1・子4。指示8（うち送信側のみ1）・報告5（うち組にならないもの1）・報告なしで終了2・
  *                 他グループからの連絡1・外部（CLI）からの連絡1・圧縮1・作業中の子1・コンテキスト80%超と90%超・
  *                 送信上限で停止中の子1・作業量が満杯（82回）を超える指示1
- *   別グループ:   指揮役1・子1。指示1・報告1
+ *                 3層目（子が作った補助のセッション）: 指示・報告のやりとりがあるもの（グループの外）1・
+ *                 4層目（3層目が作ったもの。2層目の祖先の下にまとめて出る）1・グループ内の子が作ったもの1・
+ *                 やりとりが無くて作業中のもの1。指揮役が作ったグループ外のセッション（2層目に出る）1。
+ *                 木に出ないもの: 親が見つからないグループ外のセッション1・アーカイブ済み1
+ *   別グループ:   指揮役1・子1。指示1・報告1。子が作ったグループ外のセッション1（3層目に出る）
  */
 import { appendFile, mkdir, rm, writeFile, utimes } from "node:fs/promises"
 import path from "node:path"
@@ -34,16 +38,46 @@ const GROUP_B = "cg-00000000-0000-4000-8000-000000000102"
  * セッション番号。1〜5が試験グループ、6〜7が別グループ。
  * 試験グループの子は、作成順（03→01→04→02）と名前順（01→02→03→04）が食い違うように作ってある（並び順の確認用）。
  */
-const S = { leaderA: 101, screen: 102, report: 103, verify: 104, docs: 105, leaderB: 201, research: 202 }
+const S = {
+  leaderA: 101,
+  screen: 102,
+  report: 103,
+  verify: 104,
+  docs: 105,
+  // 3層目など（親は spawnedFrom で指す）
+  helperB: 106, // 画面の修正の子。やりとりあり。グループの外
+  deepA: 107, // 上の子が作ったもの（4層目）。画面の修正の下にまとめて出る
+  subC: 108, // 検証の子。グループ内
+  practiceD: 109, // 文書の整備の子。やりとりなし。作業中
+  adhoc: 110, // 指揮役が作った。グループの外（2層目に出る）
+  stray: 111, // 親が見つからない。グループの外（出ない）
+  archived: 112, // 画面の修正の子。アーカイブ済み（出ない）
+  leaderB: 201,
+  research: 202,
+  sideB: 203, // 調査の子。グループの外（別グループの3層目に出る）
+}
 
+/**
+ * parent: そのセッションを作ったセッション（Desktopのメタデータの spawnedFrom.sessionId）。archived: アーカイブ済み。
+ * group が無いセッションは、どのグループにも入っていない。
+ * 3層目の名前も、作成順（B→A）と名前順（A→B）が食い違うように作ってある。
+ */
 const SESSIONS = [
   { n: S.leaderA, title: "00_リーダー_試験", group: GROUP_A, createdAgo: 600 },
   { n: S.screen, title: "01_画面の修正", group: GROUP_A, createdAgo: 580 },
   { n: S.report, title: "02_集計の作成", group: GROUP_A, createdAgo: 560 },
   { n: S.verify, title: "03_検証", group: GROUP_A, createdAgo: 590 },
   { n: S.docs, title: "04_文書の整備", group: GROUP_A, createdAgo: 570 },
+  { n: S.helperB, title: "補助B_表記ゆれの点検", createdAgo: 540, parent: S.screen },
+  { n: S.deepA, title: "補助A_さらに下の確認", createdAgo: 530, parent: S.helperB },
+  { n: S.subC, title: "補助C_件数の再計算", group: GROUP_A, createdAgo: 520, parent: S.verify },
+  { n: S.practiceD, title: "補助D_書式の確認相手", createdAgo: 510, parent: S.docs },
+  { n: S.adhoc, title: "補助_臨時の調べもの", createdAgo: 300, parent: S.leaderA },
+  { n: S.stray, title: "補助_行き先のない作業", createdAgo: 400, parent: 999 },
+  { n: S.archived, title: "補助_片づけ済み", createdAgo: 410, parent: S.screen, archived: true },
   { n: S.leaderB, title: "00_リーダー_別", group: GROUP_B, createdAgo: 600 },
   { n: S.research, title: "01_調査", group: GROUP_B, createdAgo: 590 },
+  { n: S.sideB, title: "補助_別グループの下調べ", createdAgo: 500, parent: S.research },
 ]
 
 export function makeOrgChartSample(outDir, options = {}) {
@@ -53,6 +87,9 @@ export function makeOrgChartSample(outDir, options = {}) {
   let seq = 0
   const nextId = (prefix) => `${prefix}_${String(++seq).padStart(5, "0")}`
 
+  // 実際の会話ログと同じ形: 定型の前置きの一文 ＋ タグ ＋ 本文 ＋ 末尾の署名の行（送信元）
+  const wrapPeer = (tagAttrs, text, senderTitle) =>
+    `Another Claude session sent a message:\n<cross-session-message ${tagAttrs}>\n${text}\n\n送信元：${senderTitle}\n</cross-session-message>`
   const peerRow = (toN, fromN, agoMin, text, title) => {
     rows.get(toN).push({
       type: "user",
@@ -60,7 +97,7 @@ export function makeOrgChartSample(outDir, options = {}) {
       isSidechain: false,
       isMeta: true,
       origin: { kind: "peer", from: sid(fromN), hostInjected: true },
-      message: { role: "user", content: `<cross-session-message from="${sid(fromN)}" name="${title}">\n${text}\n</cross-session-message>` },
+      message: { role: "user", content: wrapPeer(`from="${sid(fromN)}" name="${title}"`, text, title) },
     })
   }
   const externalRow = (toN, agoMin, text) => {
@@ -70,7 +107,10 @@ export function makeOrgChartSample(outDir, options = {}) {
       isSidechain: false,
       isMeta: true,
       origin: { kind: "peer", from: "uds:\\\\.\\pipe\\synthetic-cli", fromMode: "uds" },
-      message: { role: "user", content: `<cross-session-message from="uds:synthetic">\n${text}\n</cross-session-message>` },
+      message: {
+        role: "user",
+        content: wrapPeer('from="uds:synthetic" from-session="synthetic" from-name="synthetic-cli" from-mode="uds"', text, "synthetic-cli"),
+      },
     })
   }
   const humanRow = (n, agoMin, text) => {
@@ -124,11 +164,14 @@ export function makeOrgChartSample(outDir, options = {}) {
     return ctx
   }
 
-  /** 指示1回分: 指揮役の送信 → 子のpeer行（delivered=false なら送信側のみ）→ 作業 → 報告または終了 */
-  const task = ({ child, ago, text, tools, workMin, ctx, perTool, outcome, delivered = true, extraReportAgo = null }) => {
-    const leaderN = SESSIONS.find((s) => s.n === child).group === GROUP_A ? S.leaderA : S.leaderB
+  /**
+   * 指示1回分: 親の送信 → 子のpeer行（delivered=false なら送信側のみ）→ 作業 → 報告または終了。
+   * parent を省くと、子の属するグループの指揮役。parentCtx は、親の送信時点のコンテキスト（省略すると指揮役の式）
+   */
+  const task = ({ child, parent, parentCtx, ago, text, tools, workMin, ctx, perTool, outcome, delivered = true, extraReportAgo = null }) => {
+    const leaderN = parent ?? (SESSIONS.find((s) => s.n === child).group === GROUP_A ? S.leaderA : S.leaderB)
     const leaderTitle = SESSIONS.find((s) => s.n === leaderN).title
-    sendRow(leaderN, ago, 200_000 + (240 - ago) * 400, child, text)
+    sendRow(leaderN, ago, parentCtx ?? 200_000 + (240 - ago) * 400, child, text)
     if (delivered) peerRow(child, leaderN, ago - 5 / 60, text, leaderTitle)
     if (!delivered) return ctx
     const endAgo = ago - workMin
@@ -154,8 +197,16 @@ export function makeOrgChartSample(outDir, options = {}) {
     [S.report, "待機"],
     [S.verify, "待機"],
     [S.docs, "待機"],
+    [S.helperB, "待機"],
+    [S.deepA, "待機"],
+    [S.subC, "待機"],
+    [S.practiceD, "書式の確認をお願いします"],
+    [S.adhoc, "待機"],
+    [S.stray, "待機"],
+    [S.archived, "待機"],
     [S.leaderB, "別グループの方針"],
     [S.research, "待機"],
+    [S.sideB, "待機"],
   ]) {
     humanRow(n, 236, text)
   }
@@ -173,6 +224,8 @@ export function makeOrgChartSample(outDir, options = {}) {
 
   // 1 報告あり（作業12回）
   ctxScreen = task({ child: S.screen, ago: 215, text: "ログイン画面のエラー表示を直してください", tools: 12, workMin: 7, ctx: ctxScreen, perTool: 2_000, outcome: "report" })
+  // 1b 3層目: 画面の修正（2層目）が、自分の作った補助のセッション（グループの外）へ指示し、報告を受ける（作業6回）
+  task({ child: S.helperB, parent: S.screen, parentCtx: ctxScreen, ago: 200, text: "表記ゆれがないか見てください", tools: 6, workMin: 4, ctx: 60_000, perTool: 1_000, outcome: "report" })
   // 2 報告なしで終了（作業30回）
   ctxReport = task({ child: S.report, ago: 190, text: "週次の数値を集計して表にしてください", tools: 30, workMin: 11, ctx: ctxReport, perTool: 1_500, outcome: "end" })
   // 3 送信側のみ（受け手の記録が無い）
@@ -232,6 +285,10 @@ export function makeOrgChartSample(outDir, options = {}) {
   // 8 報告あり（作業3回）。受け手のコンテキストは80%を超える
   ctxDocs = task({ child: S.docs, ago: 30, text: "バックアップの件数を照合してください", tools: 3, workMin: 5, ctx: ctxDocs, perTool: 5_000, outcome: "report" })
 
+  // 3層目で、やりとりが無いもの: 文書の整備の補助のセッションが、人の入力でいまも動いている（指示も報告も無いが、作業中になる）
+  work(S.practiceD, 3, 0.2, 6, 80_000, 1_000)
+  assistantRow(S.practiceD, 0.1, 87_000, { tools: [{ name: "Bash" }] })
+
   // ---- 別グループ ---------------------------------------------------------
   task({ child: S.research, ago: 100, text: "競合3社の価格を比べてください", tools: 10, workMin: 5, ctx: 120_000, perTool: 2_000, outcome: "report" })
 
@@ -246,7 +303,7 @@ export function makeOrgChartSample(outDir, options = {}) {
     await mkdir(sessionsDir, { recursive: true })
     await mkdir(projectDir, { recursive: true })
 
-    const assignments = Object.fromEntries(SESSIONS.map((s) => [sid(s.n), s.group]))
+    const assignments = Object.fromEntries(SESSIONS.filter((s) => s.group).map((s) => [sid(s.n), s.group]))
     const sections = [
       { id: "pinned", kind: "pinned", name: "ピン留め", order: 0 },
       { id: GROUP_A, kind: "manual", name: "試験グループ", order: 1, members: [] },
@@ -294,10 +351,12 @@ export function makeOrgChartSample(outDir, options = {}) {
           lastActivityAt: last,
           model: MODEL,
           effort: "high",
-          isArchived: false,
+          isArchived: s.archived === true,
           title: s.title,
           permissionMode: "acceptEdits",
           completedTurns: 5,
+          // 親(そのセッションを作ったセッション)。実際のDesktopの形式に合わせ、sessionId のほかの項目も付ける(取り込まれない)
+          ...(s.parent ? { spawnedFrom: { sessionId: sid(s.parent), taskId: "synthetic-task", title: "synthetic" }, sideSession: true } : {}),
         }),
         "utf-8"
       )
@@ -314,14 +373,17 @@ export function makeOrgChartSample(outDir, options = {}) {
     expected: {
       groupA: {
         leader: sid(S.leaderA),
-        instructs: 8,
-        confirmed: 7,
+        // 指示・報告の数は、3層目の親子の分を含む（指揮役自身の分は、leaderInstructs・leaderReports）
+        instructs: 9,
+        confirmed: 8,
         senderOnly: 1,
-        reports: 5,
-        pairedReports: 4,
+        reports: 6,
+        pairedReports: 5,
+        leaderInstructs: 8,
+        leaderReports: 5,
         // 作業量は、指示から報告（終了）までのツール呼び出しの回数。報告の送信そのものも1回に数える
-        // （報告なしで終了した検証の子は、作業8回に、上限まで送った11回の送信を足した19回）
-        pairedTools: [13, 91, 6, 4],
+        // （報告なしで終了した検証の子は、作業8回に、上限まで送った11回の送信を足した19回）。時刻の順
+        pairedTools: [13, 7, 91, 6, 4],
         ends: 2,
         endTools: [30, 19],
         crossOtherGroup: 1,
@@ -329,8 +391,31 @@ export function makeOrgChartSample(outDir, options = {}) {
         compacts: 1,
         workingChild: sid(S.screen),
         stoppedBySendLimit: sid(S.verify),
+        // 木: セッション → [層, 親]。ここに無いもの(親が見つからない・アーカイブ済み)は出ない
+        tree: {
+          [sid(S.screen)]: [2, sid(S.leaderA)],
+          [sid(S.report)]: [2, sid(S.leaderA)],
+          [sid(S.verify)]: [2, sid(S.leaderA)],
+          [sid(S.docs)]: [2, sid(S.leaderA)],
+          [sid(S.adhoc)]: [2, sid(S.leaderA)],
+          [sid(S.helperB)]: [3, sid(S.screen)],
+          [sid(S.deepA)]: [3, sid(S.screen)],
+          [sid(S.subC)]: [3, sid(S.verify)],
+          [sid(S.practiceD)]: [3, sid(S.docs)],
+        },
+        notInTree: [sid(S.stray), sid(S.archived)],
+        subWorking: sid(S.practiceD),
       },
-      groupB: { leader: sid(S.leaderB), instructs: 1, confirmed: 1, senderOnly: 0, reports: 1, pairedReports: 1, ends: 0 },
+      groupB: {
+        leader: sid(S.leaderB),
+        instructs: 1,
+        confirmed: 1,
+        senderOnly: 0,
+        reports: 1,
+        pairedReports: 1,
+        ends: 0,
+        tree: { [sid(S.research)]: [2, sid(S.leaderB)], [sid(S.sideB)]: [3, sid(S.research)] },
+      },
     },
   }
 }
