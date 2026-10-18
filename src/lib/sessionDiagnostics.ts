@@ -372,17 +372,25 @@ function diagnoseMcp(s: SessionSummary, metrics: SessionDiagnosisMetrics): Sessi
   }
 }
 
+/**
+ * お任せ度（ターン/指示）の区分のしきい値。ターン数は、1つの応答が複数の行に分かれて書かれても1回と数える(message.idで重複を除く)。
+ * 重複を除く前の数え方では、丸投げ型が50以上・標準が10以上だった。重複を除くと値が約半分(実データの中央値で約1/2.4)になるため、
+ * 同じ区分になるよう25・5に改めた(実データ47セッションのうち43件が修正前と同じ区分)。
+ */
+const AUTONOMY_HIGH = 25
+const AUTONOMY_STANDARD = 5
+
 /** 5. AIへの「お任せ度（自律性）」の高さ */
 function diagnoseAutonomy(s: SessionSummary, others: SessionSummary[]): SessionDiagnosis {
   const perMessage = turnsPerUserMessage(s)
   // 自律度は高い/低いのどちらが正解ということはなく、使い方の傾向を示す指標のため常に情報扱い
   const style =
-    perMessage >= 50 ? "丸投げ型" : perMessage >= 10 ? "標準" : perMessage > 0 ? "対話型" : "—"
+    perMessage >= AUTONOMY_HIGH ? "丸投げ型" : perMessage >= AUTONOMY_STANDARD ? "標準" : perMessage > 0 ? "対話型" : "—"
 
   const meaning =
-    perMessage >= 50
+    perMessage >= AUTONOMY_HIGH
       ? `指示1回あたり平均約${perMessage.toFixed(0)}ターン自走しています。大きめのタスクを任せて長時間自律作業させる高度な使い方ができています。`
-      : perMessage >= 10
+      : perMessage >= AUTONOMY_STANDARD
         ? `指示1回あたり平均約${perMessage.toFixed(0)}ターン自走しています。指示と自走のバランスが取れた標準的な使い方です。`
         : `指示1回あたり平均約${perMessage.toFixed(1)}ターンで、細かくやり取りしながら進める対話型の使い方です。`
 
@@ -398,7 +406,7 @@ function diagnoseAutonomy(s: SessionSummary, others: SessionSummary[]): SessionD
     value: `${perMessage.toFixed(1)}ターン/指示`,
     meaning: `${meaning}${interruptNote}`,
     action: null,
-    criteria: "50以上=丸投げ型 / 10〜50=標準 / 10未満=対話型（優劣ではなく使い方の傾向）",
+    criteria: `${AUTONOMY_HIGH}以上=丸投げ型 / ${AUTONOMY_STANDARD}〜${AUTONOMY_HIGH}=標準 / ${AUTONOMY_STANDARD}未満=対話型（優劣ではなく使い方の傾向）`,
     comparison: buildComparison(perMessage, others.map(turnsPerUserMessage), true),
   }
 }

@@ -1,9 +1,11 @@
 import { promises as fs } from "fs"
 import type {
+  DesktopSessionMessaging,
   DesktopSessionTask,
   InstructionOrigin,
   TaskStatus,
 } from "./desktopSessionTypes"
+import { SEND_LIMIT, classifySendResult, isSendTool } from "./sessionMessaging"
 
 /**
  * 会話ログ(`.jsonl`)から、セッション一覧に必要な少数の値だけを取り出す「要約(digest)」。
@@ -80,6 +82,14 @@ export interface TranscriptDigest {
   latestHuman: DigestInstruction | null
   /** 発信元を問わない直近の入力 */
   latestInput: DigestInstruction | null
+  /** 人が最後に入力してから、他のセッションへ送った回数(送信ツールの呼び出し。届かなかった分を含む)。人の入力で0に戻る */
+  sendsSinceHuman: number
+  /** うち、届かなかった送信の数(上限による分を含む)。人の入力で0に戻る */
+  undeliveredSinceHuman: number
+  /** 送信上限に達した旨の結果を受け取っていて、その後に人の入力が無い */
+  sendLimitStopped: boolean
+  /** 人の入力をこの要約の中で読んだか。false の間は、送信回数が実際より少ない可能性がある */
+  humanSeen: boolean
 }
 
 export function createDigest(): TranscriptDigest {
@@ -104,6 +114,10 @@ export function createDigest(): TranscriptDigest {
     queued: 0,
     latestHuman: null,
     latestInput: null,
+    sendsSinceHuman: 0,
+    undeliveredSinceHuman: 0,
+    sendLimitStopped: false,
+    humanSeen: false,
   }
 }
 
@@ -288,6 +302,22 @@ function applyLegacyTaskTool(
   }
 }
 
+/** 他のセッションへの送信ツールの結果から、届かなかったこと・送信上限での停止を記録する */
+function applySendResult(d: TranscriptDigest, block: RawBlock): void {
+  const kind = classifySendResult(resultText(block.content))
+  if (kind === "ok") return
+  d.undeliveredSinceHuman++
+  if (kind === "limit") d.sendLimitStopped = true
+}
+
+/** 人の入力が来たら、送信上限の数え直しと停止の解除 */
+function resetSendLimit(d: TranscriptDigest): void {
+  d.sendsSinceHuman = 0
+  d.undeliveredSinceHuman = 0
+  d.sendLimitStopped = false
+  d.humanSeen = true
+}
+
 /** wrap_up はターンの終わりの宣言。完了していないステップはすべて完了として扱う */
 function completeAllTasks(d: TranscriptDigest): void {
   if (!d.tasks) return
@@ -319,6 +349,18 @@ function applyTaskReminder(d: TranscriptDigest, content: unknown): void {
     }))
 }
 
+/** 要約から、画面に出す送信回数の情報を作る */
+export function messagingOf(d: TranscriptDigest): DesktopSessionMessaging {
+  return {
+    // 上限に達した旨の結果を受け取っていれば、末尾だけの要約で数え漏れがあっても、回数は上限に達している
+    sent: d.sendLimitStopped ? SEND_LIMIT : Math.min(d.sendsSinceHuman, SEND_LIMIT),
+    limit: SEND_LIMIT,
+    stopped: d.sendLimitStopped,
+    undelivered: d.undeliveredSinceHuman,
+    exact: d.complete || d.humanSeen || d.sendLimitStopped,
+  }
+}
+
 // ---------------------------------------------------------------------------
 // 1行の取り込み
 
@@ -335,7 +377,11 @@ export function applyEntry(d: TranscriptDigest, entry: RawEntry): void {
       const interrupted = text !== null && text.startsWith(INTERRUPT_MARK)
       let resultOf: string | null = null
       for (const result of toolResults) {
-        if (result.tool_use_id) resultOf = d.recentTools.get(result.tool_use_id) ?? resultOf
+        if (result.tool_use_id) {
+          const toolName = d.recentTools.get(result.tool_use_id)
+          resultOf = toolName ?? resultOf
+          if (toolName && isSendTool(toolName)) applySendResult(d, result)
+        }
         resolveCreatedTaskId(d, result)
       }
       d.lastRow = { role: "user", stopReason: null, interrupted, at, toolNames: [], resultOf }
@@ -351,7 +397,10 @@ export function applyEntry(d: TranscriptDigest, entry: RawEntry): void {
         at,
       }
       d.latestInput = instruction
-      if (origin === "human") d.latestHuman = instruction
+      if (origin === "human") {
+        d.latestHuman = instruction
+        resetSendLimit(d)
+      }
       return
     }
     case "assistant": {
@@ -376,6 +425,10 @@ export function applyEntry(d: TranscriptDigest, entry: RawEntry): void {
         for (const block of message.content) {
           if (block.type !== "tool_use" || typeof block.name !== "string") continue
           toolNames.push(block.name)
+          // 1回の応答が複数の行に分かれて書かれても、同じ呼び出しを2回数えない
+          if (isSendTool(block.name) && !(typeof block.id === "string" && d.recentTools.has(block.id))) {
+            d.sendsSinceHuman++
+          }
           if (typeof block.id === "string") {
             d.recentTools.set(block.id, block.name)
             if (d.recentTools.size > MAX_PENDING) d.recentTools.delete(d.recentTools.keys().next().value as string)

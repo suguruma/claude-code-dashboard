@@ -10,6 +10,8 @@ declare global {
       notify: (payload: { title: string; body: string; sessionId: string | null }) => Promise<{ ok: boolean }>
       /** OSが通知を表示できるか */
       notificationsSupported: () => Promise<boolean>
+      /** Claude Desktopのセッションを claude:// のリンクで開く。許可した形式のURL以外は開かず ok:false を返す */
+      openExternal: (url: string) => Promise<{ ok: boolean }>
       /** 通知をクリックされたとき、対象のセッションIDで呼ばれる。登録の解除関数を返す */
       onNotificationOpen: (callback: (sessionId: string | null) => void) => () => void
     }

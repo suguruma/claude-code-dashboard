@@ -186,6 +186,17 @@ describe("お任せ度", () => {
     expect(find(diagnoseSession(makeMetrics({ turnCount: 10, userMessageCount: 10 })), "autonomy").severity).toBe("info")
   })
 
+  it("区分は、ターン/指示が25以上=丸投げ型・5以上25未満=標準・5未満=対話型（重複除去で値が半分になった分に合わせたしきい値）", () => {
+    const style = (turnCount: number, userMessageCount: number) =>
+      find(diagnoseSession(makeMetrics({ turnCount, userMessageCount })), "autonomy").title
+    expect(style(250, 10)).toBe("お任せ度（丸投げ型）")
+    expect(style(249, 10)).toBe("お任せ度（標準）")
+    expect(style(50, 10)).toBe("お任せ度（標準）")
+    expect(style(49, 10)).toBe("お任せ度（対話型）")
+    expect(style(0, 10)).toBe("お任せ度（—）")
+    expect(find(diagnoseSession(makeMetrics({ turnCount: 100, userMessageCount: 10 })), "autonomy").criteria).toContain("25以上=丸投げ型")
+  })
+
   it("停止させた回数が0ならその旨を、あれば指示の見直しを促す", () => {
     expect(
       find(diagnoseSession(makeMetrics({ interruptedToolCallCount: 0 })), "autonomy").meaning

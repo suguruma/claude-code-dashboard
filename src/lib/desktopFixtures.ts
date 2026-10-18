@@ -118,16 +118,41 @@ export function humanRow(text: string, o: RowOptions & { origin?: Record<string,
   }
 }
 
-export function toolResultRow(o: RowOptions & { toolUseId?: string; text?: string } = {}) {
+export function toolResultRow(o: RowOptions & { toolUseId?: string; text?: string; asBlocks?: boolean } = {}) {
+  const text = o.text ?? "ok"
   return {
     type: "user",
     timestamp: o.ts ?? tsAt(0),
     isSidechain: o.sidechain ?? false,
     message: {
       role: "user",
-      content: [{ type: "tool_result", tool_use_id: o.toolUseId ?? "toolu_fake", content: o.text ?? "ok" }],
+      // 実際のログは、結果が text ブロックの配列になっているものと、文字列のものがある
+      content: [
+        { type: "tool_result", tool_use_id: o.toolUseId ?? "toolu_fake", content: o.asBlocks ? [{ type: "text", text }] : text },
+      ],
     },
   }
+}
+
+// ---------------------------------------------------------------------------
+// 他のセッションへの送信(送信回数・送信上限のテスト用)。文言は架空で、判定に使う語(Not delivered / 10 times 等)だけを含む
+
+export const SYNTHETIC_SEND_OK = "Delivered to synthetic-target"
+export const SYNTHETIC_SEND_LIMIT = "Not delivered: synthetic notice. The limit of 10 times has been reached"
+export const SYNTHETIC_SEND_UNREACHABLE = "No agent named synthetic-target is reachable"
+
+/** 他のセッションへ送るツールの呼び出し。n は呼び出しの通し番号(結果の行と対応づける) */
+export function sendRow(n: number, o: RowOptions & { tool?: string } = {}) {
+  return assistantRow({
+    ...o,
+    stop: "tool_use",
+    tools: [{ name: o.tool ?? "SendMessage", id: `toolu_send_${n}`, input: { to: "synthetic-target", message: "synthetic" } }],
+  })
+}
+
+/** n 番目の送信の結果の行 */
+export function sendResultRow(n: number, text: string = SYNTHETIC_SEND_OK, o: RowOptions & { asBlocks?: boolean } = {}) {
+  return toolResultRow({ ...o, toolUseId: `toolu_send_${n}`, text })
 }
 
 export interface AssistantOptions extends RowOptions {

@@ -25,6 +25,7 @@
   --color-chart-1: var(--chart-1);
   --color-status-good: var(--status-good);
   --color-status-warning: var(--status-warning);
+  --color-status-serious: var(--status-serious);
   --color-status-critical: var(--status-critical);
   --color-ring: var(--ring);
   --color-input: var(--input);
@@ -85,6 +86,7 @@
    */
   --status-good: #0ca30c;
   --status-warning: #fab219;
+  --status-serious: #ec7a1c;
   --status-critical: #d03b3b;
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
@@ -124,6 +126,7 @@
   /* 暗い面（#171717）では3色とも3:1以上を満たすため、明るい面と同じ値をそのまま使う */
   --status-good: #0ca30c;
   --status-warning: #fab219;
+  --status-serious: #ec7a1c;
   --status-critical: #d03b3b;
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);

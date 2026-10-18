@@ -9,14 +9,20 @@ import {
   applyLine,
   createDigest,
   makeExcerpt,
+  messagingOf,
   readTailDigest,
 } from "./transcriptDigest"
 import {
+  SYNTHETIC_SEND_LIMIT,
+  SYNTHETIC_SEND_OK,
+  SYNTHETIC_SEND_UNREACHABLE,
   assistantRow,
   compactRow,
   humanRow,
   planRow,
   queueRow,
+  sendResultRow,
+  sendRow,
   toJsonl,
   toolResultRow,
   tsAt,
@@ -387,5 +393,141 @@ describe("ファイル読み取り", () => {
     const d = createDigest()
     await advanceDigest(file, d, 0)
     expect(d.complete).toBe(true)
+  })
+})
+
+describe("他のセッションへの送信回数と送信上限", () => {
+  /** from番からto番までの送信(呼び出しと、届いた旨の結果)の行 */
+  const sends = (from: number, to: number, tool?: string) =>
+    Array.from({ length: to - from + 1 }, (_, i) => [sendRow(from + i, { tool }), sendResultRow(from + i)]).flat()
+
+  it("送信ツールの呼び出しを数える（SendMessage と セッション管理の送信ツールの両方。ほかのツールは数えない）", () => {
+    const d = digestOf([
+      humanRow("指示"),
+      ...sends(1, 3),
+      ...sends(4, 5, "mcp__ccd_session_mgmt__send_message"),
+      assistantRow({ stop: "tool_use", tools: [{ name: "Bash", input: {}, id: "toolu_bash" }] }),
+    ])
+    expect(d.sendsSinceHuman).toBe(5)
+    expect(messagingOf(d)).toEqual({ sent: 5, limit: 10, stopped: false, undelivered: 0, exact: true })
+  })
+
+  it("人が入力すると数え直す。他セッション・通知・ツール結果・システムの疑似ユーザー行・サブエージェントでは数え直さない", () => {
+    const d = digestOf([humanRow("指示"), ...sends(1, 4)])
+    expect(d.sendsSinceHuman).toBe(4)
+
+    applyEntry(d, humanRow("他からの依頼", { origin: { kind: "peer", from: "local_x" } }) as never)
+    applyEntry(d, humanRow("<task-notification>done</task-notification>", { origin: { kind: "task-notification" } }) as never)
+    applyEntry(d, humanRow("<system-reminder>x</system-reminder>") as never)
+    applyEntry(d, toolResultRow({ toolUseId: "toolu_none" }) as never)
+    applyEntry(d, humanRow("サブエージェントの入力", { sidechain: true }) as never)
+    expect(d.sendsSinceHuman).toBe(4)
+
+    applyEntry(d, humanRow("人の新しい入力") as never)
+    expect(d.sendsSinceHuman).toBe(0)
+    expect(messagingOf(d).sent).toBe(0)
+  })
+
+  it("origin の記録が無い古い形式の人の入力でも数え直す", () => {
+    const oldFormat = { ...humanRow("古い形式"), origin: undefined }
+    const d = digestOf([humanRow("指示"), ...sends(1, 2), oldFormat])
+    expect(d.sendsSinceHuman).toBe(0)
+  })
+
+  it("サブエージェントの送信は数えない", () => {
+    const d = digestOf([humanRow("指示"), sendRow(1, { sidechain: true }), sendRow(2)])
+    expect(d.sendsSinceHuman).toBe(1)
+  })
+
+  it("1回の呼び出しが同じ tool_use のIDで2行に分かれて書かれても、1回と数える", () => {
+    const d = digestOf([humanRow("指示"), sendRow(1), sendRow(1), sendResultRow(1)])
+    expect(d.sendsSinceHuman).toBe(1)
+  })
+
+  it("上限に達した旨の結果で「停止中」になり、人が入力するまで続く（他セッションからの入力では解除されない）", () => {
+    const d = digestOf([humanRow("指示"), ...sends(1, 10), sendRow(11), sendResultRow(11, SYNTHETIC_SEND_LIMIT)])
+    expect(d.sendLimitStopped).toBe(true)
+    // 上限を超えて試した分は数えても、表示の回数は上限にそろえる。届かなかった送信にも数える
+    expect(d.sendsSinceHuman).toBe(11)
+    expect(messagingOf(d)).toEqual({ sent: 10, limit: 10, stopped: true, undelivered: 1, exact: true })
+
+    applyEntry(d, humanRow("他からの依頼", { origin: { kind: "peer", from: "local_x" } }) as never)
+    expect(messagingOf(d).stopped).toBe(true)
+
+    applyEntry(d, humanRow("再開してください") as never)
+    expect(messagingOf(d)).toEqual({ sent: 0, limit: 10, stopped: false, undelivered: 0, exact: true })
+  })
+
+  it("解除のあとに、また上限に達すれば、改めて停止中になる", () => {
+    const d = digestOf([
+      humanRow("指示"),
+      sendRow(1),
+      sendResultRow(1, SYNTHETIC_SEND_LIMIT),
+      humanRow("解除"),
+      sendRow(2),
+      sendResultRow(2),
+    ])
+    expect(messagingOf(d)).toMatchObject({ sent: 1, stopped: false, undelivered: 0 })
+    applyEntry(d, sendRow(3) as never)
+    applyEntry(d, sendResultRow(3, SYNTHETIC_SEND_LIMIT) as never)
+    expect(messagingOf(d)).toMatchObject({ stopped: true, sent: 10 })
+  })
+
+  it("宛先が見つからないなどで届かなかった送信は、回数に数え、「届かなかった」にも数える（停止にはしない）", () => {
+    const d = digestOf([
+      humanRow("指示"),
+      sendRow(1),
+      sendResultRow(1, SYNTHETIC_SEND_UNREACHABLE),
+      sendRow(2),
+      sendResultRow(2, "Not delivered: synthetic other reason"),
+      sendRow(3),
+      sendResultRow(3),
+    ])
+    expect(messagingOf(d)).toEqual({ sent: 3, limit: 10, stopped: false, undelivered: 2, exact: true })
+  })
+
+  it("結果が text ブロックの配列でも判定できる。送信ツール以外の結果に同じ文言があっても停止にしない", () => {
+    const blocks = digestOf([humanRow("指示"), sendRow(1), sendResultRow(1, SYNTHETIC_SEND_LIMIT, { asBlocks: true })])
+    expect(blocks.sendLimitStopped).toBe(true)
+
+    const other = digestOf([
+      humanRow("指示"),
+      assistantRow({ stop: "tool_use", tools: [{ name: "Bash", input: {}, id: "toolu_bash" }] }),
+      toolResultRow({ toolUseId: "toolu_bash", text: SYNTHETIC_SEND_LIMIT }),
+    ])
+    expect(other.sendLimitStopped).toBe(false)
+    expect(other.undeliveredSinceHuman).toBe(0)
+  })
+
+  it("末尾だけの暫定の要約は、人の入力まで読めていなければ「確定していない」。停止の検出と、全体の読み込みは確定", async () => {
+    const padding = Array.from({ length: 200 }, (_, i) => assistantRow({ text: "x".repeat(200), ts: tsAt(10 + i) }))
+    const file = await tmpFile(toJsonl([humanRow("指示", { ts: tsAt(1) }), ...padding, ...sends(1, 2)]))
+    const size = (await fs.stat(file)).size
+
+    const partial = await readTailDigest(file, size, 4096)
+    expect(partial.complete).toBe(false)
+    expect(messagingOf(partial)).toMatchObject({ sent: 2, exact: false, stopped: false })
+
+    const full = createDigest()
+    await advanceDigest(file, full, size)
+    expect(messagingOf(full)).toMatchObject({ sent: 2, exact: true })
+
+    // 末尾に上限の結果があれば、末尾だけでも停止中と回数が確定する（数え漏れがあっても上限にそろえる）
+    const stoppedFile = await tmpFile(
+      toJsonl([humanRow("指示", { ts: tsAt(1) }), ...padding, sendRow(1), sendResultRow(1, SYNTHETIC_SEND_LIMIT)])
+    )
+    const stoppedPartial = await readTailDigest(stoppedFile, (await fs.stat(stoppedFile)).size, 4096)
+    expect(messagingOf(stoppedPartial)).toMatchObject({ sent: 10, stopped: true, exact: true })
+  })
+
+  it("末尾の読み込みで、人の入力まで読めていれば確定した値になる", () => {
+    const d = digestOf([humanRow("指示"), ...sends(1, 2)])
+    expect(d.complete).toBe(false)
+    expect(messagingOf(d).exact).toBe(true)
+  })
+
+  it("送信ツールの結果が「届いた」旨の文なら、届かなかった数に影響しない", () => {
+    const d = digestOf([humanRow("指示"), sendRow(1), sendResultRow(1, SYNTHETIC_SEND_OK)])
+    expect(messagingOf(d)).toMatchObject({ sent: 1, undelivered: 0, stopped: false })
   })
 })

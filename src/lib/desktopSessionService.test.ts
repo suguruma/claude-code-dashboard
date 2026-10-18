@@ -6,6 +6,9 @@ import { DesktopSessionService } from "./desktopSessionService"
 import {
   NEEDS_ACTION_HEAD,
   SENTINEL,
+  SYNTHETIC_SEND_LIMIT,
+  SYNTHETIC_SEND_OK,
+  SYNTHETIC_SEND_UNREACHABLE,
   assistantRow,
   compactRow,
   fakeCliId,
@@ -15,6 +18,8 @@ import {
   makeDesktopFixture,
   makeMeta,
   planRow,
+  sendResultRow,
+  sendRow,
   toolResultRow,
   touch,
   tsAt,
@@ -551,5 +556,71 @@ describe("起動中のCLIプロセスの確認(段階2)", () => {
       cliProcesses: { peek: () => new Set([fakeCliId(1)]) },
     })
     expect((await svc.list()).sessions[0].cliProcess).toBe("running")
+  })
+})
+
+describe("他のセッションへの送信回数と送信上限（合成データ）", () => {
+  const at = (agoSec: number) => new Date(NOW - agoSec * 1000).toISOString()
+
+  it("一覧と詳細に、送信回数・停止中・届かなかった数を出す。送信の宛先や本文は出さない", async () => {
+    const fx = await fixture()
+    // 1: 10回送ったあと上限で止まっている
+    await writeMeta(fx, makeMeta({ n: 1, title: "停止中のセッション", category: "completed", summaryFor: fakeUuid(1) }))
+    const stopped = await writeTranscript(fx, fakeCliId(1), [
+      humanRow("人の指示", { ts: at(9000) }),
+      ...Array.from({ length: 10 }, (_, i) => [sendRow(i + 1, { ts: at(8000 - i) }), sendResultRow(i + 1, SYNTHETIC_SEND_OK, { ts: at(8000 - i) })]).flat(),
+      sendRow(11, { ts: at(7000) }),
+      sendResultRow(11, SYNTHETIC_SEND_LIMIT, { ts: at(7000), asBlocks: true }),
+      assistantRow({ stop: "end_turn", uuid: fakeUuid(1), ts: at(6900) }),
+    ])
+    await touch(stopped, NOW, 6900)
+
+    // 2: 3回送り、うち1回は届いていない
+    await writeMeta(fx, makeMeta({ n: 2, title: "途中のセッション", category: "completed", summaryFor: fakeUuid(2) }))
+    const partway = await writeTranscript(fx, fakeCliId(2), [
+      humanRow("人の指示", { ts: at(9000) }),
+      sendRow(1, { ts: at(8000) }),
+      sendResultRow(1, SYNTHETIC_SEND_UNREACHABLE, { ts: at(8000) }),
+      sendRow(2, { ts: at(7900) }),
+      sendResultRow(2, SYNTHETIC_SEND_OK, { ts: at(7900) }),
+      sendRow(3, { tool: "mcp__ccd_session_mgmt__send_message", ts: at(7800) }),
+      sendResultRow(3, SYNTHETIC_SEND_OK, { ts: at(7800) }),
+      assistantRow({ stop: "end_turn", uuid: fakeUuid(2), ts: at(6900) }),
+    ])
+    await touch(partway, NOW, 6900)
+
+    // 3: 停止後に人が入力して解除された
+    await writeMeta(fx, makeMeta({ n: 3, title: "解除されたセッション", category: "completed", summaryFor: fakeUuid(3) }))
+    const released = await writeTranscript(fx, fakeCliId(3), [
+      humanRow("人の指示", { ts: at(9000) }),
+      sendRow(1, { ts: at(8000) }),
+      sendResultRow(1, SYNTHETIC_SEND_LIMIT, { ts: at(8000) }),
+      humanRow("続けてください", { ts: at(7500) }),
+      assistantRow({ stop: "end_turn", uuid: fakeUuid(3), ts: at(6900) }),
+    ])
+    await touch(released, NOW, 6900)
+
+    // 4: 会話ログが無い
+    await writeMeta(fx, makeMeta({ n: 4, title: "ログなし", category: "completed", summaryFor: fakeUuid(4), noCliSessionId: true }))
+
+    const svc = service(fx)
+    await svc.list()
+    await svc.settle()
+    const list = await svc.list()
+    const byTitle = (title: string) => list.sessions.find((s) => s.title === title)!
+
+    expect(byTitle("停止中のセッション").messaging).toEqual({ sent: 10, limit: 10, stopped: true, undelivered: 1, exact: true })
+    expect(byTitle("途中のセッション").messaging).toEqual({ sent: 3, limit: 10, stopped: false, undelivered: 1, exact: true })
+    expect(byTitle("解除されたセッション").messaging).toEqual({ sent: 0, limit: 10, stopped: false, undelivered: 0, exact: true })
+    expect(byTitle("ログなし").messaging).toBeNull()
+
+    const detail = await svc.detail(byTitle("停止中のセッション").id)
+    expect(detail?.messaging).toMatchObject({ stopped: true, sent: 10 })
+
+    // 宛先・送信の本文・ツール結果の文は応答に含めない
+    const json = JSON.stringify(list) + JSON.stringify(detail)
+    expect(json).not.toContain("synthetic-target")
+    expect(json).not.toContain("Delivered")
+    expect(json).not.toContain("Not delivered")
   })
 })

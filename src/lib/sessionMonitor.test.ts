@@ -246,6 +246,61 @@ describe("listSessions / getSessionMetrics", () => {
     expect(metrics.interruptedToolCallCount).toBe(1)
   })
 
+  it("1つの応答が複数行に分かれていても、message.idで1回だけ数える(トークン・ターン数・effortが二重に増えない)", async () => {
+    const usage = { input_tokens: 10, output_tokens: 20, cache_read_input_tokens: 100, cache_creation_input_tokens: 5 }
+    const assistant = (ts: string, id: string, content: unknown, u = usage) => ({
+      type: "assistant",
+      timestamp: ts,
+      effort: "high",
+      message: { id, usage: u, content },
+    })
+    const lines = [
+      { type: "user", timestamp: "2026-01-01T00:00:00.000Z", message: { content: "依頼" } },
+      // 同じ応答(msg_a)が、思考・本文・ツール呼び出しの3行に分かれている
+      assistant("2026-01-01T00:00:01.000Z", "msg_a", [{ type: "thinking", thinking: "" }]),
+      assistant("2026-01-01T00:00:01.100Z", "msg_a", [{ type: "text", text: "本文" }]),
+      assistant("2026-01-01T00:00:01.200Z", "msg_a", [{ type: "tool_use", id: "toolu_1", name: "Read" }]),
+      assistant("2026-01-01T00:00:03.000Z", "msg_b", [{ type: "text", text: "完了" }], { ...usage, output_tokens: 30 }),
+    ]
+    await writeSession("proj-a", "s1", lines.map(line).join(""))
+
+    const [summary] = await listSessions("proj-a")
+    expect(summary.turnCount).toBe(2)
+    expect(summary.totalInputTokens).toBe(20)
+    expect(summary.totalOutputTokens).toBe(50)
+    expect(summary.totalCacheReadTokens).toBe(200)
+    expect(summary.totalCacheCreationTokens).toBe(10)
+    const metrics = await getSessionMetrics("proj-a", "s1")
+    expect(metrics.tokenPoints.map((p) => p.turnIndex)).toEqual([0, 1])
+    expect(metrics.effortCounts).toEqual({ high: 2 })
+    // ツール呼び出しは、応答の行ごとに別のブロックなので、重複除去の影響を受けない
+    expect(metrics.toolCallCountsByName).toEqual({ Read: 1 })
+  })
+
+  it("同じ応答でusageが違う行があるときは、出力が最大の行を採る(順序に依存しない)", async () => {
+    const row = (id: string, output: number) => ({
+      type: "assistant",
+      timestamp: "2026-01-01T00:00:01.000Z",
+      message: { id, usage: { input_tokens: 1, output_tokens: output, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }, content: [] },
+    })
+    await writeSession("proj-a", "s1", [row("msg_a", 5), row("msg_a", 90), row("msg_a", 40)].map(line).join(""))
+    const [summary] = await listSessions("proj-a")
+    expect(summary.totalOutputTokens).toBe(90)
+    expect(summary.turnCount).toBe(1)
+  })
+
+  it("message.idの無い行は、重複除去せず従来どおり1行ずつ数える", async () => {
+    const row = {
+      type: "assistant",
+      timestamp: "2026-01-01T00:00:01.000Z",
+      message: { usage: { input_tokens: 1, output_tokens: 2, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }, content: [] },
+    }
+    await writeSession("proj-a", "s1", [row, row].map(line).join(""))
+    const [summary] = await listSessions("proj-a")
+    expect(summary.turnCount).toBe(2)
+    expect(summary.totalOutputTokens).toBe(4)
+  })
+
   it("壊れたJSON行は無視して継続する", async () => {
     const content = line(SAMPLE_LINES[0]) + "not valid json\n" + line(SAMPLE_LINES[1])
     await writeSession("proj-a", "s1", content)

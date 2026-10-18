@@ -13,6 +13,7 @@ import {
 import { useDesktopSessionDetail } from "@/hooks/useDesktopSessions"
 import type { TaskStatus } from "@/lib/desktopSessionTypes"
 import { ContextBar } from "./ContextBar"
+import { SendCountBadge, SendLimitNotice } from "./Messaging"
 import { DesktopStatusBadge } from "./statusMeta"
 import { ORIGIN_LABEL, formatAgo, formatDateTime } from "./format"
 
@@ -59,9 +60,12 @@ export function SessionDetailDialog({ sessionId, highContextRatio, onClose }: Se
               <div className="flex flex-wrap items-center gap-2">
                 <DesktopStatusBadge status={detail.status} />
                 {detail.group && <Badge variant="secondary">{detail.group.name}</Badge>}
+                <SendCountBadge messaging={detail.messaging} />
               </div>
               <p className="text-xs text-muted-foreground">判断の根拠：{detail.statusReason}</p>
             </div>
+
+            <SendLimitNotice sessionId={detail.id} messaging={detail.messaging} />
 
             <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Field label="作業フォルダ">
@@ -82,6 +86,17 @@ export function SessionDetailDialog({ sessionId, highContextRatio, onClose }: Se
                   : `${detail.compactionCount}回${detail.lastCompactionAt ? `（直近 ${formatAgo(detail.lastCompactionAt)}）` : ""}`}
               </Field>
               <Field label="待機中の入力">{detail.queuedInputs}件</Field>
+              <Field label="他のセッションへの送信（人の最後の入力から）">
+                {detail.messaging ? (
+                  <span title="人が最後に入力してから、他のセッションへ送った回数（届かなかった送信を含む）">
+                    {detail.messaging.sent}
+                    {detail.messaging.exact ? "" : "以上"} / {detail.messaging.limit}回
+                    {detail.messaging.undelivered > 0 && `（未達${detail.messaging.undelivered}件）`}
+                  </span>
+                ) : (
+                  "—"
+                )}
+              </Field>
               <Field label="CLIプロセス">
                 {detail.cliProcess === "running"
                   ? "あり（--resume で起動中。「実行中」とは別の情報）"

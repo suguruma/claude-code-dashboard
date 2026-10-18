@@ -27,12 +27,14 @@ import {
   type TranscriptRef,
 } from "./desktopSessions"
 import { CliProcessWatcher, type CliProcessSource } from "./cliProcesses"
+import type { SessionIdentity } from "./usageEstimate"
 import { getClaudeProjectsRoot } from "./sessionMonitor"
 import {
   INSTRUCTION_EXCERPT_CHARS,
   advanceDigest,
   createDigest,
   makeExcerpt,
+  messagingOf,
   readTailDigest,
   type TranscriptDigest,
 } from "./transcriptDigest"
@@ -349,6 +351,25 @@ export class DesktopSessionService {
     }
   }
 
+  /**
+   * 会話ログのセッションID → Desktopのセッション(名前・グループ)。利用上限の「誰が使っているか」で、
+   * 会話記録の使用量をセッション・グループに対応づけるために使う。
+   */
+  async sessionIdentities(): Promise<Map<string, SessionIdentity>> {
+    await this.list()
+    const map = new Map<string, SessionIdentity>()
+    for (const b of this.built.values()) {
+      if (!b.ref) continue
+      map.set(b.ref.sessionId, {
+        desktopId: b.summary.id,
+        title: b.summary.title,
+        groupId: b.summary.group?.id ?? null,
+        groupName: b.summary.group?.name ?? null,
+      })
+    }
+    return map
+  }
+
   private cliProcessOf(cliSessionId: string | null): DesktopSessionSummary["cliProcess"] {
     if (this.cliIds === null || cliSessionId === null) return "unknown"
     return this.cliIds.has(cliSessionId.toLowerCase()) ? "running" : "none"
@@ -452,6 +473,7 @@ export class DesktopSessionService {
         : null,
       latestInputOrigin: input?.origin ?? null,
       queuedInputs: digest?.queued ?? 0,
+      messaging: digest ? messagingOf(digest) : null,
       cliProcess: this.cliProcessOf(meta?.cliSessionId ?? ref?.sessionId ?? null),
     }
     return { summary, tasks, ref, lastCompactionAt: digest?.lastCompactionAt ?? null }

@@ -65,6 +65,25 @@ export interface DesktopSessionGroupRef {
   name: string
 }
 
+/**
+ * 他のセッションへ送ったメッセージの数。Desktopは「そのセッションで人が最後に入力してから10回まで」しか送れない
+ * (他のセッションからの入力では数え直されない)。数えるのは送信ツールの呼び出しで、届かなかった送信も含む。
+ */
+export interface DesktopSessionMessaging {
+  /** 人が最後に入力してからの送信回数。上限(limit)を超えて試した分は limit にそろえる */
+  sent: number
+  limit: number
+  /** 送信上限に達して送れなくなっている。人がこのセッションに入力すると解除される */
+  stopped: boolean
+  /** うち、届かなかった(宛先が見つからない・上限など)送信の数 */
+  undelivered: number
+  /**
+   * sent が確定した値か。会話ログの末尾だけを読んだ暫定の要約で、人の最後の入力まで読めていないときは false
+   * (実際の回数はこれ以上の可能性がある)。stopped は検出できた時点で確定
+   */
+  exact: boolean
+}
+
 export interface DesktopSessionSummary {
   /** Desktopのセッション識別子(`local_<uuid>`)。縮退表示では会話ログのセッションID */
   id: string
@@ -107,6 +126,8 @@ export interface DesktopSessionSummary {
   latestInputOrigin: InstructionOrigin | null
   /** 実行中に届いて、まだ処理されていない入力の数 */
   queuedInputs: number
+  /** 他のセッションへの送信回数と、送信上限での停止。会話ログが無いセッションは null */
+  messaging: DesktopSessionMessaging | null
   /**
    * claude.exe が `--resume=<セッションID>` でこのセッションを開いているか。「実行中」とは別の情報
    * (待機中のセッションでもプロセスは残る)。running: プロセスあり / none: 無し / unknown: 取得できていない

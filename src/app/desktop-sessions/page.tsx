@@ -9,7 +9,10 @@ import { NotificationToggle } from "@/components/desktopSessions/NotificationTog
 import { SessionDetailDialog } from "@/components/desktopSessions/SessionDetailDialog"
 import { SessionRow } from "@/components/desktopSessions/SessionRow"
 import { SummaryCards } from "@/components/desktopSessions/SummaryCards"
+import { UsageGuardBand } from "@/components/desktopSessions/UsageGuardBand"
+import { UsagePanel } from "@/components/desktopSessions/UsagePanel"
 import { useDesktopSessions } from "@/hooks/useDesktopSessions"
+import { useUsage } from "@/hooks/useUsage"
 import { usePersistedState } from "@/hooks/useLocalStorage"
 import {
   DEFAULT_FILTERS,
@@ -48,6 +51,7 @@ export default function DesktopSessionsPage() {
 
 function DesktopSessionsContent() {
   const { data, error, isLoading } = useDesktopSessions()
+  const { data: usage } = useUsage()
   const [stored, setFilters] = usePersistedState<DesktopSessionFilters>(FILTER_STORAGE_KEY, DEFAULT_FILTERS)
   // 保存された値に新しい項目が無い場合に備えて、既定値で埋める
   const filters = useMemo(() => ({ ...DEFAULT_FILTERS, ...stored }), [stored])
@@ -95,7 +99,12 @@ function DesktopSessionsContent() {
         </p>
       </div>
 
+      {/* 最新の公式値が80%以上のときの上限ガードの帯(表示のみ) */}
+      <UsageGuardBand guard={usage?.guard} />
+
       <NotificationToggle />
+
+      <UsagePanel />
 
       {error && (
         <Alert variant="destructive">

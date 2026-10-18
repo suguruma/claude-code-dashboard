@@ -99,6 +99,8 @@ interface RawLine {
   compactMetadata?: { trigger?: string; preTokens?: number; durationMs?: number }
   toolUseResult?: { interrupted?: boolean }
   message?: {
+    /** 応答のID。1つの応答が思考・本文・ツール呼び出しごとに別の行で書かれ、どの行にも同じIDとusageが付く */
+    id?: string
     usage?: RawUsage
     content?: RawContentBlock[] | string
   }
@@ -110,6 +112,8 @@ async function parseSessionFile(filePath: string): Promise<SessionMetrics> {
   const toolCallById = new Map<string, ToolCallEvent>()
 
   const tokenPoints: TokenPoint[] = []
+  /** message.id → tokenPoints の位置。同じ応答の行を二重に数えないために使う */
+  const tokenPointIndexById = new Map<string, number>()
   const toolCalls: ToolCallEvent[] = []
   const compactions: CompactionEvent[] = []
   const toolCallCountsByName: Record<string, number> = {}
@@ -159,21 +163,36 @@ async function parseSessionFile(filePath: string): Promise<SessionMetrics> {
         const outputTokens = usage.output_tokens ?? 0
         const cacheReadTokens = usage.cache_read_input_tokens ?? 0
         const cacheCreationTokens = usage.cache_creation_input_tokens ?? 0
-        totalInputTokens += inputTokens
-        totalOutputTokens += outputTokens
-        totalCacheReadTokens += cacheReadTokens
-        totalCacheCreationTokens += cacheCreationTokens
-        const effort = obj.effort ?? null
-        if (effort) effortCounts[effort] = (effortCounts[effort] ?? 0) + 1
-        tokenPoints.push({
-          turnIndex: tokenPoints.length,
-          timestamp: obj.timestamp ?? "",
-          inputTokens,
-          outputTokens,
-          cacheReadTokens,
-          cacheCreationTokens,
-          effort,
-        })
+        const messageId = typeof obj.message.id === "string" && obj.message.id ? obj.message.id : null
+        const seenIndex = messageId !== null ? tokenPointIndexById.get(messageId) : undefined
+        if (seenIndex !== undefined) {
+          // 同じ応答の続きの行。usageが違うときは、出力が最大の行を採る(合計はその差分だけ直す)
+          const seen = tokenPoints[seenIndex]
+          if (outputTokens > seen.outputTokens) {
+            totalInputTokens += inputTokens - seen.inputTokens
+            totalOutputTokens += outputTokens - seen.outputTokens
+            totalCacheReadTokens += cacheReadTokens - seen.cacheReadTokens
+            totalCacheCreationTokens += cacheCreationTokens - seen.cacheCreationTokens
+            tokenPoints[seenIndex] = { ...seen, inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens }
+          }
+        } else {
+          totalInputTokens += inputTokens
+          totalOutputTokens += outputTokens
+          totalCacheReadTokens += cacheReadTokens
+          totalCacheCreationTokens += cacheCreationTokens
+          const effort = obj.effort ?? null
+          if (effort) effortCounts[effort] = (effortCounts[effort] ?? 0) + 1
+          if (messageId !== null) tokenPointIndexById.set(messageId, tokenPoints.length)
+          tokenPoints.push({
+            turnIndex: tokenPoints.length,
+            timestamp: obj.timestamp ?? "",
+            inputTokens,
+            outputTokens,
+            cacheReadTokens,
+            cacheCreationTokens,
+            effort,
+          })
+        }
       }
 
       const content = Array.isArray(obj.message.content) ? obj.message.content : []

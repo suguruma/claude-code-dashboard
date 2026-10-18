@@ -4,19 +4,24 @@ import { useCallback, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { useDesktopNotifySettings } from "@/hooks/useDesktopNotifySettings"
 import { useDesktopSessions } from "@/hooks/useDesktopSessions"
+import { useUsage } from "@/hooks/useUsage"
 import { createNotifyTracker, planNotifications } from "@/lib/desktopNotifications"
 import { showDesktopNotification } from "@/lib/desktopNotify"
+import { createUsageNotifyTracker } from "@/lib/usageNotifications"
 
 /**
  * 要対応のデスクトップ通知の監視。アプリのどの画面を開いていても動くよう、AppShellに置く。
  * 通知がオフのあいだは一覧を取得しない。オンにした直後・起動直後の最初の取得は基準を取るだけで、
  * すでに要対応だったセッションは通知しない。
+ * 同じ通知のスイッチで、利用上限(80%・95%を超えたとき)の通知も出す。窓の枠・しきい値ごとに1回だけ。
  */
 export function DesktopNotificationWatcher() {
   const router = useRouter()
   const { enabled } = useDesktopNotifySettings()
   const { data } = useDesktopSessions(enabled)
+  const { data: usage } = useUsage(enabled)
   const tracker = useRef(createNotifyTracker())
+  const usageTracker = useRef(createUsageNotifyTracker())
 
   const openSession = useCallback(
     (sessionId: string | null) => {
@@ -41,6 +46,17 @@ export function DesktopNotificationWatcher() {
       void showDesktopNotification(item, openSession)
     }
   }, [enabled, data, openSession])
+
+  useEffect(() => {
+    if (!enabled) {
+      usageTracker.current.reset()
+      return
+    }
+    if (!usage) return
+    for (const item of usageTracker.current.update(usage)) {
+      void showDesktopNotification(item, openSession)
+    }
+  }, [enabled, usage, openSession])
 
   return null
 }

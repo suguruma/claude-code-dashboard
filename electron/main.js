@@ -1,9 +1,10 @@
-const { app, BrowserWindow, Notification, dialog, ipcMain } = require("electron")
+const { app, BrowserWindow, Notification, dialog, ipcMain, shell } = require("electron")
 const { spawn } = require("child_process")
 const path = require("path")
 const fs = require("fs")
 const http = require("http")
 const { pickPort } = require("./port")
+const { isAllowedExternalUrl } = require("./externalUrl")
 
 const isDev = !app.isPackaged
 
@@ -277,6 +278,21 @@ ipcMain.handle("desktop-notify:show", (event, payload) => {
   })
   notification.show()
   return { ok: true }
+})
+
+/**
+ * 「セッションを開く」: Claude Desktopのセッションを、claude:// のリンクで開く。
+ * 本アプリのウィンドウからの要求で、かつ許可したURLの形式(electron/externalUrl.js)に完全に一致するときだけ開く。
+ */
+ipcMain.handle("shell:open-external", async (event, url) => {
+  if (!mainWindow || event.sender !== mainWindow.webContents) return { ok: false }
+  if (!isAllowedExternalUrl(url)) return { ok: false }
+  try {
+    await shell.openExternal(url)
+    return { ok: true }
+  } catch {
+    return { ok: false }
+  }
 })
 
 async function createWindow() {

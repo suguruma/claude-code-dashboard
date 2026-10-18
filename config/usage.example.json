@@ -1,0 +1,16 @@
+{
+  "snapshotsPath": "",
+  "projectsRoot": "",
+  "prices": {
+    "claude-opus-5-5": {
+      "input": 4,
+      "output": 20,
+      "cacheRead": 0.2
+    },
+    "claude-sonnet-5-5": {
+      "input": 2,
+      "output": 10,
+      "cacheRead": 0.2
+    }
+  }
+}
