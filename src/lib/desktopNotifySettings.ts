@@ -3,8 +3,9 @@ import { readJsonFile, writeJsonFile, getAppDataRoot } from "./fileIO"
 
 /**
  * 要対応のデスクトップ通知のオン・オフ。サーバー側のファイルに保存する。
- * 配布exeはポートが起動のたびに変わり、ブラウザのlocalStorageが保存先(オリジン)ごとに分かれて
- * 起動ごとに消えるため、ここだけはlocalStorageに頼らない。初期値はオフ。
+ * 配布exeは優先ポートで起動するが、そのポートが使用中のときは空きポートに切り替わる。ブラウザのlocalStorageは
+ * 保存先(オリジン)がポートごとに分かれ、切り替わった起動では見えなくなるため、ここだけはlocalStorageに頼らない。
+ * 初期値はオフ。
  */
 export interface DesktopNotifySettings {
   notifications: boolean

@@ -2,8 +2,8 @@ const { app, BrowserWindow, Notification, dialog, ipcMain } = require("electron"
 const { spawn } = require("child_process")
 const path = require("path")
 const fs = require("fs")
-const net = require("net")
 const http = require("http")
+const { pickPort } = require("./port")
 
 const isDev = !app.isPackaged
 
@@ -34,18 +34,6 @@ const PROGRESS_MILESTONES = [
 
 function getResourcesRoot() {
   return isDev ? path.join(__dirname, "..") : process.resourcesPath
-}
-
-function getFreePort() {
-  return new Promise((resolve, reject) => {
-    const server = net.createServer()
-    server.unref()
-    server.on("error", reject)
-    server.listen(0, "127.0.0.1", () => {
-      const { port } = server.address()
-      server.close(() => resolve(port))
-    })
-  })
 }
 
 /**
@@ -183,7 +171,13 @@ async function startServer(progress) {
   seedUserData(userDataDir, resourcesRoot)
   progress?.reach("seed")
 
-  const port = await getFreePort()
+  const { port, isPreferred } = await pickPort()
+  if (!isPreferred) {
+    console.warn(
+      `[port] 優先ポートが使えないため、空いているポート ${port} で起動します。` +
+        "この起動の間だけ、ブラウザに保存した画面の設定(localStorage)は別扱いになります"
+    )
+  }
   const standaloneDir = isDev
     ? path.join(resourcesRoot, ".next", "standalone")
     : path.join(resourcesRoot, "standalone")

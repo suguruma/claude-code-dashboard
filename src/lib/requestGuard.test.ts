@@ -42,6 +42,20 @@ describe("checkApiRequest: Origin", () => {
     })
   })
 
+  it("exeの優先ポート・空きポートのどちらで起動しても、同一Originの書き込みは許可し、別ポートのOriginは拒否する", () => {
+    // 優先ポート(38417)で起動した場合と、使用中で空きポートに切り替わった場合
+    for (const port of ["38417", "52611"]) {
+      const host = `127.0.0.1:${port}`
+      expect(checkApiRequest(input({ method: "POST", host, origin: `http://${host}` }))).toEqual({ ok: true })
+      expect(checkApiRequest(input({ method: "GET", host, origin: `http://${host}` }))).toEqual({ ok: true })
+      // 開発サーバー(3000)や、別のexe(別ポート)の画面からの要求は拒否する
+      expect(checkApiRequest(input({ method: "POST", host, origin: "http://127.0.0.1:3000" }))).toMatchObject({
+        ok: false,
+        status: 403,
+      })
+    }
+  })
+
   it("別サイトのOriginは書き込み・読み取りとも拒否する", () => {
     expect(checkApiRequest(input({ method: "POST", origin: "https://evil.example" }))).toMatchObject({ ok: false, status: 403 })
     expect(checkApiRequest(input({ method: "GET", origin: "https://evil.example" }))).toMatchObject({ ok: false, status: 403 })

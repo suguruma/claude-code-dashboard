@@ -12,7 +12,7 @@
 
 const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"])
 
-/** Host として許可するのはループバックの名前のみ。ポートは任意(exeは起動ごとにランダムなポートを使うため) */
+/** Host として許可するのはループバックの名前のみ。ポートは任意(exeは優先ポートが使用中のとき空きポートで起動し、開発サーバーは別のポートで動くため) */
 const LOOPBACK_HOST = /^(127\.0\.0\.1|localhost|\[::1\])(:\d{1,5})?$/i
 
 export interface GuardInput {
