@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { readFilePreview } from "@/lib/dirBrowser"
+import { PreviewBlockedError, readFilePreview } from "@/lib/dirBrowser"
 
 export const dynamic = "force-dynamic"
 
@@ -12,6 +12,9 @@ export async function GET(req: NextRequest) {
     const result = await readFilePreview(targetPath)
     return NextResponse.json(result)
   } catch (err) {
+    if (err instanceof PreviewBlockedError) {
+      return NextResponse.json({ error: err.message }, { status: 403 })
+    }
     const nodeErr = err as NodeJS.ErrnoException
     const message =
       nodeErr.code === "EACCES" || nodeErr.code === "EPERM"

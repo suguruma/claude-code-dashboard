@@ -1,6 +1,7 @@
 import { promises as fs } from "fs"
 import os from "os"
 import path from "path"
+import { getPreviewBlockReason } from "./sensitivePaths"
 
 export interface DirEntry {
   name: string
@@ -93,20 +94,38 @@ export interface FilePreviewResult {
   binary: boolean
 }
 
+/** 認証情報などプレビューを拒否するパスに対して投げる。APIでは403にマップする */
+export class PreviewBlockedError extends Error {
+  constructor(reason: string) {
+    super(reason)
+    this.name = "PreviewBlockedError"
+  }
+}
+
+function assertPreviewAllowed(p: string): void {
+  const reason = getPreviewBlockReason(p)
+  if (reason) throw new PreviewBlockedError(reason)
+}
+
 /**
  * ディレクトリピッカーでのファイル中身プレビュー用に、先頭PREVIEW_MAX_BYTESバイトのみを読み込む。
  * 巨大ファイル・バイナリファイルを誤ってメモリに全読み込みしないためのガード。
  */
 export async function readFilePreview(targetPath: string): Promise<FilePreviewResult> {
   const resolved = path.resolve(targetPath)
-  const stat = await fs.stat(resolved)
+  assertPreviewAllowed(resolved)
+  // シンボリックリンク・ジャンクション・8.3短縮名を解決した実体のパスでも判定する(例: notes.txt -> .env)
+  const real = await fs.realpath(resolved)
+  assertPreviewAllowed(real)
+
+  const stat = await fs.stat(real)
   if (!stat.isFile()) {
     throw new Error("指定されたパスはファイルではありません")
   }
 
   const readSize = Math.min(stat.size, PREVIEW_MAX_BYTES)
   const buffer = Buffer.alloc(readSize)
-  const handle = await fs.open(resolved, "r")
+  const handle = await fs.open(real, "r")
   try {
     await handle.read(buffer, 0, readSize, 0)
   } finally {

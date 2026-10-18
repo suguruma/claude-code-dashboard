@@ -2,7 +2,7 @@ import { promises as fs } from "fs"
 import os from "os"
 import path from "path"
 import { afterEach, describe, expect, it } from "vitest"
-import { browseDirectory, getShortcuts, readFilePreview } from "./dirBrowser"
+import { browseDirectory, getShortcuts, PreviewBlockedError, readFilePreview } from "./dirBrowser"
 
 const cleanupDirs: string[] = []
 
@@ -126,5 +126,43 @@ describe("readFilePreview", () => {
     await expect(
       readFilePreview(path.join(os.tmpdir(), "ccd-does-not-exist-xyz.txt"))
     ).rejects.toThrow()
+  })
+
+  it("認証情報ファイルはPreviewBlockedErrorで拒否し、内容を読み込まない", async () => {
+    const tmpDir = await makeTmpDir()
+    for (const name of [".env", ".env.local", "server.pem", "id_rsa", ".npmrc", "credentials.json"]) {
+      const filePath = path.join(tmpDir, name)
+      await fs.writeFile(filePath, "SECRET=dummy-value", "utf-8")
+      await expect(readFilePreview(filePath)).rejects.toBeInstanceOf(PreviewBlockedError)
+    }
+  })
+
+  it("拒否対象フォルダ配下のファイルは拒否する", async () => {
+    const tmpDir = await makeTmpDir()
+    const sshDir = path.join(tmpDir, ".ssh")
+    await fs.mkdir(sshDir)
+    const filePath = path.join(sshDir, "known_hosts")
+    await fs.writeFile(filePath, "example.invalid ssh-ed25519 AAAA", "utf-8")
+    await expect(readFilePreview(filePath)).rejects.toBeInstanceOf(PreviewBlockedError)
+  })
+
+  it("拒否対象へのシンボリックリンクは実体で判定して拒否する", async () => {
+    const tmpDir = await makeTmpDir()
+    const target = path.join(tmpDir, ".env")
+    await fs.writeFile(target, "SECRET=dummy-value", "utf-8")
+    const link = path.join(tmpDir, "notes.txt")
+    try {
+      await fs.symlink(target, link)
+    } catch {
+      return // 権限がなくシンボリックリンクを作れない環境ではスキップ
+    }
+    await expect(readFilePreview(link)).rejects.toBeInstanceOf(PreviewBlockedError)
+  })
+
+  it("通常のテキストファイルは拒否されない", async () => {
+    const tmpDir = await makeTmpDir()
+    const filePath = path.join(tmpDir, "settings.json")
+    await fs.writeFile(filePath, "{}", "utf-8")
+    await expect(readFilePreview(filePath)).resolves.toMatchObject({ content: "{}" })
   })
 })
