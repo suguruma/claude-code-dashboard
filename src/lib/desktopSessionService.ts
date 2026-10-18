@@ -377,7 +377,7 @@ export class DesktopSessionService {
     const model = meta?.model ?? digest?.model ?? null
     const cwd = meta?.cwd ?? digest?.cwd ?? null
 
-    const { status, reason } = inferStatus(
+    const { status, reason, awaitingAnswer } = inferStatus(
       { meta, digest, transcriptMtimeMs, now },
       this.opts.thresholds ?? DEFAULT_THRESHOLDS
     )
@@ -421,6 +421,8 @@ export class DesktopSessionService {
       status,
       statusReason: reason,
       needsAction: status === "blocked" && (meta?.needsAction ?? false),
+      // 要約文は前のターンのもの。回答待ちなど、会話ログからの判断で要対応になった場合は当てはまらないので出さない
+      needsActionExcerpt: status === "blocked" && !awaitingAnswer ? (meta?.needsActionExcerpt ?? null) : null,
       createdAt: meta?.createdAt ?? null,
       lastActivityAt,
       completedTurns: meta?.completedTurns ?? null,

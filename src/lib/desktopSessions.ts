@@ -1,6 +1,7 @@
 import { promises as fs } from "fs"
 import os from "os"
 import path from "path"
+import { makeExcerpt } from "./transcriptDigest"
 
 /**
  * Claude Desktop の内部形式を読む処理は、すべてこのファイルに閉じ込める。
@@ -31,8 +32,13 @@ export interface DesktopMeta {
   completedTurns: number | null
   /** Desktopがターン終了後に付ける分類 */
   statusCategory: "blocked" | "review_ready" | "completed" | null
-  /** 要対応の説明文が記録されているか(文そのものは保持しない) */
+  /** 要対応の説明文が記録されているか */
   needsAction: boolean
+  /**
+   * 要対応の説明文(postTurnSummary.needs_action)の先頭60文字。承認済みの表示項目。
+   * 全文は保持しない。同じ要約の status_detail と、ターンのまとめ(turnWrapUp)の文は取り込まない。
+   */
+  needsActionExcerpt: string | null
   /** ターン後の要約が対応している assistant の uuid */
   summaryFor: string | null
   lastAssistantUuid: string | null
@@ -157,6 +163,8 @@ export async function listMetaFiles(dataDir: string): Promise<MetaFileRef[]> {
   return result
 }
 
+const NEEDS_ACTION_EXCERPT_CHARS = 60
+
 const str = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null)
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null)
 
@@ -192,6 +200,10 @@ export function projectMeta(raw: unknown): DesktopMeta | null {
     completedTurns: num(r.completedTurns),
     statusCategory,
     needsAction: typeof needsActionText === "string" && needsActionText.trim().length > 0,
+    needsActionExcerpt:
+      typeof needsActionText === "string" && needsActionText.trim().length > 0
+        ? makeExcerpt(needsActionText, NEEDS_ACTION_EXCERPT_CHARS)
+        : null,
     summaryFor: str(r.postTurnSummaryFor) ?? str(summary?.summarizes_uuid),
     lastAssistantUuid: str(r.lastAssistantUuid),
     hasError: typeof r.error === "string" ? r.error.length > 0 : r.error != null && r.error !== false,

@@ -4,6 +4,7 @@ import path from "path"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { DesktopSessionService } from "./desktopSessionService"
 import {
+  NEEDS_ACTION_HEAD,
   SENTINEL,
   assistantRow,
   compactRow,
@@ -134,6 +135,35 @@ describe("DesktopSessionService.list", () => {
     expect(byTitle("完了済み")).toMatchObject({ status: "completed", isArchived: true })
     expect(byTitle("中断した作業").status).toBe("interrupted")
     expect(byTitle("ログ無し")).toMatchObject({ transcript: "missing", status: "review_ready", digest: "none", context: null })
+  })
+
+  it("要対応のセッションにだけ、要対応の内容の先頭60文字を付ける(状態の説明・ターンのまとめ・60文字より後は出さない)", async () => {
+    const fx = await fixture()
+    await seed(fx)
+    const svc = service(fx)
+    await svc.list()
+    await svc.settle()
+    const list = await svc.list()
+    const blocked = list.sessions.find((x) => x.title === "要対応の作業")!
+    expect(blocked.needsActionExcerpt?.startsWith(NEEDS_ACTION_HEAD)).toBe(true)
+    expect(blocked.needsActionExcerpt?.replace("…", "").length).toBe(60)
+    expect(list.sessions.filter((x) => x.needsActionExcerpt !== null)).toHaveLength(1)
+    const detail = await svc.detail(fakeSessionId(2))
+    expect(detail?.needsActionExcerpt).toBe(blocked.needsActionExcerpt)
+    expect(JSON.stringify([list, detail])).not.toContain(SENTINEL)
+  })
+
+  it("回答待ちで要対応になったセッションには、前のターンの要約文を出さない", async () => {
+    const fx = await fixture()
+    await writeMeta(fx, makeMeta({ n: 1, title: "質問中", category: "blocked", summaryFor: "old" }))
+    const t = await writeTranscript(fx, fakeCliId(1), [
+      humanRow("依頼", { ts: new Date(NOW - 7200_000).toISOString() }),
+      assistantRow({ stop: "tool_use", ts: new Date(NOW - 7190_000).toISOString(), tools: [{ name: "AskUserQuestion", input: {}, id: "toolu_q" }] }),
+    ])
+    await touch(t, NOW, 7190)
+    const s = (await service(fx).list()).sessions[0]
+    expect(s.status).toBe("blocked")
+    expect(s.needsActionExcerpt).toBeNull()
   })
 
   it("集計: アーカイブ済みは数に含めず、要対応と実行中を上に並べる", async () => {

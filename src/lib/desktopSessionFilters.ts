@@ -64,6 +64,25 @@ export function bucketByGroup(sessions: DesktopSessionSummary[], groups: Desktop
   return buckets
 }
 
+/**
+ * 絞り込みの選択肢に出すグループと件数。件数0のグループは隠す。
+ * 件数は、アーカイブ済みを含める設定ならそれも数える。選択中のグループは、0件になっても選択肢から消さない。
+ */
+export function visibleGroups(
+  groups: DesktopSessionGroup[],
+  sessions: DesktopSessionSummary[],
+  includeArchived: boolean,
+  selectedGroupId: string
+): DesktopSessionGroup[] {
+  const counts = new Map<string, number>()
+  for (const s of sessions) {
+    if (s.group && (includeArchived || !s.isArchived)) counts.set(s.group.id, (counts.get(s.group.id) ?? 0) + 1)
+  }
+  return groups
+    .map((g) => ({ ...g, count: counts.get(g.id) ?? 0 }))
+    .filter((g) => g.count > 0 || g.id === selectedGroupId)
+}
+
 /** 絞り込みの選択肢(出現するモデル・作業フォルダ)を、件数の多い順に返す */
 export function collectOptions(sessions: DesktopSessionSummary[], pick: (s: DesktopSessionSummary) => string | null): string[] {
   const counts = new Map<string, number>()

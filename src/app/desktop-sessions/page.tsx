@@ -14,6 +14,7 @@ import {
   applyFilters,
   bucketByGroup,
   collectOptions,
+  visibleGroups,
   type DesktopSessionFilters,
 } from "@/lib/desktopSessionFilters"
 
@@ -49,6 +50,11 @@ export default function DesktopSessionsPage() {
   )
   const models = useMemo(() => collectOptions(sessions, (s) => s.model), [sessions])
   const folders = useMemo(() => collectOptions(sessions, (s) => s.folderName), [sessions])
+  // 件数0のグループは選択肢から隠す(アーカイブ済みを含める設定のときは、その件数で判定する)
+  const groupOptions = useMemo(
+    () => visibleGroups(data?.groups ?? [], sessions, filters.includeArchived, filters.group),
+    [data?.groups, sessions, filters.includeArchived, filters.group]
+  )
   const buckets = useMemo(
     () => (filters.view === "group" ? bucketByGroup(filtered, data?.groups ?? []) : []),
     [filtered, filters.view, data?.groups]
@@ -117,7 +123,7 @@ export default function DesktopSessionsPage() {
                 </option>
               ))}
             </select>
-            {data.groups.length > 0 && (
+            {groupOptions.length > 0 && (
               <select
                 aria-label="グループで絞り込む"
                 className={selectClass}
@@ -125,7 +131,7 @@ export default function DesktopSessionsPage() {
                 onChange={(e) => update({ group: e.target.value })}
               >
                 <option value="all">すべてのグループ</option>
-                {data.groups.map((g) => (
+                {groupOptions.map((g) => (
                   <option key={g.id} value={g.id}>
                     {g.name}（{g.count}）
                   </option>
@@ -170,7 +176,7 @@ export default function DesktopSessionsPage() {
                 アーカイブ済みを含める（{data.counts.archived}件）
               </Label>
             </div>
-            {data.groups.length > 0 && (
+            {groupOptions.length > 0 && (
               <div className="flex items-center gap-2">
                 <Switch
                   id="group-view"

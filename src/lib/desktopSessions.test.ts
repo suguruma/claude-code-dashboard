@@ -12,6 +12,7 @@ import {
   resolveDesktopDataDir,
 } from "./desktopSessions"
 import {
+  NEEDS_ACTION_HEAD,
   SENTINEL,
   fakeCliId,
   fakeSessionId,
@@ -55,6 +56,7 @@ describe("projectMeta(許可リスト方式の射影、S3)", () => {
         "lastAssistantUuid",
         "model",
         "needsAction",
+        "needsActionExcerpt",
         "permissionMode",
         "statusCategory",
         "summaryFor",
@@ -62,6 +64,16 @@ describe("projectMeta(許可リスト方式の射影、S3)", () => {
       ].sort()
     )
     expect(meta).toMatchObject({ id: fakeSessionId(1), statusCategory: "blocked", needsAction: true, hasError: true })
+  })
+
+  it("要対応の内容は先頭60文字だけを取り込み、全文・状態の説明・ターンのまとめは保持しない", () => {
+    const meta = projectMeta(makeMeta({ n: 1, category: "blocked" }))
+    expect(meta?.needsActionExcerpt).toBe(`${NEEDS_ACTION_HEAD}${"あ".repeat(60 - NEEDS_ACTION_HEAD.length)}…`)
+    expect(meta?.needsActionExcerpt?.replace("…", "").length).toBe(60)
+    expect(JSON.stringify(meta)).not.toContain(SENTINEL)
+    // 要対応でないセッションには付かない
+    expect(projectMeta(makeMeta({ n: 2, category: "completed" }))?.needsActionExcerpt).toBeNull()
+    expect(projectMeta(makeMeta({ n: 3 }))?.needsActionExcerpt).toBeNull()
   })
 
   it("エラーの記録時刻(errorAt)を取り込む。無ければ null", () => {

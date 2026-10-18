@@ -32,6 +32,8 @@ export interface StatusResult {
   status: DesktopSessionStatus
   /** 判断の根拠。実行中などの推定であることを画面に出す */
   reason: string
+  /** AskUserQuestion・ExitPlanMode の回答待ち。Desktopの要約文(前のターンのもの)は、この状態には当てはまらない */
+  awaitingAnswer?: boolean
 }
 
 /**
@@ -77,6 +79,7 @@ export function inferStatus(input: StatusInput, thresholds: StatusThresholds = D
       return {
         status: "blocked",
         reason: asked === "ExitPlanMode" ? "プランの承認待ち(ExitPlanMode)" : "ユーザーへの質問の回答待ち(AskUserQuestion)",
+        awaitingAnswer: true,
       }
     }
   }

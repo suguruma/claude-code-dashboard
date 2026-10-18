@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { DEFAULT_FILTERS, applyFilters, bucketByGroup, collectOptions } from "./desktopSessionFilters"
+import { DEFAULT_FILTERS, applyFilters, bucketByGroup, collectOptions, visibleGroups } from "./desktopSessionFilters"
 import type { DesktopSessionSummary } from "./desktopSessionTypes"
 
 function session(id: string, overrides: Partial<DesktopSessionSummary> = {}): DesktopSessionSummary {
@@ -18,6 +18,7 @@ function session(id: string, overrides: Partial<DesktopSessionSummary> = {}): De
     status: "completed",
     statusReason: "",
     needsAction: false,
+    needsActionExcerpt: null,
     createdAt: null,
     lastActivityAt: null,
     completedTurns: null,
@@ -87,5 +88,33 @@ describe("collectOptions", () => {
   it("件数の多い順に重複なく返す", () => {
     const list = [session("a", { model: "m1" }), session("b", { model: "m2" }), session("c", { model: "m2" }), session("d", { model: null })]
     expect(collectOptions(list, (s) => s.model)).toEqual(["m2", "m1"])
+  })
+})
+
+describe("visibleGroups(件数0のグループを隠す)", () => {
+  const groups = [
+    { id: "g1", name: "設計", order: 1, count: 99 },
+    { id: "g2", name: "アーカイブだけ", order: 2, count: 99 },
+    { id: "g3", name: "空", order: 3, count: 99 },
+  ]
+  const list = [
+    session("a", { group: { id: "g1", name: "設計" } }),
+    session("b", { group: { id: "g1", name: "設計" } }),
+    session("c", { group: { id: "g2", name: "アーカイブだけ" }, isArchived: true }),
+  ]
+
+  it("件数0のグループは出さず、件数はサーバーの値ではなく表示対象のセッションから数える", () => {
+    expect(visibleGroups(groups, list, false, "all").map((g) => [g.name, g.count])).toEqual([["設計", 2]])
+  })
+
+  it("アーカイブ済みを含める設定のときは、その件数で判定する", () => {
+    expect(visibleGroups(groups, list, true, "all").map((g) => [g.name, g.count])).toEqual([
+      ["設計", 2],
+      ["アーカイブだけ", 1],
+    ])
+  })
+
+  it("選択中のグループは、0件でも選択肢から消さない", () => {
+    expect(visibleGroups(groups, list, false, "g3").map((g) => g.name)).toEqual(["設計", "空"])
   })
 })

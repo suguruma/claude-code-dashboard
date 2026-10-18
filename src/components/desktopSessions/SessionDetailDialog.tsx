@@ -89,6 +89,16 @@ export function SessionDetailDialog({ sessionId, highContextRatio, onClose }: Se
               <ContextBar context={detail.context} highRatio={highContextRatio} showNote />
             </div>
 
+            {detail.needsActionExcerpt && (
+              <div className="space-y-1">
+                <h3 className="text-sm font-medium">要対応の内容</h3>
+                <p className="text-sm">{detail.needsActionExcerpt}</p>
+                <p className="text-[11px] text-muted-foreground">
+                  Desktopが書いた要約の先頭60文字のみです。会話の本文は表示しません。
+                </p>
+              </div>
+            )}
+
             <div className="space-y-1">
               <h3 className="text-sm font-medium">最新の指示</h3>
               {detail.latestInstruction ? (

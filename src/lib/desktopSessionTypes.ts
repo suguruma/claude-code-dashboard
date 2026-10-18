@@ -83,8 +83,13 @@ export interface DesktopSessionSummary {
   status: DesktopSessionStatus
   /** 状態の判断根拠(短い説明)。実行中などの推定の根拠を画面に出すために使う */
   statusReason: string
-  /** Desktopが「ユーザーの対応が必要」と記録している(要約文そのものは返さない) */
+  /** Desktopが「ユーザーの対応が必要」と記録している */
   needsAction: boolean
+  /**
+   * 要対応の内容の先頭60文字(承認済みの表示項目)。Desktopが「要対応」と分類したセッションだけに付く。
+   * 状態の説明(status_detail)・ターンのまとめ(turnWrapUp)の文は返さない。
+   */
+  needsActionExcerpt: string | null
   createdAt: number | null
   lastActivityAt: number | null
   completedTurns: number | null

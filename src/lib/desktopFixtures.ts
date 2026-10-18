@@ -10,6 +10,9 @@ import path from "path"
 
 export const SENTINEL = "SENTINEL-DO-NOT-LEAK-7f3a9c"
 
+/** blocked のセッションの needs_action の先頭(画面に出る部分) */
+export const NEEDS_ACTION_HEAD = "対応が必要: 本番環境への反映を承認してください"
+
 export const FAKE_ACCOUNT = "00000000-0000-4000-8000-0000000000a1"
 export const FAKE_ORG = "00000000-0000-4000-8000-0000000000b1"
 
@@ -75,7 +78,8 @@ export function makeMeta(o: MetaOptions): Record<string, unknown> {
     meta.postTurnSummary = {
       status_category: o.category,
       status_detail: `detail ${SENTINEL}`,
-      needs_action: o.category === "blocked" ? `needs ${SENTINEL}` : "",
+      // 先頭60文字だけが表示される。60文字を超えた末尾に SENTINEL を置き、切り詰められることを確かめる
+      needs_action: o.category === "blocked" ? `${NEEDS_ACTION_HEAD}${"あ".repeat(80)}${SENTINEL}` : "",
       summarizes_uuid: o.summaryFor ?? fakeUuid(o.n),
     }
     meta.postTurnSummaryFor = o.summaryFor ?? fakeUuid(o.n)

@@ -1,4 +1,4 @@
-import { Archive, CalendarClock, Folder, ListChecks, MessageSquareText, Pin, Users } from "lucide-react"
+import { Archive, CalendarClock, Folder, ListChecks, MessageSquareText, OctagonAlert, Pin, Users } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import type { DesktopSessionSummary } from "@/lib/desktopSessionTypes"
@@ -66,6 +66,16 @@ export function SessionRow({ session: s, highContextRatio, onSelect }: SessionRo
             <span>最終活動 {formatAgo(s.lastActivityAt)}</span>
             {s.queuedInputs > 0 && <span>待機中の入力 {s.queuedInputs}件</span>}
           </div>
+
+          {s.needsActionExcerpt && (
+            <p className="flex min-w-0 items-start gap-1.5 text-xs">
+              <OctagonAlert className="mt-0.5 size-3.5 shrink-0 text-[var(--status-critical)]" aria-hidden />
+              <span className="shrink-0 font-medium">要対応</span>
+              <span className="min-w-0 truncate" title={s.needsActionExcerpt}>
+                {s.needsActionExcerpt}
+              </span>
+            </p>
+          )}
 
           {instruction ? (
             <p className="flex min-w-0 items-start gap-1.5 text-xs">
