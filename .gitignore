@@ -43,6 +43,8 @@ next-env.d.ts
 # dashboard: user-specific monitored project registry (contains local absolute paths)
 /config/projects.json
 /config/projects.local.json
+# dashboard: Claude Desktop データフォルダの場所など、利用者ごとの設定（ローカルの絶対パスを含みうる）
+/config/desktop-sessions.json
 
 # dashboard: real ~/.claude data provided for local testing (contains personal session logs)
 /sample-data-user/

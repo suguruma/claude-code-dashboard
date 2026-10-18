@@ -4,6 +4,7 @@ import {
   BrainCircuit,
   HelpCircle,
   Home,
+  MonitorSmartphone,
   LineChart,
   ListChecks,
   ListTodo,
@@ -40,6 +41,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "分析・振り返り",
     items: [
       { href: "/trace", label: "実行ログ", icon: Activity },
+      { href: "/desktop-sessions", label: "Desktopセッション", icon: MonitorSmartphone },
       { href: "/session-monitor", label: "セッション監視", icon: LineChart },
       { href: "/tasks", label: "タスク履歴", icon: ListTodo },
       { href: "/memory", label: "メモリ管理", icon: BrainCircuit },

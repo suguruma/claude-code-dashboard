@@ -61,6 +61,11 @@ export function getPreviewBlockReason(targetPath: string): string | null {
   if (base === "config.json" && dirs.some((d) => /^claude([-_].*)?$/.test(d))) {
     return "Claude Desktop の設定ファイルは認証情報を含むため、プレビューできません"
   }
+  // ~/.claude 配下の会話ログ(.jsonl)は会話の本文そのもの。一覧APIは先頭60文字の抜粋しか返さない方針のため、
+  // 生のプレビューでも読めないようにする
+  if (base.endsWith(".jsonl") && dirs.includes(".claude")) {
+    return "会話ログ(.jsonl)は会話の本文を含むため、プレビューできません"
+  }
   // .git/config はリモートURLにトークンが埋め込まれていることがある
   if (base === "config" && dirs[dirs.length - 1] === ".git") {
     return "Gitの設定ファイルは認証情報を含む可能性があるため、プレビューできません"
