@@ -11,6 +11,7 @@ export interface DesktopSessionFilters {
   /** "all" | 作業フォルダ名 */
   folder: string
   includeArchived: boolean
+  /** list: 一覧 / group: グループ別。組織図は別ページ(/desktop-sessions/org) */
   view: "list" | "group"
 }
 
@@ -21,6 +22,14 @@ export const DEFAULT_FILTERS: DesktopSessionFilters = {
   folder: "all",
   includeArchived: false,
   view: "list",
+}
+
+/**
+ * 保存された絞り込みを、今の形に直す。項目が足りなければ既定値で埋める。
+ * 組織図が別ページになる前に保存された `view: "org"` や、未知の値は、一覧に戻す。
+ */
+export function normalizeFilters(stored: Partial<Omit<DesktopSessionFilters, "view">> & { view?: string }): DesktopSessionFilters {
+  return { ...DEFAULT_FILTERS, ...stored, view: stored.view === "group" ? "group" : "list" }
 }
 
 export function applyFilters(

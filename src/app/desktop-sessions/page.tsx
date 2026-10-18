@@ -1,24 +1,23 @@
 "use client"
 
-import { Suspense, useCallback, useMemo } from "react"
-import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Suspense, useMemo } from "react"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import { cn } from "@/lib/utils"
+import { DesktopDataNotices } from "@/components/desktopSessions/DesktopDataNotices"
 import { NotificationToggle } from "@/components/desktopSessions/NotificationToggle"
 import { SessionDetailDialog } from "@/components/desktopSessions/SessionDetailDialog"
 import { SessionRow } from "@/components/desktopSessions/SessionRow"
 import { SummaryCards } from "@/components/desktopSessions/SummaryCards"
-import { UsageGuardBand } from "@/components/desktopSessions/UsageGuardBand"
-import { UsagePanel } from "@/components/desktopSessions/UsagePanel"
 import { useDesktopSessions } from "@/hooks/useDesktopSessions"
-import { useUsage } from "@/hooks/useUsage"
 import { usePersistedState } from "@/hooks/useLocalStorage"
+import { useSelectedSession } from "@/hooks/useSelectedSession"
 import {
   DEFAULT_FILTERS,
   applyFilters,
   bucketByGroup,
   collectOptions,
+  normalizeFilters,
   visibleGroups,
   type DesktopSessionFilters,
 } from "@/lib/desktopSessionFilters"
@@ -37,6 +36,12 @@ const STATUS_OPTIONS: Array<{ value: DesktopSessionFilters["status"]; label: str
   { value: "highContext", label: "コンテキスト使用率が高い" },
 ]
 
+/** 組織図と利用上限は、サイドバーの別ページにある */
+const VIEW_OPTIONS: Array<{ value: DesktopSessionFilters["view"]; label: string }> = [
+  { value: "list", label: "一覧" },
+  { value: "group", label: "グループ別" },
+]
+
 const selectClass =
   "h-8 min-w-0 rounded-lg border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
 
@@ -51,21 +56,10 @@ export default function DesktopSessionsPage() {
 
 function DesktopSessionsContent() {
   const { data, error, isLoading } = useDesktopSessions()
-  const { data: usage } = useUsage()
   const [stored, setFilters] = usePersistedState<DesktopSessionFilters>(FILTER_STORAGE_KEY, DEFAULT_FILTERS)
-  // 保存された値に新しい項目が無い場合に備えて、既定値で埋める
-  const filters = useMemo(() => ({ ...DEFAULT_FILTERS, ...stored }), [stored])
-  // 詳細を開いているセッションはURLの ?session= で持つ。通知のクリックから、そのセッションの詳細を直接開ける
-  const router = useRouter()
-  const pathname = usePathname()
-  const searchParams = useSearchParams()
-  const selectedId = searchParams.get("session")
-  const setSelectedId = useCallback(
-    (id: string | null) => {
-      router.replace(id ? `${pathname}?session=${encodeURIComponent(id)}` : pathname, { scroll: false })
-    },
-    [router, pathname]
-  )
+  // 保存された値に新しい項目が無い場合や、組織図が別ページになる前の値が残っている場合に備えて、今の形に直す
+  const filters = useMemo(() => normalizeFilters(stored), [stored])
+  const [selectedId, setSelectedId] = useSelectedSession()
 
   const sessions = useMemo(() => data?.sessions ?? [], [data])
   const highContextRatio = data?.highContextRatio ?? 0.8
@@ -91,47 +85,9 @@ function DesktopSessionsContent() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold">Desktopセッション</h1>
-        <p className="text-sm text-muted-foreground">
-          Claude Desktopの全セッションを一覧し、どれが動いていて、どれが止まっているかを確認します（読み取り専用・5秒ごとに更新）。
-          状態の「実行中」「中断の可能性」は、会話ログの更新状況からの推定です。
-        </p>
-      </div>
-
-      {/* 最新の公式値が80%以上のときの上限ガードの帯(表示のみ) */}
-      <UsageGuardBand guard={usage?.guard} />
-
       <NotificationToggle />
 
-      <UsagePanel />
-
-      {error && (
-        <Alert variant="destructive">
-          <AlertTitle>読み込みエラー</AlertTitle>
-          <AlertDescription>{error.message}</AlertDescription>
-        </Alert>
-      )}
-
-      {data?.source === "none" && (
-        <Alert>
-          <AlertTitle>セッションが見つかりません</AlertTitle>
-          <AlertDescription>
-            Claude Desktopのデータフォルダも、会話ログ（<code className="font-mono">~/.claude/projects/</code>）も見つかりませんでした。
-            データフォルダが標準の場所にない場合は、設定ファイル <code className="font-mono">config/desktop-sessions.json</code> の
-            <code className="font-mono"> dataDir</code> で指定できます。
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {data?.warnings.map((warning) => (
-        <Alert key={warning} variant={data.source === "transcript-only" ? "destructive" : "default"}>
-          <AlertTitle>{data.source === "transcript-only" && warning === data.warnings[0] ? "縮退表示" : "お知らせ"}</AlertTitle>
-          <AlertDescription>{warning}</AlertDescription>
-        </Alert>
-      ))}
-
-      {isLoading && !data && <p className="text-sm text-muted-foreground">読み込み中...</p>}
+      <DesktopDataNotices data={data} error={error} isLoading={isLoading} />
 
       {data && data.source !== "none" && (
         <>
@@ -141,6 +97,23 @@ function DesktopSessionsContent() {
             selected={filters.status}
             onSelect={(status) => update({ status })}
           />
+
+          <div className="inline-flex overflow-hidden rounded-lg border" role="group" aria-label="表示の切り替え">
+            {VIEW_OPTIONS.map((o) => (
+              <button
+                key={o.value}
+                type="button"
+                aria-pressed={filters.view === o.value}
+                onClick={() => update({ view: o.value })}
+                className={cn(
+                  "px-3 py-1.5 text-sm transition-colors",
+                  filters.view === o.value ? "bg-primary text-primary-foreground" : "bg-card text-foreground hover:bg-muted"
+                )}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
 
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <select
@@ -208,18 +181,6 @@ function DesktopSessionsContent() {
                 アーカイブ済みを含める（{data.counts.archived}件）
               </Label>
             </div>
-            {groupOptions.length > 0 && (
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="group-view"
-                  checked={filters.view === "group"}
-                  onCheckedChange={(checked) => update({ view: checked ? "group" : "list" })}
-                />
-                <Label htmlFor="group-view" className="text-sm text-muted-foreground">
-                  グループ別に表示
-                </Label>
-              </div>
-            )}
           </div>
 
           <p className="text-xs text-muted-foreground">

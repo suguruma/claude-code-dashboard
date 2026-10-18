@@ -19,6 +19,14 @@ const LEVEL_COLOR: Record<UsageLevel, string> = {
   critical: "var(--status-critical)",
 }
 
+// 文字の色(AA)。ゲージの塗りは LEVEL_COLOR のまま
+const LEVEL_TEXT_COLOR: Record<UsageLevel, string> = {
+  ok: "var(--primary)",
+  warning: "var(--status-warning-text)",
+  serious: "var(--status-serious-text)",
+  critical: "var(--status-critical-text)",
+}
+
 const LEVEL_LABEL: Record<UsageLevel, string | null> = {
   ok: null,
   warning: "注意（80%以上）",
@@ -39,6 +47,7 @@ export function UsageGauge({ window: w, now }: { window: UsageWindowView; now: n
   const display = w.displayPercent
   const level = usageLevel(display)
   const color = LEVEL_COLOR[level]
+  const textColor = LEVEL_TEXT_COLOR[level]
   const solid = official !== null ? clamp(official) : 0
   const stripeEnd = estimated ? clamp(estimated.percent) : solid
   const levelLabel = LEVEL_LABEL[level]
@@ -48,14 +57,14 @@ export function UsageGauge({ window: w, now }: { window: UsageWindowView; now: n
       <div className="flex items-baseline justify-between gap-2">
         <h3 className="text-sm font-medium">{w.label}</h3>
         {levelLabel && (
-          <span className="text-xs font-medium" style={{ color }}>
+          <span className="text-xs font-medium" style={{ color: textColor }}>
             {levelLabel}
           </span>
         )}
       </div>
 
       <div className="flex items-baseline gap-2">
-        <span className="text-2xl font-semibold tabular-nums" style={level === "ok" ? undefined : { color }}>
+        <span className="text-2xl font-semibold tabular-nums" style={level === "ok" ? undefined : { color: textColor }}>
           {display === null ? "—" : `${formatPercent(display)}%`}
         </span>
         <span className="text-xs text-muted-foreground">
@@ -166,7 +175,7 @@ function PaceLine({ window: w, now }: { window: UsageWindowView; now: number }) 
     )
   }
   return (
-    <div className={cn(pace.beforeReset && "font-medium")} style={pace.beforeReset ? { color: "var(--status-serious)" } : undefined}>
+    <div className={cn(pace.beforeReset && "font-medium")} style={pace.beforeReset ? { color: "var(--status-serious-text)" } : undefined}>
       ペース: {rate}（{basis}{mean60}）。{eta}
       {pace.beforeReset ? "。リセットより先に達する見込みです" : "。リセットまでには達しない見込みです"}
     </div>

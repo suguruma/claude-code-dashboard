@@ -55,6 +55,18 @@ export interface DesktopSessionServiceOptions {
   fallbackLimit?: number
   /** 起動中のCLIプロセスの確認(段階2)。省略時は確認せず、画面には「情報なし」として扱う */
   cliProcesses?: CliProcessSource
+  /** 組織図で、グループの指揮役を見つけるタイトルの接頭辞。省略時は DEFAULT_ORCHESTRATOR_PREFIX */
+  orchestratorPrefix?: string
+}
+
+/** 指揮役のタイトルの既定の接頭辞(設定ファイルの `orchestratorPrefix` で変えられる) */
+export const DEFAULT_ORCHESTRATOR_PREFIX = "00_"
+
+/** 組織図(⑤)が、グループの会話ログを読むために使う、グループ内のセッション */
+export interface GroupSource {
+  summary: DesktopSessionSummary
+  /** 会話ログのファイル。見つからなければ null */
+  filePath: string | null
 }
 
 const DATA_DIR_TTL_MS = 30_000
@@ -337,6 +349,38 @@ export class DesktopSessionService {
     }
   }
 
+  /** 組織図の指揮役を見つけるタイトルの接頭辞 */
+  orchestratorPrefix(): string {
+    return this.opts.orchestratorPrefix ?? DEFAULT_ORCHESTRATOR_PREFIX
+  }
+
+  /** コンテキストの上限(一覧と同じ、モデルごとの仮置き値。使用量が上限を超えていれば引き上げる) */
+  contextLimitOf(model: string | null, tokens: number): number {
+    return resolveContextLimit(model, tokens, this.opts.contextLimits)
+  }
+
+  /**
+   * グループ内の、アーカイブされていないセッションと会話ログの所在(作成日時の古い順)。グループが無ければ group は null。
+   * 一覧と同じ要約キャッシュを使うので、呼び出しのたびに読み直すのは変わったファイルだけ。
+   */
+  async groupSources(groupId: string): Promise<{ group: { id: string; name: string } | null; sources: GroupSource[] }> {
+    const list = await this.list()
+    const group = list.groups.find((g) => g.id === groupId)
+    const sources: GroupSource[] = []
+    for (const b of this.built.values()) {
+      if (b.summary.group?.id !== groupId || b.summary.isArchived) continue
+      sources.push({ summary: b.summary, filePath: b.ref?.filePath ?? null })
+    }
+    sources.sort((a, b) => {
+      const ta = a.summary.createdAt ?? Number.POSITIVE_INFINITY
+      const tb = b.summary.createdAt ?? Number.POSITIVE_INFINITY
+      if (ta !== tb) return ta < tb ? -1 : 1
+      return a.summary.id < b.summary.id ? -1 : 1
+    })
+    const name = group?.name ?? sources[0]?.summary.group?.name
+    return { group: name !== undefined ? { id: groupId, name } : null, sources }
+  }
+
   async detail(id: string): Promise<DesktopSessionDetail | null> {
     // 一覧と同じ要約キャッシュを使うので、毎回組み立て直しても読み直すのは変わったファイルだけ
     await this.list()
@@ -490,6 +534,7 @@ interface DesktopSessionConfigFile {
   highContextRatio?: unknown
   runningWindowSec?: unknown
   pendingWindowSec?: unknown
+  orchestratorPrefix?: unknown
 }
 
 async function loadConfigFile(): Promise<DesktopSessionServiceOptions> {
@@ -503,6 +548,9 @@ async function loadConfigFile(): Promise<DesktopSessionServiceOptions> {
   const options: DesktopSessionServiceOptions = {}
   if (typeof raw.dataDir === "string" && raw.dataDir) options.dataDir = raw.dataDir
   if (typeof raw.projectsRoot === "string" && raw.projectsRoot) options.projectsRoot = raw.projectsRoot
+  if (typeof raw.orchestratorPrefix === "string" && raw.orchestratorPrefix.trim()) {
+    options.orchestratorPrefix = raw.orchestratorPrefix
+  }
   if (typeof raw.highContextRatio === "number" && raw.highContextRatio > 0 && raw.highContextRatio <= 1) {
     options.highContextRatio = raw.highContextRatio
   }

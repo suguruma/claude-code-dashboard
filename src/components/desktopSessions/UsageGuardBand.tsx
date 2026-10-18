@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils"
 import type { UsageGuard } from "@/lib/usageTypes"
 
 /**
- * 上限ガードの帯。最新の公式値が80%以上(注意)・90%以上(強い注意)のとき、一覧と組織図の上部に出す。
+ * 上限ガードの帯。最新の公式値が80%以上(注意)・90%以上(強い注意)のとき、Claude Desktop の各ページ(一覧・組織図・利用上限)の上部に出す。
  * ガードの判断そのものは運用ルール側で行い、ダッシュボードは表示だけを行う。
  */
 export function UsageGuardBand({ guard }: { guard: UsageGuard | null | undefined }) {
@@ -28,7 +28,7 @@ export function UsageGuardBand({ guard }: { guard: UsageGuard | null | undefined
         <span className="font-medium">
           {high ? "上限ガード中：新しい指示は保留中です" : "上限に近づいています"}
         </span>
-        <span className="ml-2 text-muted-foreground">
+        <span className="ml-2 text-foreground/80">
           {guard.windowLabel}の公式値 {guard.percent}%（ガードの判断は運用ルール側で行い、ここは表示のみです）
         </span>
       </p>

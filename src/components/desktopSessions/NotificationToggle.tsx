@@ -10,7 +10,7 @@ import { useDesktopNotifySettings } from "@/hooks/useDesktopNotifySettings"
 import { useMounted } from "@/hooks/useMounted"
 import { notificationSupport, requestNotificationPermission, showDesktopNotification } from "@/lib/desktopNotify"
 
-/** 要対応のデスクトップ通知のオン・オフ。初期値はオフで、オンにするときに通知の許可を確認する */
+/** デスクトップ通知(要対応・利用上限・送信上限)のオン・オフ。初期値はオフで、オンにするときに通知の許可を確認する */
 export function NotificationToggle() {
   const { enabled, isLoading, setEnabled } = useDesktopNotifySettings()
   const [busy, setBusy] = useState(false)
@@ -59,7 +59,7 @@ export function NotificationToggle() {
       />
       <Label htmlFor="desktop-notify" className="gap-1.5 text-sm text-muted-foreground">
         <Bell className="size-3.5" aria-hidden />
-        要対応になったらデスクトップ通知する
+        デスクトップ通知する
       </Label>
       {enabled && (
         <Button variant="outline" size="sm" onClick={() => void sendTest()}>
@@ -69,7 +69,7 @@ export function NotificationToggle() {
       <span className="text-xs text-muted-foreground">
         {unsupported
           ? "この環境では通知を表示できません。"
-          : "新しく要対応になったときだけ通知します。外部のサービスは使いません（初期値はオフ）。"}
+          : "新しく要対応になったとき、利用上限が80%・95%を超えたとき、送信上限で止まったときに、1回だけ通知します。外部のサービスは使いません（初期値はオフ）。"}
       </span>
     </div>
   )

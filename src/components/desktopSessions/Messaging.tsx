@@ -7,17 +7,20 @@ import { cn } from "@/lib/utils"
 import type { DesktopSessionMessaging } from "@/lib/desktopSessionTypes"
 import { SEND_LIMIT, sendLevel, sessionDeepLink, type SendLevel } from "@/lib/sessionMessaging"
 
-const LEVEL_STYLE: Record<Exclude<SendLevel, "none">, { className: string; color: string }> = {
-  ok: { className: "border-border", color: "var(--muted-foreground)" },
+// color: アイコンの色。textColor: 文字の色(AA。アイコン・枠より暗い/明るい文字用のトークン)
+const LEVEL_STYLE: Record<Exclude<SendLevel, "none">, { className: string; color: string; textColor: string }> = {
+  ok: { className: "border-border", color: "var(--muted-foreground)", textColor: "var(--muted-foreground)" },
   warn: {
     className:
       "border-[var(--status-warning)] bg-[color-mix(in_oklab,var(--status-warning)_16%,transparent)]",
     color: "var(--status-warning)",
+    textColor: "var(--status-warning-text)",
   },
   limit: {
     className:
       "border-[var(--status-critical)] bg-[color-mix(in_oklab,var(--status-critical)_14%,transparent)] font-semibold",
     color: "var(--status-critical)",
+    textColor: "var(--status-critical-text)",
   },
 }
 
@@ -50,7 +53,11 @@ export function SendCountBadge({ messaging, className }: { messaging: DesktopSes
       <Send className="size-3" style={{ color: style.color }} aria-hidden />
       送信 {messaging.sent}
       {messaging.exact ? "" : "+"}/{messaging.limit}
-      {messaging.undelivered > 0 && <span className="font-normal text-muted-foreground">（未達{messaging.undelivered}）</span>}
+      {messaging.undelivered > 0 && (
+        <span className="font-normal" style={{ color: style.textColor }}>
+          （未達{messaging.undelivered}）
+        </span>
+      )}
     </span>
   )
 }
@@ -107,16 +114,17 @@ export function SendLimitNotice({
     <div
       role="alert"
       className={cn(
-        "flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-md border border-[var(--status-critical)] bg-[color-mix(in_oklab,var(--status-critical)_12%,transparent)] px-3 py-2",
+        "flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-md border border-[var(--status-critical)] bg-[color-mix(in_oklab,var(--status-critical)_12%,transparent)] px-2.5 py-2",
         className
       )}
     >
       <OctagonAlert className="size-4 shrink-0 text-[var(--status-critical)]" aria-hidden />
-      <span className="text-sm font-semibold text-[var(--status-critical)]">送信上限で停止中</span>
-      <span className="min-w-[14rem] flex-1 text-xs text-foreground">
+      <span className="text-sm font-semibold text-[var(--status-critical-text)]">送信上限で停止中</span>
+      <span className="min-w-[min(14rem,100%)] flex-1 text-xs text-foreground">
         他のセッションへ送れる回数（{messaging.limit}回）に達しています。このセッションで一言入力すると解除されます
       </span>
-      <OpenSessionButton sessionId={sessionId} />
+      {/* 狭いカードでも枠からはみ出さない: 幅を超えるときは文字を折り返して、ボタンを枠の幅に収める */}
+      <OpenSessionButton sessionId={sessionId} className="h-auto min-h-7 max-w-full min-w-0 whitespace-normal px-2 py-1 text-left" />
     </div>
   )
 }

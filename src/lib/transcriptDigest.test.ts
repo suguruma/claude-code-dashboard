@@ -10,6 +10,7 @@ import {
   createDigest,
   makeExcerpt,
   messagingOf,
+  queuedOriginOf,
   readTailDigest,
 } from "./transcriptDigest"
 import {
@@ -21,6 +22,7 @@ import {
   humanRow,
   planRow,
   queueRow,
+  queuedCommandRow,
   sendResultRow,
   sendRow,
   toJsonl,
@@ -529,5 +531,97 @@ describe("他のセッションへの送信回数と送信上限", () => {
   it("送信ツールの結果が「届いた」旨の文なら、届かなかった数に影響しない", () => {
     const d = digestOf([humanRow("指示"), sendRow(1), sendResultRow(1, SYNTHETIC_SEND_OK)])
     expect(messagingOf(d)).toMatchObject({ sent: 1, undelivered: 0, stopped: false })
+  })
+})
+
+describe("作業中に届いた入力（queued_command）と送信回数の数え直し", () => {
+  const sends = (from: number, to: number) =>
+    Array.from({ length: to - from + 1 }, (_, i) => [sendRow(from + i), sendResultRow(from + i)]).flat()
+  const stoppedRows = () => [humanRow("指示"), ...sends(1, 10), sendRow(11), sendResultRow(11, SYNTHETIC_SEND_LIMIT)]
+
+  it("上限で止まったあとに、作業中の人の入力（queued_command・origin: human）が来ると、回数が0に戻り、停止が解除される", () => {
+    const d = digestOf(stoppedRows())
+    expect(messagingOf(d)).toEqual({ sent: 10, limit: 10, stopped: true, undelivered: 1, exact: true })
+    applyEntry(d, queuedCommandRow("続けてください", { ts: tsAt(60) }) as never)
+    expect(messagingOf(d)).toEqual({ sent: 0, limit: 10, stopped: false, undelivered: 0, exact: true })
+    // 最新の指示も、その入力になる
+    expect(d.latestHuman).toMatchObject({ excerpt: "続けてください", origin: "human" })
+    expect(d.latestInput).toMatchObject({ excerpt: "続けてください", origin: "human" })
+  })
+
+  it("他セッションからのメッセージ（origin: peer）・通知（task-notification）・システムの差し込みでは数え直さない", () => {
+    const d = digestOf(stoppedRows())
+    applyEntry(d, queuedCommandRow('<cross-session-message from="local_x">依頼</cross-session-message>', { origin: { kind: "peer", from: "local_x" } }) as never)
+    applyEntry(d, queuedCommandRow("<task-notification>完了</task-notification>", { origin: { kind: "task-notification" }, commandMode: "task-notification" }) as never)
+    applyEntry(d, queuedCommandRow("リマインダー", { origin: { kind: "system" } }) as never)
+    expect(messagingOf(d)).toMatchObject({ sent: 10, stopped: true })
+    // 最新の指示も、人の入力で上書きしない
+    expect(d.latestHuman?.excerpt).toBe("指示")
+  })
+
+  it("origin が無い行: 通知の古い形式・他セッションのタグ・システムの形は数え直さず、それ以外の prompt は人の入力として数え直す", () => {
+    const notStopped = (row: unknown) => {
+      const d = digestOf(stoppedRows())
+      applyEntry(d, row as never)
+      return messagingOf(d).stopped
+    }
+    expect(notStopped(queuedCommandRow("<task-notification>完了</task-notification>", { origin: null, commandMode: "task-notification" }))).toBe(true)
+    expect(notStopped(queuedCommandRow("<task-notification>完了</task-notification>", { origin: null }))).toBe(true)
+    expect(notStopped(queuedCommandRow('<cross-session-message from="local_x">依頼</cross-session-message>', { origin: null }))).toBe(true)
+    expect(notStopped(queuedCommandRow("<system-reminder>x</system-reminder>", { origin: null }))).toBe(true)
+    expect(notStopped(queuedCommandRow("他の形式", { origin: null, commandMode: "other" }))).toBe(true)
+    // 発信元の記録が無い古い形式の人の入力（user の行の古い形式と同じ扱い）
+    expect(notStopped(queuedCommandRow("人が入力", { origin: null }))).toBe(false)
+  })
+
+  it("画像つきの入力は本文のtextブロックを最新の指示にする。画像だけの入力は、数え直すが最新の指示は変えない", () => {
+    const d = digestOf(stoppedRows())
+    applyEntry(d, queuedCommandRow([{ type: "image", source: {} }, { type: "text", text: "この画像を見てください" }]) as never)
+    expect(messagingOf(d)).toMatchObject({ sent: 0, stopped: false })
+    expect(d.latestHuman?.excerpt).toBe("この画像を見てください")
+
+    const e = digestOf(stoppedRows())
+    applyEntry(e, queuedCommandRow([{ type: "image", source: {} }]) as never)
+    expect(messagingOf(e)).toMatchObject({ sent: 0, stopped: false })
+    expect(e.latestHuman?.excerpt).toBe("指示")
+  })
+
+  it("サブエージェントの行は数え直さない。解除のあとに、また上限に達すれば、改めて停止中になる", () => {
+    const d = digestOf(stoppedRows())
+    applyEntry(d, queuedCommandRow("サブエージェントの入力", { sidechain: true }) as never)
+    expect(messagingOf(d).stopped).toBe(true)
+    applyEntry(d, queuedCommandRow("解除") as never)
+    expect(messagingOf(d).stopped).toBe(false)
+    applyEntry(d, sendRow(21) as never)
+    applyEntry(d, sendResultRow(21, SYNTHETIC_SEND_LIMIT) as never)
+    expect(messagingOf(d)).toMatchObject({ stopped: true, sent: 10 })
+  })
+
+  it("発信元の判定: human / peer / notification / system。queued_command 以外は null", () => {
+    const origin = (row: ReturnType<typeof queuedCommandRow>) => queuedOriginOf(row.attachment as never)
+    expect(origin(queuedCommandRow("x", { origin: { kind: "human" } }))).toBe("human")
+    expect(origin(queuedCommandRow("x", { origin: { kind: "peer", from: "local_x" } }))).toBe("peer")
+    expect(origin(queuedCommandRow("x", { origin: { kind: "task-notification" } }))).toBe("notification")
+    expect(origin(queuedCommandRow("x", { origin: { kind: "something-new" } }))).toBe("system")
+    expect(queuedOriginOf({ type: "task_reminder" } as never)).toBeNull()
+    expect(queuedOriginOf(undefined)).toBeNull()
+  })
+
+  it("末尾だけの暫定の要約でも、作業中の人の入力まで読めていれば、確定した値になる", () => {
+    const d = digestOf([...sends(1, 3), queuedCommandRow("人の入力"), sendRow(4)])
+    expect(messagingOf(d)).toEqual({ sent: 1, limit: 10, stopped: false, undelivered: 0, exact: true })
+  })
+})
+
+describe("行の絞り込み（applyLine）と queued_command", () => {
+  it("ファイルを1行ずつ読む経路でも、queued_command の行を読み飛ばさない（type が attachment の行は、種類で拾う）", () => {
+    const d = createDigest()
+    for (const row of [humanRow("指示"), sendRow(1), sendResultRow(1, SYNTHETIC_SEND_LIMIT)]) applyLine(d, JSON.stringify(row))
+    expect(messagingOf(d).stopped).toBe(true)
+    applyLine(d, JSON.stringify(queuedCommandRow("続けてください")))
+    expect(messagingOf(d)).toMatchObject({ stopped: false, sent: 0 })
+    // 無関係な attachment の行は読み飛ばす
+    applyLine(d, JSON.stringify({ type: "attachment", timestamp: tsAt(0), attachment: { type: "hook_success" } }))
+    expect(messagingOf(d)).toMatchObject({ stopped: false, sent: 0 })
   })
 })

@@ -118,6 +118,24 @@ export function humanRow(text: string, o: RowOptions & { origin?: Record<string,
   }
 }
 
+/** 作業中に届いた入力の行(user の行ではなく queued_command の attachment)。origin を省くと、発信元の記録が無い形式 */
+export function queuedCommandRow(
+  prompt: string | Array<Record<string, unknown>>,
+  o: RowOptions & { origin?: Record<string, unknown> | null; commandMode?: string } = {}
+) {
+  return {
+    type: "attachment",
+    timestamp: o.ts ?? tsAt(0),
+    isSidechain: o.sidechain ?? false,
+    attachment: {
+      type: "queued_command",
+      prompt,
+      commandMode: o.commandMode ?? "prompt",
+      ...(o.origin === null ? {} : { origin: o.origin ?? { kind: "human" } }),
+    },
+  }
+}
+
 export function toolResultRow(o: RowOptions & { toolUseId?: string; text?: string; asBlocks?: boolean } = {}) {
   const text = o.text ?? "ok"
   return {

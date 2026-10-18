@@ -1,6 +1,7 @@
 {
   "dataDir": "",
   "projectsRoot": "",
+  "orchestratorPrefix": "00_",
   "highContextRatio": 0.8,
   "runningWindowSec": 45,
   "pendingWindowSec": 660,

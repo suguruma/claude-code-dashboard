@@ -88,6 +88,14 @@
   --status-warning: #fab219;
   --status-serious: #ec7a1c;
   --status-critical: #d03b3b;
+  /*
+   * 文字に使う色(AA: 通常の文字で4.5:1以上)。上の色は、塗り・線・枠・アイコン用(3:1以上)で、文字にはそのまま使わない。
+   * 白・薄い灰・状態色の薄い地(12〜18%)のどれに置いても4.8:1以上になるよう、元の色を暗くした。
+   */
+  --status-good-text: #086d08;
+  --status-warning-text: #7a570c;
+  --status-serious-text: #904a11;
+  --status-critical-text: #ab3030;
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
@@ -128,6 +136,11 @@
   --status-warning: #fab219;
   --status-serious: #ec7a1c;
   --status-critical: #d03b3b;
+  /* 文字に使う色。暗い面(#0a0a0a・#171717・#262626と、状態色の薄い地)で4.8:1以上になるよう、明るくした */
+  --status-good-text: #44b844;
+  --status-warning-text: #fab219;
+  --status-serious-text: #ee8935;
+  --status-critical-text: #e38989;
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
@@ -149,3 +162,127 @@
     @apply font-sans;
   }
 }
+
+/*
+ * 組織図アニメーション(⑤)。粒・線・脈動の色。指示=青、報告=緑、他のグループ・外部=紫、作業中=橙(--status-serious)。
+ * 色だけに頼らず、線の種類(実線・破線・点線)と文言も併記する。
+ */
+:root {
+  --flow-down: #2f6fec;
+  --flow-up: #0f9d76;
+  --flow-cross: #8a5cf6;
+  --flow-work: var(--status-serious);
+  /* 文字に使う色(ログの「指示」「報告」「他から」など)。粒・線・枠は上の色のまま */
+  --flow-down-text: #2659bd;
+  --flow-up-text: #0a6b50;
+  --flow-cross-text: #6946bb;
+}
+
+.dark {
+  --flow-down: #6f9dff;
+  --flow-up: #34c79d;
+  --flow-cross: #ad8bff;
+  --flow-down-text: #73a0ff;
+  --flow-up-text: #34c79d;
+  --flow-cross-text: #af8eff;
+}
+
+.org-wires path {
+  fill: none;
+  stroke: color-mix(in oklab, var(--muted-foreground) 55%, transparent);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  transition: stroke 0.3s, stroke-width 0.3s;
+}
+.org-wires path[data-kind="cross"] {
+  stroke-dasharray: 2 4;
+}
+.org-wires path[data-hot="down"] {
+  stroke: var(--flow-down);
+  stroke-width: 2.5;
+}
+.org-wires path[data-hot="up"] {
+  stroke: var(--flow-up);
+  stroke-width: 2.5;
+}
+.org-wires path[data-hot="cross"] {
+  stroke: var(--flow-cross);
+  stroke-width: 2.5;
+}
+.org-particle {
+  filter: drop-shadow(0 0 4px currentColor);
+}
+
+.org-card {
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+.org-card[data-flash="down"] {
+  border-color: var(--flow-down);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--flow-down) 25%, transparent);
+}
+.org-card[data-flash="up"] {
+  border-color: var(--flow-up);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--flow-up) 25%, transparent);
+}
+.org-card[data-flash="cross"] {
+  border-color: var(--flow-cross);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--flow-cross) 28%, transparent);
+}
+
+@keyframes org-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  50% {
+    box-shadow: 0 0 0 var(--org-glow, 5px) color-mix(in oklab, var(--flow-work) 30%, transparent);
+  }
+}
+.org-card[data-state="working"] {
+  border-color: var(--flow-work);
+  animation: org-pulse var(--org-pulse, 1.6s) ease-in-out infinite;
+}
+
+@keyframes org-fade {
+  0%,
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes org-delta {
+  0% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  15%,
+  80% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.org-fade {
+  animation: org-fade 2.4s forwards;
+}
+.org-delta {
+  animation: org-delta 2s forwards;
+}
+
+/* 動きを減らす設定: 脈動・粒・強調の動きは止める。線の色・文言・「+28K」の表示は静的に残る */
+@media (prefers-reduced-motion: reduce) {
+  .org-card,
+  .org-wires path {
+    transition: none;
+  }
+  .org-card[data-state="working"],
+  .org-fade,
+  .org-delta {
+    animation: none;
+  }
+}
+

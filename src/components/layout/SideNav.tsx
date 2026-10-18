@@ -56,7 +56,7 @@ export function SideNav({ mobileOpen, onMobileClose }: SideNavProps) {
           {NAV_GROUPS.map((group, groupIndex) => (
             <div key={group.label ?? groupIndex} className="space-y-1">
               {group.label && !iconOnly && (
-                <p className="px-2.5 pt-2 text-[11px] font-medium tracking-wide text-sidebar-foreground/50 uppercase">
+                <p className="px-2.5 pt-2 text-[11px] font-medium tracking-wide text-sidebar-foreground/65 uppercase">
                   {group.label}
                 </p>
               )}

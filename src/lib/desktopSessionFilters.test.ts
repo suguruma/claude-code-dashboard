@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { DEFAULT_FILTERS, applyFilters, bucketByGroup, collectOptions, visibleGroups } from "./desktopSessionFilters"
+import { DEFAULT_FILTERS, applyFilters, bucketByGroup, collectOptions, normalizeFilters, visibleGroups } from "./desktopSessionFilters"
 import type { DesktopSessionSummary } from "./desktopSessionTypes"
 
 function session(id: string, overrides: Partial<DesktopSessionSummary> = {}): DesktopSessionSummary {
@@ -118,5 +118,23 @@ describe("visibleGroups(件数0のグループを隠す)", () => {
 
   it("選択中のグループは、0件でも選択肢から消さない", () => {
     expect(visibleGroups(groups, list, false, "g3").map((g) => g.name)).toEqual(["設計", "空"])
+  })
+})
+
+describe("normalizeFilters", () => {
+  it("足りない項目は既定値で埋め、保存済みの値は保つ", () => {
+    expect(normalizeFilters({})).toEqual(DEFAULT_FILTERS)
+    expect(normalizeFilters({ status: "running", view: "group", includeArchived: true })).toEqual({
+      ...DEFAULT_FILTERS,
+      status: "running",
+      view: "group",
+      includeArchived: true,
+    })
+  })
+
+  it("組織図が別ページになる前に保存された view: org や、未知の値は、一覧に戻す", () => {
+    expect(normalizeFilters({ view: "org" }).view).toBe("list")
+    expect(normalizeFilters({ view: "unknown" }).view).toBe("list")
+    expect(normalizeFilters({ view: "list" }).view).toBe("list")
   })
 })

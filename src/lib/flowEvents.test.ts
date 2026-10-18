@@ -1,0 +1,310 @@
+import { describe, expect, it } from "vitest"
+import {
+  SEND_MATCH_WINDOW_MS,
+  assembleFlow,
+  emptySignals,
+  pickLeader,
+  type FlowSessionInput,
+  type PeerSignal,
+  type SendSignal,
+  type SessionSignals,
+} from "./flowEvents"
+import type { FlowEnd, FlowReport } from "./flowTypes"
+
+const SEC = 1000
+const T0 = Date.UTC(2026, 0, 1, 0, 0, 0)
+const at = (sec: number) => T0 + sec * SEC
+
+const LEADER = "local_leader"
+const A = "local_member_a"
+const B = "local_member_b"
+
+function session(id: string, patch: Partial<SessionSignals> = {}, title = id): FlowSessionInput {
+  return { id, title, signals: { ...emptySignals(), ...patch } }
+}
+
+const peer = (sec: number, fromId: string, summary = "要約"): PeerSignal => ({
+  t: at(sec),
+  fromId,
+  source: "local",
+  summary,
+})
+const external = (sec: number, summary = "外部から"): PeerSignal => ({ t: at(sec), fromId: null, source: "external", summary })
+const send = (sec: number, target: string, summary = "送信"): SendSignal => ({ t: at(sec), targets: [target], summary })
+const tools = (...secs: number[]) => secs.map((s) => ({ t: at(s), ctx: 1000 + s }))
+
+describe("pickLeader", () => {
+  const list = [
+    { id: "s2", title: "00_リーダー_b", createdAt: 200 },
+    { id: "s1", title: "00_リーダー_a", createdAt: 100 },
+    { id: "s3", title: "01_メンバー", createdAt: 50 },
+    { id: "s4", title: "00_作成日時なし", createdAt: null },
+  ]
+
+  it("タイトルが接頭辞で始まるセッションを選び、複数なら作成日時が最も早いもの", () => {
+    expect(pickLeader(list, "00_")?.id).toBe("s1")
+    expect(pickLeader(list, "00_リーダー_b")?.id).toBe("s2")
+  })
+
+  it("作成日時が分からないものは後ろ。同じなら ID の順", () => {
+    expect(pickLeader([list[3], list[0]], "00_")?.id).toBe("s2")
+    expect(pickLeader([{ id: "b", title: "00_x", createdAt: 1 }, { id: "a", title: "00_y", createdAt: 1 }], "00_")?.id).toBe("a")
+  })
+
+  it("一致が無い・接頭辞が空なら null。接頭辞を変えると別のセッションが指揮役になる", () => {
+    expect(pickLeader(list, "99_")).toBeNull()
+    expect(pickLeader(list, "")).toBeNull()
+    expect(pickLeader(list, "01_")?.id).toBe("s3")
+  })
+})
+
+describe("assembleFlow: 指示", () => {
+  it("子の会話ログの peer 行（送り手が指揮役）1つから、受信確認ありの指示が1つできる", () => {
+    const result = assembleFlow({
+      leader: session(LEADER),
+      members: [session(A, { peers: [peer(10, LEADER, "最初の依頼")] })],
+      since: at(0),
+    })
+    expect(result.events).toEqual([
+      { kind: "instruct", t: at(10), from: LEADER, to: A, summary: "最初の依頼", receipt: "confirmed" },
+    ])
+  })
+
+  it("指揮役以外からの peer 行は指示にしない（子どうし・他グループ）", () => {
+    const result = assembleFlow({
+      leader: session(LEADER),
+      members: [session(A, { peers: [peer(10, B), peer(11, "local_other")] })],
+      since: at(0),
+    })
+    expect(result.events.filter((e) => e.kind === "instruct")).toEqual([])
+  })
+
+  it("受け手に対応する行が無い送信は、送信側のみ（sender-only）の指示になる。宛先は ID でもタイトルでも一致する", () => {
+    const result = assembleFlow({
+      leader: session(LEADER, { sends: [send(5, A, "IDで送信"), send(6, "メンバーB", "名前で送信")] }),
+      members: [session(A), session(B, {}, "メンバーB")],
+      since: at(0),
+    })
+    expect(result.events).toEqual([
+      { kind: "instruct", t: at(5), from: LEADER, to: A, summary: "IDで送信", receipt: "sender-only" },
+      { kind: "instruct", t: at(6), from: LEADER, to: B, summary: "名前で送信", receipt: "sender-only" },
+    ])
+  })
+
+  it("対応する peer 行（60秒以内の最も近いもの）があれば受信確認あり1つだけ。二重に出さない", () => {
+    const result = assembleFlow({
+      leader: session(LEADER, { sends: [send(10, A)] }),
+      members: [session(A, { peers: [peer(15, LEADER, "届いた要約")] })],
+      since: at(0),
+    })
+    expect(result.events).toHaveLength(1)
+    expect(result.events[0]).toMatchObject({ kind: "instruct", t: at(15), summary: "届いた要約", receipt: "confirmed" })
+  })
+
+  it("60秒を超えて離れた送信は別の指示とみなす。1つの peer 行に2つの送信は対応づけない", () => {
+    const far = assembleFlow({
+      leader: session(LEADER, { sends: [send(10, A)] }),
+      members: [session(A, { peers: [peer(10 + SEND_MATCH_WINDOW_MS / SEC + 1, LEADER)] })],
+      since: at(0),
+    })
+    expect(far.events.map((e) => (e.kind === "instruct" ? e.receipt : e.kind)).sort()).toEqual(["confirmed", "sender-only"])
+
+    const two = assembleFlow({
+      leader: session(LEADER, { sends: [send(10, A), send(12, A)] }),
+      members: [session(A, { peers: [peer(14, LEADER)] })],
+      since: at(0),
+    })
+    expect(two.events.map((e) => (e.kind === "instruct" ? e.receipt : e.kind)).sort()).toEqual(["confirmed", "sender-only"])
+  })
+})
+
+describe("assembleFlow: 報告と報告なしで終了", () => {
+  const leaderWith = (reports: PeerSignal[]) => session(LEADER, { peers: reports })
+
+  it("同じ子への次の指示までに、子から指揮役への報告があれば1組。作業量は指示から報告までのツール呼び出し回数", () => {
+    const result = assembleFlow({
+      leader: leaderWith([peer(100, A)]),
+      members: [session(A, { peers: [peer(10, LEADER)], tools: tools(5, 11, 20, 30, 100, 101) })],
+      since: at(0),
+    })
+    const report = result.events.find((e): e is FlowReport => e.kind === "report")!
+    expect(report).toEqual({
+      kind: "report",
+      t: at(100),
+      from: A,
+      to: LEADER,
+      instructAt: at(10),
+      tools: 4, // 11・20・30・100（指示より前の5と、報告のあとの101は数えない）
+      durationMs: 90 * SEC,
+    })
+    expect(result.events.some((e) => e.kind === "end")).toBe(false)
+  })
+
+  it("同じ窓の2通目以降の報告・最初の指示より前の報告は、線は描くが組にならず、作業量は0", () => {
+    const result = assembleFlow({
+      leader: leaderWith([peer(3, A), peer(60, A), peer(80, A)]),
+      members: [session(A, { peers: [peer(10, LEADER)], tools: tools(20, 30) })],
+      since: at(0),
+    })
+    const reports = result.events.filter((e): e is FlowReport => e.kind === "report")
+    expect(reports.map((r) => [r.t / SEC - T0 / SEC, r.instructAt === null ? null : (r.instructAt - T0) / SEC, r.tools])).toEqual([
+      [3, null, 0],
+      [60, 10, 2],
+      [80, null, 0],
+    ])
+  })
+
+  it("報告が付かない指示は、子のターンが終わっていれば end（報告なしで終了）。終わっていなければ何も出さない", () => {
+    const ended = assembleFlow({
+      leader: session(LEADER),
+      members: [session(A, { peers: [peer(10, LEADER)], tools: tools(12, 14), turnEnds: [at(20)] })],
+      since: at(0),
+    })
+    const end = ended.events.find((e): e is FlowEnd => e.kind === "end")!
+    expect(end).toEqual({ kind: "end", t: at(20), sid: A, instructAt: at(10), tools: 2, durationMs: 10 * SEC })
+
+    const pending = assembleFlow({
+      leader: session(LEADER),
+      members: [session(A, { peers: [peer(10, LEADER)], tools: tools(12, 14) })],
+      since: at(0),
+    })
+    expect(pending.events.filter((e) => e.kind === "end")).toEqual([])
+  })
+
+  it("報告が付いた指示には end を出さない。終了は次の指示より前のものだけを、その指示の終了とする", () => {
+    const result = assembleFlow({
+      leader: leaderWith([peer(30, A)]),
+      members: [
+        session(A, {
+          peers: [peer(10, LEADER), peer(50, LEADER), peer(90, LEADER)],
+          tools: tools(12, 55, 56),
+          // 20: 1つ目の指示（報告あり）の途中で終わったターン。 70: 2つ目の指示の終了。 100: 3つ目の指示の終了
+          turnEnds: [at(5), at(20), at(70), at(100)],
+        }),
+      ],
+      since: at(0),
+    })
+    const ends = result.events.filter((e): e is FlowEnd => e.kind === "end")
+    expect(ends.map((e) => [(e.t - T0) / SEC, (e.instructAt - T0) / SEC, e.tools])).toEqual([
+      [70, 50, 2],
+      [100, 90, 0],
+    ])
+  })
+})
+
+describe("assembleFlow: 他グループ・外部からの連絡", () => {
+  it("グループ外の Desktop セッションは other-group、CLI などは external。子・自分・手戻しの形式は出さない", () => {
+    const leader = session(LEADER, {
+      peers: [
+        peer(1, "local_other", "他グループの依頼"),
+        external(2, "CLIから"),
+        peer(3, A, "子からの報告"),
+        peer(4, LEADER, "自分から"),
+        { t: at(5), fromId: null, source: "other", summary: "手戻し" },
+      ],
+    })
+    const result = assembleFlow({ leader, members: [session(A)], since: at(0) })
+    expect(result.events.filter((e) => e.kind === "cross")).toEqual([
+      { kind: "cross", t: at(1), to: LEADER, source: "other-group", summary: "他グループの依頼" },
+      { kind: "cross", t: at(2), to: LEADER, source: "external", summary: "CLIから" },
+    ])
+  })
+})
+
+describe("assembleFlow: ツール呼び出し・圧縮・範囲", () => {
+  it("ツール呼び出しは、同じセッションの5秒ごとにまとめる（回数・最後のコンテキスト）。指揮役の分も含む", () => {
+    const result = assembleFlow({
+      leader: session(LEADER, { tools: [{ t: at(1), ctx: 100 }] }),
+      members: [
+        session(A, {
+          tools: [
+            { t: at(10.0), ctx: 200 },
+            { t: at(11.0), ctx: 210 },
+            { t: at(14.9), ctx: null },
+            { t: at(15.0), ctx: 300 },
+          ],
+        }),
+      ],
+      since: at(0),
+    })
+    expect(result.tools).toEqual([
+      { t: at(1), sid: LEADER, ctx: 100, n: 1 },
+      { t: at(14.9), sid: A, ctx: 210, n: 3 },
+      { t: at(15), sid: A, ctx: 300, n: 1 },
+    ])
+  })
+
+  it("圧縮は compact の出来事になる。since より前のコンテキストは、最後の値（圧縮が後なら圧縮後の量）", () => {
+    const result = assembleFlow({
+      leader: session(LEADER),
+      members: [
+        session(A, {
+          tools: [
+            { t: at(1), ctx: 500 },
+            { t: at(2), ctx: 900 },
+            { t: at(20), ctx: 120 },
+          ],
+          compacts: [{ t: at(3), pre: 900, post: 80 }],
+        }),
+        session(B, { tools: [{ t: at(1), ctx: 700 }] }),
+      ],
+      since: at(10),
+    })
+    expect(result.contextBefore.get(A)).toBe(80)
+    expect(result.contextBefore.get(B)).toBe(700)
+    expect(result.contextBefore.get(LEADER)).toBeNull()
+    // since より前の圧縮は出来事に含めない
+    expect(result.events.filter((e) => e.kind === "compact")).toEqual([])
+    expect(result.tools).toEqual([{ t: at(20), sid: A, ctx: 120, n: 1 }])
+
+    const inRange = assembleFlow({
+      leader: session(LEADER),
+      members: [session(A, { compacts: [{ t: at(3), pre: 900, post: 80 }] })],
+      since: at(0),
+    })
+    expect(inRange.events).toEqual([{ kind: "compact", t: at(3), sid: A, pre: 900, post: 80 }])
+  })
+
+  it("範囲より前の指示・報告は出さないが、組の判定には使う（範囲内の報告の instructAt は範囲より前になりうる）", () => {
+    const result = assembleFlow({
+      leader: session(LEADER, { peers: [peer(100, A)] }),
+      members: [session(A, { peers: [peer(10, LEADER)], tools: tools(20, 30) })],
+      since: at(50),
+    })
+    expect(result.events).toEqual([
+      { kind: "report", t: at(100), from: A, to: LEADER, instructAt: at(10), tools: 2, durationMs: 90 * SEC },
+    ])
+  })
+
+  it("指揮役がいなければ、指示・報告・終了・他グループの出来事は作らない（ツールと圧縮は残る）", () => {
+    const result = assembleFlow({
+      leader: null,
+      members: [
+        session(A, {
+          peers: [peer(10, LEADER), external(11)],
+          tools: tools(12),
+          compacts: [{ t: at(13), pre: 2, post: 1 }],
+          turnEnds: [at(14)],
+        }),
+      ],
+      since: at(0),
+    })
+    expect(result.events.map((e) => e.kind)).toEqual(["compact"])
+    expect(result.tools).toHaveLength(1)
+  })
+
+  it("出来事は時刻の昇順。同じ時刻は 指示→終了→報告 の順", () => {
+    const result = assembleFlow({
+      leader: session(LEADER, { peers: [peer(30, A), peer(5, "local_other")] }),
+      members: [session(A, { peers: [peer(10, LEADER)] }), session(B, { peers: [peer(30, LEADER)], turnEnds: [at(30)] })],
+      since: at(0),
+    })
+    expect(result.events.map((e) => [(e.t - T0) / SEC, e.kind])).toEqual([
+      [5, "cross"],
+      [10, "instruct"],
+      [30, "instruct"],
+      [30, "end"],
+      [30, "report"],
+    ])
+  })
+})

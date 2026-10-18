@@ -16,8 +16,9 @@ function extraUsageText(extra: UsageResponse["extraUsage"]): string | null {
 /**
  * 利用上限(5時間・週・週のモデル別)のゲージと、誰が使っているかの積み上げ棒。
  * 公式値(記録の読み取り)と、会話記録からの推定を並べ、推定には「推定」と明示する。読み取り専用。
+ * showTitle=false は、ページの見出しが同じ「利用上限」のとき、見出しの重複を避ける。
  */
-export function UsagePanel() {
+export function UsagePanel({ showTitle = true }: { showTitle?: boolean }) {
   const { data, error } = useUsage()
 
   if (error && !data) {
@@ -36,7 +37,7 @@ export function UsagePanel() {
   return (
     <section className="space-y-3" aria-label="利用上限">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h2 className="text-base font-semibold">利用上限</h2>
+        {showTitle ? <h2 className="text-base font-semibold">利用上限</h2> : <span />}
         <p className="text-xs text-muted-foreground">
           {data.snapshots.found && data.snapshots.lastRecordedAt !== null
             ? `公式値の最新の記録: ${formatJst(data.snapshots.lastRecordedAt)}${data.snapshots.plan ? `（${data.snapshots.plan}プラン）` : ""}`

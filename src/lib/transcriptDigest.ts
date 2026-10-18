@@ -157,7 +157,7 @@ interface RawEntry {
   operation?: string
   customTitle?: string
   aiTitle?: string
-  attachment?: { type?: string; content?: unknown }
+  attachment?: { type?: string; content?: unknown; origin?: { kind?: unknown }; commandMode?: unknown; prompt?: unknown }
   compactMetadata?: { postTokens?: unknown }
   message?: {
     model?: string
@@ -202,6 +202,36 @@ function originOf(entry: RawEntry): InstructionOrigin {
       // 発信元の記録が無い古い形式の行、または人の入力(sdk含む)
       return "human"
   }
+}
+
+/** 作業中に届いた入力の本文(文字列、または最初のtextブロック。画像だけなら空) */
+function queuedPromptText(prompt: unknown): string {
+  if (typeof prompt === "string") return prompt
+  if (!Array.isArray(prompt)) return ""
+  const block = (prompt as RawBlock[]).find((b) => b && b.type === "text" && typeof b.text === "string")
+  return block?.text ?? ""
+}
+
+/**
+ * attachment(`queued_command`)の発信元。セッションが作業中のときに届いた入力(人の入力・他セッションからのメッセージ・通知)は、
+ * user の行ではなく、この attachment の行として記録される(同じ内容の user の行は後から書かれない)。
+ * 発信元は `attachment.origin.kind` に入る。
+ * - origin が無い行(確認できたのは通知の古い形式だけ)は、通知・システムの差し込み・他セッションからのメッセージの形なら人の入力にせず、
+ *   それ以外の `commandMode: "prompt"` は、user の行の古い形式と同じく人の入力として扱う(数え直し漏れで10/10が戻らないほうを避ける)。
+ */
+export function queuedOriginOf(attachment: RawEntry["attachment"]): InstructionOrigin | null {
+  if (!attachment || attachment.type !== "queued_command") return null
+  const kind = attachment.origin?.kind
+  if (kind === "human") return "human"
+  if (kind === "peer") return "peer"
+  if (kind === "task-notification") return "notification"
+  if (typeof kind === "string") return "system"
+  if (attachment.commandMode === "task-notification") return "notification"
+  const text = queuedPromptText(attachment.prompt).trimStart()
+  if (text.startsWith("<task-notification")) return "notification"
+  if (text.startsWith("<cross-session-message")) return "peer"
+  if (SYSTEM_WRAPPER.test(text) || text.startsWith(CONTINUATION_MARK)) return "system"
+  return attachment.commandMode === undefined || attachment.commandMode === "prompt" ? "human" : "system"
 }
 
 /** userの行から、ツール結果ではない発言の本文を取り出す。ツール結果の行は toolResults に結果のブロックを返す */
@@ -361,6 +391,21 @@ export function messagingOf(d: TranscriptDigest): DesktopSessionMessaging {
   }
 }
 
+/**
+ * 作業中に届いた入力。人の入力なら、user の行と同じく送信回数を数え直し、停止を解除する(上限で止まったあとに人が一言入力しても、
+ * それが user の行にならず 10/10 のまま戻らなかった)。他セッション・通知・システムの入力では数え直さない。
+ * 画像だけの入力は、本文が無いので最新の指示は更新しないが、人の入力なので数え直す。
+ */
+function applyQueuedCommand(d: TranscriptDigest, attachment: NonNullable<RawEntry["attachment"]>, at: number | null): void {
+  if (queuedOriginOf(attachment) !== "human") return
+  resetSendLimit(d)
+  const text = queuedPromptText(attachment.prompt)
+  if (SYSTEM_WRAPPER.test(text) || text.startsWith(CONTINUATION_MARK) || !text.trim()) return
+  const instruction: DigestInstruction = { excerpt: makeExcerpt(text, INSTRUCTION_EXCERPT_CHARS), origin: "human", at }
+  d.latestInput = instruction
+  d.latestHuman = instruction
+}
+
 // ---------------------------------------------------------------------------
 // 1行の取り込み
 
@@ -457,6 +502,7 @@ export function applyEntry(d: TranscriptDigest, entry: RawEntry): void {
     }
     case "attachment": {
       if (entry.attachment?.type === "task_reminder") applyTaskReminder(d, entry.attachment.content)
+      else if (entry.attachment?.type === "queued_command" && !entry.isSidechain) applyQueuedCommand(d, entry.attachment, at)
       return
     }
     case "queue-operation": {
@@ -488,6 +534,8 @@ const RELEVANT_TYPES = ["assistant", "user", "system", "queue-operation", "custo
 const RELEVANT_MARKERS = [
   ...RELEVANT_TYPES.flatMap((t) => [`"type":"${t}"`, `"type": "${t}"`]),
   '"task_reminder"',
+  // 作業中に届いた入力(人・他セッション・通知)は attachment の行になる。type の指定が無いので、attachment の種類で拾う
+  '"queued_command"',
 ]
 
 export function applyLine(d: TranscriptDigest, line: string): void {
