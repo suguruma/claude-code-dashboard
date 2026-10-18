@@ -1,7 +1,7 @@
 import { getDesktopSessionService, type DesktopSessionService } from "./desktopSessionService"
 import { mapLimit } from "./desktopSessions"
 import { getFlowService, type FlowService } from "./flowService"
-import { collectDecisions, findUnanswered, selectCleanupCandidates } from "./housekeeping"
+import { collectDecisions, countUnreadableTranscripts, findUnanswered, selectCleanupCandidates } from "./housekeeping"
 import {
   HOUSEKEEPING_NOTE,
   UNANSWERED_RANGE_MS,
@@ -53,6 +53,9 @@ export class HousekeepingService {
     } else if (list.source === "transcript-only") {
       warnings.push("Desktopのセッション情報を読めないため、会話ログだけで判定しています。要対応・エラー・グループは判断できません。")
     }
+    // 会話ログが無い・読めないセッションは、コンテキストも会話ログ由来の要対応も分からず、一覧から黙って外れてしまうので、件数を知らせる
+    const unreadable = countUnreadableTranscripts(list.sessions)
+    if (unreadable > 0) warnings.push(`${unreadable}件のセッションは会話ログを読めないため判定できません。`)
 
     let usageSource: HousekeepingUsageSource | null = null
     let usage: UsageResponse | null = null

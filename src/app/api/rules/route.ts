@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, resolveRequestProject } from "@/lib/apiHelpers"
+import { errorResponse, readJsonBody, resolveRequestProject } from "@/lib/apiHelpers"
 import { createRule, getRules } from "@/lib/rules"
 
 export const dynamic = "force-dynamic"
@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const project = await resolveRequestProject(req)
-    const body = await req.json()
+    const body = await readJsonBody(req)
     const category = typeof body.category === "string" ? body.category.trim() : ""
     const content = typeof body.content === "string" ? body.content.trim() : ""
     if (!category || !content) {

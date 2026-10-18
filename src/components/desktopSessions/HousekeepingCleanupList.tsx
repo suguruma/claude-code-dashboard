@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { CLEANUP_REASON_LABEL, describeResumeCost, formatDuration } from "@/lib/housekeepingFormat"
 import type { CleanupCandidate, HousekeepingResponse } from "@/lib/housekeepingTypes"
 import { formatTokens } from "./format"
-import { EmptyNote, LimitedList, SectionHeading } from "./HousekeepingList"
+import { EmptyNote, LimitedList, SectionHeading, openOnRowClick } from "./HousekeepingList"
 import { OpenSessionButton } from "./Messaging"
 
 function CacheBadge({ cache }: { cache: CleanupCandidate["cache"] }) {
@@ -36,7 +36,7 @@ function CacheBadge({ cache }: { cache: CleanupCandidate["cache"] }) {
 function CleanupRow({ item, onSelect }: { item: CleanupCandidate; onSelect: (id: string) => void }) {
   const cost = item.resumeCost ? describeResumeCost(item.resumeCost) : null
   return (
-    <div className="rounded-lg border p-3 transition-colors hover:border-primary">
+    <div className="cursor-pointer rounded-lg border p-3 transition-colors hover:border-primary" onClick={openOnRowClick(onSelect, item.id)}>
       <div className="grid gap-x-4 gap-y-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
         <div className="min-w-0 space-y-1.5">
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
@@ -68,7 +68,9 @@ function CleanupRow({ item, onSelect }: { item: CleanupCandidate; onSelect: (id:
 
           {cost && item.resumeCost && (
             <p className="text-sm">
-              <span className="text-muted-foreground">再開で使う上限の目安: </span>
+              <span className="text-muted-foreground">
+                {item.cache === "unknown" ? "キャッシュが切れていた場合に、再開で使う上限の目安: " : "再開で使う上限の目安: "}
+              </span>
               <span className="font-medium tabular-nums">
                 {cost.shares.length > 0 ? cost.shares.join("・") : "（割合は出せません）"}
               </span>
@@ -89,7 +91,7 @@ function CleanupRow({ item, onSelect }: { item: CleanupCandidate; onSelect: (id:
   )
 }
 
-/** A. コンテキスト整理の候補。再開コストの大きい順 */
+/** A. コンテキスト整理の候補。キャッシュ切れ → 不明 → 有効の順で、それぞれ再開コストの大きい順 */
 export function HousekeepingCleanupList({
   data,
   onSelect,
@@ -104,7 +106,7 @@ export function HousekeepingCleanupList({
         id="hk-cleanup"
         title="コンテキスト整理の候補"
         count={data.items.length}
-        description={`コンテキストの使用率が${ratio}%以上、または最後の応答から${data.idleMinutes}分以上たって${formatTokens(data.minIdleTokens)}以上のセッション（実行中・アーカイブ済みは除く）。再開コストの大きい順です。`}
+        description={`コンテキストの使用率が${ratio}%以上、または最後の応答から${data.idleMinutes}分以上たって${formatTokens(data.minIdleTokens)}以上のセッション（実行中・アーカイブ済みは除く）。キャッシュが切れているものを先に、再開コストの大きい順に並べます。`}
       />
       {data.items.length === 0 ? (
         <EmptyNote>整理の候補はありません。</EmptyNote>

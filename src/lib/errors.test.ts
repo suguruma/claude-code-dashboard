@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { errorResponse } from "./apiHelpers"
+import { errorResponse, readJsonBody } from "./apiHelpers"
 import { ConflictError, FileIOError, InvalidInputError, messageOfError, NotFoundError, statusOfError } from "./errors"
 import { FileIOError as FileIOErrorFromFileIO } from "./fileIO"
 
@@ -14,13 +14,6 @@ describe("statusOfError: 状態コードはエラーの種類で決まる", () =
     ["null", null, 500],
   ])("%s → %i", (_label, err, status) => {
     expect(statusOfError(err)).toBe(status)
-  })
-
-  it("想定外のエラーの状態コードは fallbackStatus で変えられる。種類のあるエラーには効かない", () => {
-    expect(statusOfError(new Error("x"), 400)).toBe(400)
-    expect(statusOfError("文字列", 404)).toBe(404)
-    expect(statusOfError(new NotFoundError("x"), 400)).toBe(404)
-    expect(statusOfError(new FileIOError("x"), 400)).toBe(500)
   })
 
   it("文言を変えても状態コードは変わらない（同じ種類は、どんな文言でも同じ状態コード）", () => {
@@ -66,10 +59,10 @@ describe("errorResponse: API ルートの catch で使う変換", () => {
     expect(await res.json()).toEqual({ error: "競合しています" })
   })
 
-  it("想定外のエラーは 500、fallbackStatus を渡せば、その状態コード。FileIOError は fallbackStatus に関わらず 500", async () => {
+  it("種類のない（想定外の）エラーと FileIOError は 500。想定外のエラーを 400 などにする逃げ道は無い", async () => {
     expect(errorResponse(new Error("x")).status).toBe(500)
-    expect(errorResponse(new Error("x"), { fallbackStatus: 400 }).status).toBe(400)
-    expect(errorResponse(new FileIOError("x"), { fallbackStatus: 400 }).status).toBe(500)
+    expect(errorResponse(new FileIOError("x")).status).toBe(500)
+    expect(errorResponse(new SyntaxError("Unexpected token")).status).toBe(500)
   })
 
   it("Error でない値は fallbackMessage(無ければ既定の文言)", async () => {
@@ -77,5 +70,42 @@ describe("errorResponse: API ルートの catch で使う変換", () => {
     expect(await errorResponse("boom", { fallbackMessage: "保存に失敗しました" }).json()).toEqual({
       error: "保存に失敗しました",
     })
+  })
+})
+
+describe("readJsonBody: リクエストの本文を JSON のオブジェクトとして読む", () => {
+  const post = (body?: string) => new Request("http://localhost/api/test", { method: "POST", body })
+
+  it("JSON のオブジェクトはそのまま返す", async () => {
+    expect(await readJsonBody(post('{"a":1,"b":"x"}'))).toEqual({ a: 1, b: "x" })
+    expect(await readJsonBody(post("{}"))).toEqual({})
+  })
+
+  it("壊れた JSON は InvalidInputError（400）。文言に、本文の内容も解析エラーの内容も入れない", async () => {
+    const secret = "SECRET-BODY-TEXT"
+    for (const body of [`{"a": ${secret}`, "{", "", "undefined", "not json"]) {
+      const error = await readJsonBody(post(body)).catch((e: unknown) => e)
+      expect(error).toBeInstanceOf(InvalidInputError)
+      expect(statusOfError(error)).toBe(400)
+      expect((error as Error).message).toBe("リクエストの本文を JSON として読めません")
+      expect((error as Error).message).not.toContain(secret)
+    }
+  })
+
+  it("JSON でも、オブジェクトでない本文（null・配列・数値・文字列・真偽値）は InvalidInputError（400）", async () => {
+    for (const body of ["null", "[]", "[1,2]", "5", '"text"', "true"]) {
+      const error = await readJsonBody(post(body)).catch((e: unknown) => e)
+      expect(error, body).toBeInstanceOf(InvalidInputError)
+      expect((error as Error).message).toBe("リクエストの本文は JSON のオブジェクトで指定してください")
+    }
+  })
+
+  it("optional: 本文が空（空白だけを含む）なら {}。空でなければ、壊れた JSON は 400", async () => {
+    expect(await readJsonBody(post(), { optional: true })).toEqual({})
+    expect(await readJsonBody(post("  " + String.fromCharCode(10)), { optional: true })).toEqual({})
+    expect(await readJsonBody(post('{"targetProjectId":"p"}'), { optional: true })).toEqual({ targetProjectId: "p" })
+    await expect(readJsonBody(post("{"), { optional: true })).rejects.toBeInstanceOf(InvalidInputError)
+    // optional でなければ、空の本文は 400
+    await expect(readJsonBody(post())).rejects.toBeInstanceOf(InvalidInputError)
   })
 })

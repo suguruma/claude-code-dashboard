@@ -47,6 +47,9 @@ export function percentRange(usd: number, calibration: UsageCalibration | null):
   }
 }
 
+/** 並びの優先度（小さいほど先） */
+const CACHE_RANK: Record<CacheState, number> = { expired: 0, unknown: 1, valid: 2 }
+
 export interface CleanupInput {
   sessions: DesktopSessionSummary[]
   now: number
@@ -63,7 +66,8 @@ export interface CleanupInput {
  * コンテキスト整理の候補。アーカイブ済み・実行中のセッションは対象外。
  * - 大きい(large): コンテキスト使用率が highContextRatio 以上
  * - 長く止まっている(idle): 最後の応答から idleMs 以上たち、コンテキストが minIdleTokens 以上
- * 並びは、再開コストの大きい順(キャッシュが有効なものは後ろ。同じなら、コンテキストの大きい順)。
+ * 並びは、キャッシュが切れているもの → 最後の応答の時刻が分からないもの（切れていた場合の再開コスト）→ 有効なものの順で、
+ * それぞれの中は再開コストの大きい順（同じなら、コンテキストの大きい順）。
  */
 export function selectCleanupCandidates(input: CleanupInput): CleanupCandidate[] {
   const { now, highContextRatio, thresholds } = input
@@ -106,11 +110,22 @@ export function selectCleanupCandidates(input: CleanupInput): CleanupCandidate[]
     })
   }
   return candidates.sort((a, b) => {
+    // 切れていると分かっているものを先に、分からないもの（切れていた場合の目安）、有効なものの順
+    const rank = CACHE_RANK[a.cache] - CACHE_RANK[b.cache]
+    if (rank !== 0) return rank
     const cost = (b.resumeCost?.usd ?? -1) - (a.resumeCost?.usd ?? -1)
     if (cost !== 0) return cost
     if (b.contextTokens !== a.contextTokens) return b.contextTokens - a.contextTokens
     return a.id < b.id ? -1 : 1
   })
+}
+
+/**
+ * 会話ログが無い・読めないセッションの数（アーカイブ済みを除く）。コンテキスト整理の候補は会話ログのコンテキスト量が要り、
+ * 判断待ちの一部（質問の回答待ちなど）も会話ログから決まるため、これらは判定できない。画面のお知らせに件数を出す。
+ */
+export function countUnreadableTranscripts(sessions: DesktopSessionSummary[]): number {
+  return sessions.filter((s) => !s.isArchived && s.transcript === "missing").length
 }
 
 // ---------------------------------------------------------------------------
@@ -145,14 +160,30 @@ export function findUnanswered(
     else if (e.kind === "end") ended.add(`${e.sid}\u0000${e.instructAt}`)
   }
 
+  // 同じ(送り手・宛先・時刻)の指示が複数あるとき(受信の時刻が同一ミリ秒)、assembleFlow は報告・終了を、窓が空にならない最後の1件にだけ付ける
+  // (先の指示の窓は、次の指示の時刻までで、空になる)。そこで、時刻の鍵に「同じ時刻の指示の中での位置」を足し、最後の1件だけを報告・終了の対象にする
+  const groupSize = new Map<string, number>()
+  for (const e of events) {
+    if (e.kind === "instruct") groupSize.set(key(e.from, e.to, e.t), (groupSize.get(key(e.from, e.to, e.t)) ?? 0) + 1)
+  }
+  const seenInGroup = new Map<string, number>()
+
   const out: UnansweredInstruction[] = []
   for (const e of events) {
-    if (e.kind !== "instruct" || answered.has(key(e.from, e.to, e.t))) continue
-    const ageMs = Math.max(0, now - e.t)
+    if (e.kind !== "instruct") continue
+    const groupKey = key(e.from, e.to, e.t)
+    const position = seenInGroup.get(groupKey) ?? 0
+    seenInGroup.set(groupKey, position + 1)
+    const takesOutcome = position === (groupSize.get(groupKey) ?? 1) - 1
+    if (takesOutcome && answered.has(groupKey)) continue
+
+    // 経過は、送り手が送った時刻から数える（送信の記録を対応づけられていれば、その時刻。受信の記録の時刻は数秒遅れる）
+    const sentAt = e.sentAt ?? e.t
+    const ageMs = Math.max(0, now - sentAt)
     let kind: UnansweredInstruction["kind"] | null = null
     if (e.receipt === "sender-only") {
       if (ageMs >= thresholdMs) kind = "possibly-undelivered"
-    } else if (ended.has(`${e.to}\u0000${e.t}`)) {
+    } else if (takesOutcome && ended.has(`${e.to}\u0000${e.t}`)) {
       kind = "ended-without-report"
     } else if (ageMs >= thresholdMs) {
       kind = "awaiting-report"
@@ -167,7 +198,7 @@ export function findUnanswered(
       toId: e.to,
       toTitle: lookup.titleOf(e.to),
       summary: e.summary,
-      sentAt: e.t,
+      sentAt,
       ageMs,
       working: lookup.isWorking(e.to),
     })

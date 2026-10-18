@@ -4,7 +4,7 @@ import { ArrowRight, CircleHelp, Hourglass, MailQuestionMark, Activity, type Luc
 import { Badge } from "@/components/ui/badge"
 import { UNANSWERED_KIND_HINT, UNANSWERED_KIND_LABEL, formatDuration } from "@/lib/housekeepingFormat"
 import type { HousekeepingResponse, UnansweredInstruction, UnansweredKind } from "@/lib/housekeepingTypes"
-import { EmptyNote, LimitedList, SectionHeading } from "./HousekeepingList"
+import { EmptyNote, LimitedList, SectionHeading, openOnRowClick } from "./HousekeepingList"
 import { OpenSessionButton } from "./Messaging"
 
 const KIND_ICON: Record<UnansweredKind, { Icon: LucideIcon; color: string }> = {
@@ -16,7 +16,7 @@ const KIND_ICON: Record<UnansweredKind, { Icon: LucideIcon; color: string }> = {
 function UnansweredRow({ item, onSelect }: { item: UnansweredInstruction; onSelect: (id: string) => void }) {
   const { Icon, color } = KIND_ICON[item.kind]
   return (
-    <div className="rounded-lg border p-3 transition-colors hover:border-primary">
+    <div className="cursor-pointer rounded-lg border p-3 transition-colors hover:border-primary" onClick={openOnRowClick(onSelect, item.toId)}>
       <div className="grid gap-x-4 gap-y-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
         <div className="min-w-0 space-y-1.5">
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">

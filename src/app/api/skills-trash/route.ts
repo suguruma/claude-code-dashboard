@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, resolveRequestProject } from "@/lib/apiHelpers"
+import { errorResponse, readJsonBody, resolveRequestProject } from "@/lib/apiHelpers"
 import { listTrashedSkills, restoreTrashedSkill, skillTrashDir } from "@/lib/skillTrash"
 
 export const dynamic = "force-dynamic"
@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const project = await resolveRequestProject(req)
-    const body = await req.json()
+    const body = await readJsonBody(req)
     if (typeof body.id !== "string" || !body.id.trim()) {
       return NextResponse.json({ error: "id は文字列で指定してください" }, { status: 400 })
     }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, resolveRequestProject } from "@/lib/apiHelpers"
+import { errorResponse, readJsonBody, resolveRequestProject } from "@/lib/apiHelpers"
 import { deleteSkill, updateSkill } from "@/lib/skills"
 
 export const dynamic = "force-dynamic"
@@ -11,7 +11,7 @@ export async function PATCH(
   try {
     const { dirName } = await params
     const project = await resolveRequestProject(req)
-    const body = await req.json()
+    const body = await readJsonBody(req)
     const patch: {
       description?: string
       body?: string

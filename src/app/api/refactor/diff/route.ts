@@ -10,6 +10,6 @@ export async function GET(req: NextRequest) {
     const diff = await computeRefactorDiff(project)
     return NextResponse.json(diff)
   } catch (err) {
-    return errorResponse(err, { fallbackStatus: 400 })
+    return errorResponse(err)
   }
 }

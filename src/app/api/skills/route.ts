@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, resolveRequestProject } from "@/lib/apiHelpers"
+import { errorResponse, readJsonBody, resolveRequestProject } from "@/lib/apiHelpers"
 import { createSkill, listSkills } from "@/lib/skills"
 
 export const dynamic = "force-dynamic"
@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const project = await resolveRequestProject(req)
-    const body = await req.json()
+    const body = await readJsonBody(req)
     const dirName = typeof body.dirName === "string" ? body.dirName.trim() : ""
     const description = typeof body.description === "string" ? body.description.trim() : ""
     const skillBody = typeof body.body === "string" ? body.body : ""

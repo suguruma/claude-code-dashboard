@@ -6,6 +6,7 @@ import { assembleFlow, emptySignals, type SessionSignals } from "./flowEvents"
 import {
   cacheStateOf,
   collectDecisions,
+  countUnreadableTranscripts,
   findUnanswered,
   percentRange,
   resumeCostUsd,
@@ -236,7 +237,7 @@ describe("findUnanswered", () => {
 
   it("受信を確認できていて、報告も終了も無い指示は、30分以上（ちょうどを含む）で awaiting-report。29分59秒では出ない", () => {
     expect(find([instruct("local_a", 30)])).toMatchObject([{ kind: "awaiting-report", ageMs: 30 * MIN }])
-    expect(find([{ ...instruct("local_a", 30), t: NOW - 30 * MIN + 1 }])).toEqual([])
+    expect(find([{ ...instruct("local_a", 30), t: NOW - 30 * MIN + 1, sentAt: NOW - 30 * MIN + 1 }])).toEqual([])
     expect(find([instruct("local_a", 5)])).toEqual([])
   })
 
@@ -351,6 +352,134 @@ describe("findUnanswered", () => {
         { kind: "ended-without-report", summary: "すぐ終わった指示" },
       ])
     })
+
+    it("受信の時刻が同一ミリ秒の指示が2件あり、報告が1件だけのとき、報告の付かなかった1件が落ちない（先の1件が返事待ち）", () => {
+      // 送信は同じ時刻に2件、受信も同一ミリ秒（assembleFlow は、報告を窓の空にならない最後の1件にだけ付ける）
+      const result = run(
+        leaderSignals(
+          [
+            [100, "先の指示"],
+            [100, "後の指示"],
+          ],
+          [95]
+        ),
+        childSignals(
+          [
+            [100, "先の指示"],
+            [100, "後の指示"],
+          ],
+          []
+        )
+      )
+      expect(result.map((r) => [r.summary, r.kind])).toEqual([["先の指示", "awaiting-report"]])
+    })
+
+    it("同一ミリ秒の指示が2件で、子のターンが報告なしで終わったときは、先の1件が報告待ち・後の1件が報告なしで終了", () => {
+      const result = run(
+        leaderSignals(
+          [
+            [100, "先の指示"],
+            [100, "後の指示"],
+          ],
+          []
+        ),
+        childSignals(
+          [
+            [100, "先の指示"],
+            [100, "後の指示"],
+          ],
+          [90]
+        )
+      )
+      expect(result.map((r) => [r.summary, r.kind])).toEqual([
+        ["先の指示", "awaiting-report"],
+        ["後の指示", "ended-without-report"],
+      ])
+    })
+
+    it("同一ミリ秒の指示が2件で、どちらにも報告が無いときは、2件とも出る（1件に畳まない）", () => {
+      const result = run(
+        leaderSignals(
+          [
+            [100, "先の指示"],
+            [100, "後の指示"],
+          ],
+          []
+        ),
+        childSignals(
+          [
+            [100, "先の指示"],
+            [100, "後の指示"],
+          ],
+          []
+        )
+      )
+      expect(result.map((r) => [r.summary, r.kind])).toEqual([
+        ["先の指示", "awaiting-report"],
+        ["後の指示", "awaiting-report"],
+      ])
+    })
+  })
+})
+
+describe("findUnanswered: 経過の起点は、送り手が送った時刻", () => {
+  const lookup = { group: { id: "g", name: "G" }, titleOf: (id: string) => id, isWorking: () => false }
+  const base = { kind: "instruct" as const, from: "local_leader", to: "local_a", summary: "指示", receipt: "confirmed" as const }
+
+  it("送信の記録を対応づけられていれば、その時刻から数える（受信の記録は数秒遅れる）。sentAt もその時刻", () => {
+    // 送信が31分前、受信が29分50秒前: 受信から数えると30分に届かないが、送信から数えれば届く
+    const event: FlowInstruct = { ...base, t: NOW - 29 * MIN - 50_000, sentAt: NOW - 31 * MIN }
+    const [item] = findUnanswered([event], NOW, 30 * MIN, lookup)
+    expect(item).toMatchObject({ kind: "awaiting-report", sentAt: NOW - 31 * MIN, ageMs: 31 * MIN })
+  })
+
+  it("送信の記録が無い（sentAt が null）確認済みの指示は、受信の記録の時刻から数える", () => {
+    const event: FlowInstruct = { ...base, t: NOW - 40 * MIN, sentAt: null }
+    expect(findUnanswered([event], NOW, 30 * MIN, lookup)[0]).toMatchObject({ sentAt: NOW - 40 * MIN, ageMs: 40 * MIN })
+  })
+
+  it("並びは sentAt の古い順", () => {
+    const events: FlowInstruct[] = [
+      { ...base, to: "local_b", t: NOW - 50 * MIN, sentAt: NOW - 50 * MIN - 5_000 },
+      { ...base, to: "local_c", t: NOW - 60 * MIN, sentAt: NOW - 60 * MIN },
+    ]
+    expect(findUnanswered(events, NOW, 30 * MIN, lookup).map((r) => r.toId)).toEqual(["local_c", "local_b"])
+  })
+})
+
+describe("countUnreadableTranscripts", () => {
+  it("会話ログが無い・読めないセッションの数。アーカイブ済みは数えない", () => {
+    const sessions = [
+      makeSessionSummary("ok"),
+      makeSessionSummary("missing", { transcript: "missing", digest: "none" }),
+      makeSessionSummary("missing-archived", { transcript: "missing", digest: "none", isArchived: true }),
+      makeSessionSummary("missing-too", { transcript: "missing", digest: "none", status: "blocked" }),
+    ]
+    expect(countUnreadableTranscripts(sessions)).toBe(2)
+    expect(countUnreadableTranscripts([])).toBe(0)
+  })
+})
+
+describe("selectCleanupCandidates: キャッシュ不明の並び", () => {
+  it("最後の応答の時刻が分からないものは、切れていると分かっているものの後ろ、有効なものの前（コストが大きくても）", () => {
+    const result = selectCleanupCandidates(
+      candidateInput([
+        withContext("valid", 950_000, 10 * MIN),
+        withContext("unknown-big", 950_000, null),
+        withContext("expired-small", 60_000, 2 * HOUR),
+        withContext("unknown-small", 850_000, null),
+        withContext("expired-big", 400_000, 5 * HOUR),
+      ])
+    )
+    expect(result.map((r) => [r.id, r.cache])).toEqual([
+      ["expired-big", "expired"],
+      ["expired-small", "expired"],
+      ["unknown-big", "unknown"],
+      ["unknown-small", "unknown"],
+      ["valid", "valid"],
+    ])
+    // 不明のコストは、切れていた場合の金額として出す（並びの中で、ほかの不明どうしでは大きい順）
+    expect(result[2].resumeCost?.usd).toBeGreaterThan(result[3].resumeCost?.usd ?? 0)
   })
 })
 

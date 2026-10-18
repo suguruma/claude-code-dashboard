@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, resolveRequestProject } from "@/lib/apiHelpers"
+import { errorResponse, readJsonBody, resolveRequestProject } from "@/lib/apiHelpers"
 import { restoreBackup } from "@/lib/backups"
 
 export const dynamic = "force-dynamic"
@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic"
 export async function POST(req: NextRequest) {
   try {
     const project = await resolveRequestProject(req)
-    const body = await req.json()
+    const body = await readJsonBody(req)
     if (typeof body.fileName !== "string" || !body.fileName.trim()) {
       return NextResponse.json({ error: "fileName は文字列で指定してください" }, { status: 400 })
     }

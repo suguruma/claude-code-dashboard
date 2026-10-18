@@ -21,6 +21,10 @@ vi.mock("@/lib/apiHelpers", async (importOriginal) => {
 })
 
 import { POST as backupsRestore } from "@/app/api/backups/restore/route"
+import { POST as importApply } from "@/app/api/import/apply/route"
+import { POST as importDiff } from "@/app/api/import/diff/route"
+import { POST as refactorApply } from "@/app/api/refactor/apply/route"
+import { POST as rulesCreate } from "@/app/api/rules/route"
 import { DELETE as executionLogDelete } from "@/app/api/execution-log/[taskId]/route"
 import { POST as suggestedRules } from "@/app/api/execution-log/[taskId]/suggested-rules/route"
 import { PATCH as rulePatch } from "@/app/api/rules/[id]/route"
@@ -42,6 +46,11 @@ function request(method: string, body?: unknown): NextRequest {
     headers: { "content-type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
+}
+
+/** 本文を、JSON にせず、文字列のまま渡す（壊れた JSON を送るため） */
+function rawRequest(method: string, body: string): NextRequest {
+  return new NextRequest("http://localhost/api/test", { method, headers: { "content-type": "application/json" }, body })
 }
 
 function params<T extends Record<string, string>>(value: T) {
@@ -155,6 +164,45 @@ describe("ルール・実行ログの API", () => {
   })
 })
 
+describe("リクエストの本文", () => {
+  const BROKEN = ["{", "not json", "null", "[]", "5", '"text"']
+
+  it("壊れた JSON・オブジェクトでない本文は、本文を読むどのルートでも 400（500 にならない）", async () => {
+    const calls: [string, (body: string) => Promise<Response>][] = [
+      ["POST /api/skills", (b) => skillCreate(rawRequest("POST", b))],
+      ["PATCH /api/skills/[dirName]", (b) => skillPatch(rawRequest("PATCH", b), params({ dirName: "sample-skill" }))],
+      ["POST /api/skills/[dirName]/rename", (b) => skillRename(rawRequest("POST", b), params({ dirName: "sample-skill" }))],
+      ["POST /api/skills/[dirName]/restore", (b) => skillRestore(rawRequest("POST", b), params({ dirName: "sample-skill" }))],
+      ["POST /api/skills-trash", (b) => trashRestore(rawRequest("POST", b))],
+      ["POST /api/backups/restore", (b) => backupsRestore(rawRequest("POST", b))],
+      ["POST /api/rules", (b) => rulesCreate(rawRequest("POST", b))],
+      ["PATCH /api/rules/[id]", (b) => rulePatch(rawRequest("PATCH", b), params({ id: "x" }))],
+      ["POST /api/rules/reorder", (b) => rulesReorder(rawRequest("POST", b))],
+      ["POST /api/import/diff", (b) => importDiff(rawRequest("POST", b))],
+      ["POST /api/import/apply", (b) => importApply(rawRequest("POST", b))],
+      ["POST /api/refactor/apply", (b) => refactorApply(rawRequest("POST", b))],
+    ]
+    for (const [name, call] of calls) {
+      for (const body of BROKEN) {
+        const res = await call(body)
+        expect(res.status, `${name} ← ${JSON.stringify(body)}`).toBe(400)
+      }
+    }
+  })
+
+  it("本文の誤りの応答は { error } だけで、本文の内容も解析エラーの内容も含まない", async () => {
+    const res = await skillCreate(rawRequest("POST", '{"dirName": SECRET-BODY-TEXT'))
+    const text = await res.text()
+    expect(JSON.parse(text)).toEqual({ error: "リクエストの本文を JSON として読めません" })
+    expect(text).not.toContain("SECRET-BODY-TEXT")
+  })
+
+  it("本文が正しければ、これまでどおり動く（作成は 201。形式の合わないインポートのバンドルは、検証の結果として 400）", async () => {
+    expect((await skillCreate(request("POST", { dirName: "brand-new", description: "d" }))).status).toBe(201)
+    expect((await importDiff(request("POST", { version: 999, rules: [], skills: [] }))).status).toBe(400)
+  })
+})
+
 describe("ソースの検査", () => {
   async function routeFiles(dir: string): Promise<string[]> {
     const out: string[] = []
@@ -177,5 +225,33 @@ describe("ソースの検査", () => {
       }
     }
     expect(offenders).toEqual([])
+  })
+})
+
+
+describe("ソースの検査（本文と想定外のエラー）", () => {
+  async function routeSources(): Promise<[string, string][]> {
+    const out: [string, string][] = []
+    const walk = async (dir: string) => {
+      for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name)
+        if (entry.isDirectory()) await walk(full)
+        else if (entry.name === "route.ts") out.push([path.relative(process.cwd(), full).split(path.sep).join("/"), await fs.readFile(full, "utf-8")])
+      }
+    }
+    await walk(path.join(process.cwd(), "src", "app", "api"))
+    return out
+  }
+
+  it("想定外のエラーの状態コードを変える逃げ道（fallbackStatus）が、ルートにも共通の関数にも無い", async () => {
+    const offenders = (await routeSources()).filter(([, source]) => source.includes("fallbackStatus")).map(([file]) => file)
+    expect(offenders).toEqual([])
+    const helper = await fs.readFile(path.join(process.cwd(), "src", "lib", "apiHelpers.ts"), "utf-8")
+    expect(helper).not.toContain("fallbackStatus")
+  })
+
+  it("ルートが req.json() を直接呼ばない（本文は readJsonBody で読む）。例外は、固定の文言で独自に検査している desktop-sessions/settings だけ", async () => {
+    const offenders = (await routeSources()).filter(([, source]) => /\breq\.json\(/.test(source)).map(([file]) => file)
+    expect(offenders).toEqual(["src/app/api/desktop-sessions/settings/route.ts"])
   })
 })

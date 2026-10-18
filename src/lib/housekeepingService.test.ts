@@ -219,6 +219,8 @@ describe("HousekeepingService: 合成データ", () => {
     expect(res.cleanup.items.some((i) => i.id === sample.ids.unreachable)).toBe(false)
     expect(res.decisions.items.some((i) => i.id === sample.ids.unreachable)).toBe(false)
     expect(res.cleanup.items.length).toBeGreaterThan(0)
+    // 判定できなかったことを、件数つきでお知らせに出す（会話の内容や ID は出さない）
+    expect(res.warnings).toEqual(["1件のセッションは会話ログを読めないため判定できません。"])
   })
 
   it("設定ファイルのしきい値で、整理の候補の判定が変わる（長く止まっている=3時間以上、最小=100K）", async () => {

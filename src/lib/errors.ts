@@ -7,7 +7,7 @@
  * - ConflictError: 今の状態と衝突している。すでに存在する・すでにその状態・画面の内容が古い（409）
  * - FileIOError: ファイルの読み書きに失敗した（500。文言はそのまま画面に出す）
  *
- * ここにない Error（想定外のエラー）は 500 になる（ルートが fallbackStatus を指定したときは、その状態コード）。
+ * ここにない Error（想定外のエラー）は 500 になる。
  * 入力の誤り・見つからない・衝突を `new Error(...)` のまま投げると 500 になるので、必ず種類のあるエラーを使うこと。
  */
 
@@ -23,13 +23,13 @@ export class ConflictError extends Error {}
 /** ファイルの読み書きの失敗（500）。メッセージには対象のファイル名が入る */
 export class FileIOError extends Error {}
 
-/** エラーの種類から決まる HTTP の状態コード。想定外のエラーは fallbackStatus（既定 500） */
-export function statusOfError(err: unknown, fallbackStatus = 500): number {
+/** エラーの種類から決まる HTTP の状態コード。種類のない（想定外の）エラーは 500 */
+export function statusOfError(err: unknown): number {
   if (err instanceof InvalidInputError) return 400
   if (err instanceof NotFoundError) return 404
   if (err instanceof ConflictError) return 409
   if (err instanceof FileIOError) return 500
-  return fallbackStatus
+  return 500
 }
 
 /** 画面に返すエラーの文言。Error なら message、そうでなければ既定の文言 */

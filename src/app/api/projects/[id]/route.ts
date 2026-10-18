@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse } from "@/lib/apiHelpers"
+import { errorResponse, readJsonBody } from "@/lib/apiHelpers"
 import { removeProject, updateProject } from "@/lib/projects"
 
 export const dynamic = "force-dynamic"
@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic"
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
-    const body = await req.json()
+    const body = await readJsonBody(req)
     const updates: { name?: string; path?: string } = {}
     if (typeof body.name === "string") {
       const name = body.name.trim()
@@ -22,7 +22,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const project = await updateProject(id, updates)
     return NextResponse.json(project)
   } catch (err) {
-    return errorResponse(err, { fallbackStatus: 400, fallbackMessage: "プロジェクトの更新に失敗しました" })
+    return errorResponse(err, { fallbackMessage: "プロジェクトの更新に失敗しました" })
   }
 }
 

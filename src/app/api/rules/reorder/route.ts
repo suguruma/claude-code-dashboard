@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, resolveRequestProject } from "@/lib/apiHelpers"
+import { errorResponse, readJsonBody, resolveRequestProject } from "@/lib/apiHelpers"
 import { reorderRules } from "@/lib/rules"
 
 export const dynamic = "force-dynamic"
@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic"
 export async function POST(req: NextRequest) {
   try {
     const project = await resolveRequestProject(req)
-    const body = await req.json()
+    const body = await readJsonBody(req)
     const orderedIds = Array.isArray(body.orderedIds) ? body.orderedIds : null
     if (!orderedIds || orderedIds.some((id: unknown) => typeof id !== "string")) {
       return NextResponse.json({ error: "orderedIds は文字列の配列で指定してください" }, { status: 400 })
@@ -15,6 +15,6 @@ export async function POST(req: NextRequest) {
     const rules = await reorderRules(project, orderedIds)
     return NextResponse.json({ rules })
   } catch (err) {
-    return errorResponse(err, { fallbackStatus: 400 })
+    return errorResponse(err)
   }
 }

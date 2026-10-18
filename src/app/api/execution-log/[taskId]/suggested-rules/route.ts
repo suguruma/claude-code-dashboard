@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, resolveRequestProject } from "@/lib/apiHelpers"
+import { errorResponse, readJsonBody, resolveRequestProject } from "@/lib/apiHelpers"
 import { saveSuggestedRulesFromLog } from "@/lib/executionLog"
 import { getProjectById } from "@/lib/projects"
 
@@ -14,7 +14,7 @@ export async function POST(
     // ?projectId= はexecution_log.jsonの読み込み元（分析対象）。書き込み先が別なら
     // bodyのtargetProjectIdで指定する（未指定なら読み込み元と同じプロジェクトに保存する）
     const sourceProject = await resolveRequestProject(req)
-    const body = await req.json().catch(() => ({}))
+    const body = await readJsonBody(req, { optional: true })
     const targetProjectId = typeof body.targetProjectId === "string" ? body.targetProjectId : null
     const targetProject = targetProjectId ? await getProjectById(targetProjectId) : sourceProject
     if (!targetProject) {

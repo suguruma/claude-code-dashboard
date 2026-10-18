@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, resolveRequestProject } from "@/lib/apiHelpers"
+import { errorResponse, readJsonBody, resolveRequestProject } from "@/lib/apiHelpers"
 import { applyImport, validateBundle } from "@/lib/exportImport"
 
 export const dynamic = "force-dynamic"
@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic"
 export async function POST(req: NextRequest) {
   try {
     const project = await resolveRequestProject(req)
-    const body = await req.json()
+    const body = await readJsonBody(req)
     const bundle = validateBundle(body.bundle)
     const ruleCategories = Array.isArray(body.ruleCategories)
       ? body.ruleCategories.filter((c: unknown): c is string => typeof c === "string")
@@ -18,6 +18,6 @@ export async function POST(req: NextRequest) {
     const result = await applyImport(project, bundle, { ruleCategories, skillDirNames })
     return NextResponse.json(result)
   } catch (err) {
-    return errorResponse(err, { fallbackStatus: 400 })
+    return errorResponse(err)
   }
 }

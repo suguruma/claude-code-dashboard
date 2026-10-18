@@ -95,8 +95,9 @@ export interface UnansweredInstruction {
   toTitle: string
   /** 指示の本文の先頭20文字 */
   summary: string
-  /** 指示の時刻(ms) */
+  /** 指示を送った時刻(ms)。送り手の送信記録を対応づけられていればその時刻、なければ受け手の記録の時刻 */
   sentAt: number
+  /** sentAt からの経過(ms) */
   ageMs: number
   /** 宛先のセッションが、いま実行中か */
   working: boolean

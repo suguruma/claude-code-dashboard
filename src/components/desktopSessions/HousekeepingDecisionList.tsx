@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { DECISION_REASON_LABEL } from "@/lib/housekeepingFormat"
 import type { DecisionItem, DecisionReason, HousekeepingResponse } from "@/lib/housekeepingTypes"
 import { formatAgo } from "./format"
-import { EmptyNote, LimitedList, SectionHeading } from "./HousekeepingList"
+import { EmptyNote, LimitedList, SectionHeading, openOnRowClick } from "./HousekeepingList"
 import { OpenSessionButton } from "./Messaging"
 
 const REASON_ICON: Record<DecisionReason, { Icon: LucideIcon; color: string }> = {
@@ -17,7 +17,7 @@ const REASON_ICON: Record<DecisionReason, { Icon: LucideIcon; color: string }> =
 
 function DecisionRow({ item, onSelect }: { item: DecisionItem; onSelect: (id: string) => void }) {
   return (
-    <div className="rounded-lg border p-3 transition-colors hover:border-primary">
+    <div className="cursor-pointer rounded-lg border p-3 transition-colors hover:border-primary" onClick={openOnRowClick(onSelect, item.id)}>
       <div className="grid gap-x-4 gap-y-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
         <div className="min-w-0 space-y-1.5">
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, resolveRequestProject } from "@/lib/apiHelpers"
+import { errorResponse, readJsonBody, resolveRequestProject } from "@/lib/apiHelpers"
 import { getSettings, updateSettings } from "@/lib/settings"
 
 export const dynamic = "force-dynamic"
@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   try {
     const project = await resolveRequestProject(req)
-    const body = await req.json()
+    const body = await readJsonBody(req)
     if (body.raw === null || typeof body.raw !== "object" || Array.isArray(body.raw)) {
       return NextResponse.json({ error: "raw はJSONオブジェクトで指定してください" }, { status: 400 })
     }
