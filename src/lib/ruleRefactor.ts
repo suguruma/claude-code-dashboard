@@ -9,6 +9,7 @@ import {
   RuleRefactorDiffResult,
   RuleRefactorProposalFile,
 } from "./types"
+import { ConflictError, NotFoundError } from "./errors"
 
 const PROPOSAL_VERSION = 1
 const PROPOSAL_FILE_NAME = "rule_refactor_proposal.json"
@@ -116,7 +117,7 @@ export async function applyRefactorProposal(
   selectedIndexes: number[]
 ): Promise<RuleRefactorApplyResult> {
   const proposalFile = await readProposalFile(project)
-  if (!proposalFile) throw new Error("提案ファイル（rule_refactor_proposal.json）が見つかりません")
+  if (!proposalFile) throw new NotFoundError("提案ファイル（rule_refactor_proposal.json）が見つかりません")
 
   const selected = [...new Set(selectedIndexes)]
     .map((i) => proposalFile.proposals[i])
@@ -134,7 +135,7 @@ export async function applyRefactorProposal(
   for (const p of selected) {
     const missing = p.sourceCategories.filter((c) => !currentRules.some((r) => r.category === c))
     if (missing.length > 0) {
-      throw new Error(
+      throw new ConflictError(
         `見出し「${missing.join("」「")}」が現在のCLAUDE.mdと一致しないため適用できません。画面を再読み込みしてください`
       )
     }

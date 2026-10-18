@@ -4,6 +4,7 @@ import { FileIOError, resolveProjectPath } from "./fileIO"
 import { parseFrontmatter } from "./frontmatter"
 import { selectExpired } from "./retention"
 import { ProjectConfig, TrashedSkill } from "./types"
+import { ConflictError, InvalidInputError, NotFoundError } from "./errors"
 
 /**
  * スキルの削除は完全削除ではなく、`skills-trash/<名前>-<yyyyMMdd-HHmmss>/` への移動にする。
@@ -170,16 +171,16 @@ export async function restoreTrashedSkill(
   id: string
 ): Promise<{ dirName: string; enabled: boolean }> {
   if (!id || id.includes("/") || id.includes("\\") || id.includes("..")) {
-    throw new Error("不正な指定です")
+    throw new InvalidInputError("不正な指定です")
   }
   const entry = (await listTrashedSkills(project)).find((e) => e.id === id)
-  if (!entry) throw new Error("指定された削除済みスキルが見つかりません")
-  if (!/^[a-zA-Z0-9_-]+$/.test(entry.dirName)) throw new Error("不正な指定です")
+  if (!entry) throw new NotFoundError("指定された削除済みスキルが見つかりません")
+  if (!/^[a-zA-Z0-9_-]+$/.test(entry.dirName)) throw new InvalidInputError("不正な指定です")
 
   const activeDir = resolveProjectPath(project.path, "skills")
   const disabledDir = resolveProjectPath(project.path, "skills-disabled")
   if ((await pathExists(path.join(activeDir, entry.dirName))) || (await pathExists(path.join(disabledDir, entry.dirName)))) {
-    throw new Error(
+    throw new ConflictError(
       `スキル "${entry.dirName}" は既に存在するため復元できません。先に既存のスキルを削除するか、名前を変更してください`
     )
   }

@@ -14,6 +14,7 @@ import {
   ProjectConfig,
   Rule,
 } from "./types"
+import { InvalidInputError } from "./errors"
 
 const EXPORT_VERSION = 1
 
@@ -53,18 +54,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  */
 export function validateBundle(input: unknown): ExportBundle {
   if (!isRecord(input)) {
-    throw new Error("エクスポートファイルの形式が不正です")
+    throw new InvalidInputError("エクスポートファイルの形式が不正です")
   }
   if (input.version !== EXPORT_VERSION) {
-    throw new Error("対応していないバージョンのエクスポートファイルです")
+    throw new InvalidInputError("対応していないバージョンのエクスポートファイルです")
   }
   if (!Array.isArray(input.rules) || !Array.isArray(input.skills)) {
-    throw new Error("エクスポートファイルの形式が不正です")
+    throw new InvalidInputError("エクスポートファイルの形式が不正です")
   }
 
   const rules: ExportedRule[] = input.rules.map((r) => {
     if (!isRecord(r) || typeof r.category !== "string" || typeof r.content !== "string") {
-      throw new Error("ルールの形式が不正です")
+      throw new InvalidInputError("ルールの形式が不正です")
     }
     return { category: r.category, content: r.content, enabled: r.enabled !== false }
   })
@@ -77,12 +78,12 @@ export function validateBundle(input: unknown): ExportBundle {
       typeof s.description !== "string" ||
       typeof s.body !== "string"
     ) {
-      throw new Error("スキルの形式が不正です")
+      throw new InvalidInputError("スキルの形式が不正です")
     }
     const targetModel = typeof s.targetModel === "string" ? s.targetModel : undefined
     // `.` だけの対象モデルは、アーカイブのフォルダ名がプロジェクトの外を指すので受け付けない（他人から受け取ったファイルで起きうる）
     if (targetModel !== undefined && isDotOnlyName(targetModel)) {
-      throw new Error(`スキル「${s.dirName}」の対象モデルが不正です（. だけの名前は使えません）`)
+      throw new InvalidInputError(`スキル「${s.dirName}」の対象モデルが不正です（. だけの名前は使えません）`)
     }
     return {
       dirName: s.dirName,

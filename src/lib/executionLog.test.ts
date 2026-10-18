@@ -2,7 +2,13 @@ import { promises as fs } from "fs"
 import os from "os"
 import path from "path"
 import { afterEach, describe, expect, it } from "vitest"
-import { deleteExecutionLog, getExecutionLogs, readExecutionLogs, saveSuggestedRulesFromLog } from "./executionLog"
+import {
+  deleteExecutionLog,
+  getExecutionLogs,
+  identifyLogs,
+  readExecutionLogs,
+  saveSuggestedRulesFromLog,
+} from "./executionLog"
 import { getRules } from "./rules"
 import { ProjectConfig } from "./types"
 
@@ -383,6 +389,107 @@ describe("欠けた項目のある実行ログ（手書き・他のツールが�
     await deleteExecutionLog(project, "5")
     const raw = JSON.parse(await fs.readFile(path.join(project.path, "execution_log.json"), "utf-8"))
     expect(raw).toEqual({ logs: [complete] })
+  })
+
+  describe("task_id が重なっているとき（数値の 5 と文字列の \"5\" など）", () => {
+    const ids = (logs: { task_id: string }[]) => logs.map((l) => l.task_id)
+
+    it("identifyLogs: 重複していなければ元の ID のまま。重複は1件目はそのまま、2件目以降に #2・#3 を付ける。ID を付けられない要素は含めない", () => {
+      expect(identifyLogs([{ task_id: "a" }, { task_id: "b" }])).toEqual([
+        { index: 0, id: "a" },
+        { index: 1, id: "b" },
+      ])
+      expect(identifyLogs([{ task_id: 5 }, { task_id: "5" }, { task_id: "x" }, { task_id: 5 }, null, { task_id: "" }])).toEqual([
+        { index: 0, id: "5" },
+        { index: 1, id: "5#2" },
+        { index: 2, id: "x" },
+        { index: 3, id: "5#3" },
+      ])
+    })
+
+    it("identifyLogs: 付ける ID が、ほかのエントリの task_id と同じになるときは、番号を進めて避ける。すべての ID が重ならない", () => {
+      const identified = identifyLogs([{ task_id: "5" }, { task_id: "5" }, { task_id: "5#2" }, { task_id: "5" }])
+      expect(identified.map((i) => i.id)).toEqual(["5", "5#3", "5#2", "5#4"])
+      expect(new Set(identified.map((i) => i.id)).size).toBe(identified.length)
+    })
+
+    it("同じ並びからは、いつも同じ ID になる（画面に出す ID と、削除に使う ID が同じ1件を指す）", () => {
+      const raw = [{ task_id: "a" }, { task_id: "a" }, { task_id: "b" }, { task_id: "a" }]
+      expect(identifyLogs(raw)).toEqual(identifyLogs([...raw]))
+    })
+
+    it("画面には同じ ID が2件並ばず、\"5\" と \"5#2\" になる。ファイルの task_id は変わらない", async () => {
+      const project = await makeProject()
+      const numeric = { task_id: 5, task_name: "数値の5", summary: "s" }
+      const text = { task_id: "5", task_name: "文字列の5", summary: "s" }
+      await writeLog(project, [numeric, complete, text])
+
+      const result = await readExecutionLogs(project)
+      expect(result.skipped).toBe(0)
+      expect(result.logs.map((l) => [l.task_id, l.task_name])).toEqual([
+        ["5", "数値の5"],
+        ["complete", "通常のログ"],
+        ["5#2", "文字列の5"],
+      ])
+      expect(JSON.parse(await fs.readFile(path.join(project.path, "execution_log.json"), "utf-8"))).toEqual({
+        logs: [numeric, complete, text],
+      })
+    })
+
+    it("\"5#2\" を削除すると、ファイルから消えるのは後の1件だけ。ほかの要素は削除前と同じ", async () => {
+      const project = await makeProject()
+      const first = { task_id: 5, task_name: "数値の5" }
+      const second = { task_id: "5", task_name: "文字列の5" }
+      const third = { task_id: "5", task_name: "3件目" }
+      const unreadable = { task_name: "task_id なし" }
+      await writeLog(project, [first, complete, second, unreadable, third])
+
+      await deleteExecutionLog(project, "5#2")
+
+      expect(JSON.parse(await fs.readFile(path.join(project.path, "execution_log.json"), "utf-8"))).toEqual({
+        logs: [first, complete, unreadable, third],
+      })
+      // 残りの ID は付け直される（3件目が #2 になる）
+      expect(ids((await readExecutionLogs(project)).logs)).toEqual(["5", "complete", "5#2"])
+    })
+
+    it("\"5\"（1件目）を削除しても、2件目以降は消えない", async () => {
+      const project = await makeProject()
+      const first = { task_id: 5, task_name: "数値の5" }
+      const second = { task_id: "5", task_name: "文字列の5" }
+      await writeLog(project, [first, second])
+
+      await deleteExecutionLog(project, "5")
+
+      expect(JSON.parse(await fs.readFile(path.join(project.path, "execution_log.json"), "utf-8"))).toEqual({ logs: [second] })
+    })
+
+    it("文字列どうしの重複も同じ。重複の無いログでは、ID に # が付かない", async () => {
+      const project = await makeProject()
+      await writeLog(project, [{ ...complete, task_id: "t" }, { ...complete, task_id: "t" }, { ...complete, task_id: "u" }])
+      expect(ids((await readExecutionLogs(project)).logs)).toEqual(["t", "t#2", "u"])
+
+      await writeLog(project, [{ ...complete, task_id: "t" }, { ...complete, task_id: "u" }])
+      expect(ids((await readExecutionLogs(project)).logs)).toEqual(["t", "u"])
+    })
+
+    it("存在しない重複 ID(\"5#3\" など)の削除は NotFound で、何も書き換えない", async () => {
+      const project = await makeProject()
+      await writeLog(project, [{ ...complete, task_id: "5" }, { ...complete, task_id: "5" }])
+      await expect(deleteExecutionLog(project, "5#3")).rejects.toThrow("指定されたタスクログが見つかりません")
+      expect((await fs.readdir(project.path)).filter((f) => f.includes(".ccd-backup."))).toEqual([])
+    })
+
+    it("保存するルールの候補も、画面に出した ID で引ける（\"5#2\" は2件目の候補を保存する）", async () => {
+      const project = await makeProject()
+      const rule = (category: string) => [{ category, content: `${category}の内容` }]
+      await writeLog(project, [
+        { ...complete, task_id: "5", suggested_new_rules: rule("一件目") },
+        { ...complete, task_id: 5, suggested_new_rules: rule("二件目") },
+      ])
+      expect(await saveSuggestedRulesFromLog(project, project, "5#2")).toBe(1)
+      expect((await getRules(project)).map((r) => r.category)).toEqual(["二件目"])
+    })
   })
 
   it("表示できない要素があるログから1件を削除しても、表示できない要素はファイルに残る", async () => {

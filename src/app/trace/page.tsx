@@ -29,11 +29,15 @@ export default function TracePage() {
     useExecutionLogs(analysisProjectId)
   const [manuallySelectedTaskId, setManuallySelectedTaskId] = useState<string | null>(null)
   const selectedTaskId = manuallySelectedTaskId ?? logs[0]?.task_id ?? null
+  // 提案ルールを保存したログ（分析対象・保存先・タスクの組）。別のログを選んで戻ってきても「保存済み」のまま、二重に保存させない
+  const [savedKeys, setSavedKeys] = useState<ReadonlySet<string>>(new Set())
+  const savedKeyOf = (taskId: string) => `${analysisProjectId}|${selectedProjectId}|${taskId}`
 
   async function handleSaveSuggestedRules(taskId: string) {
     // 保存先は「分析対象」ではなく、設定管理（TopBar）で選択中のプロジェクトのCLAUDE.md
     if (!selectedProjectId) throw new Error("保存先のプロジェクトが選択されていません")
     const count = await saveSuggestedRules(taskId, selectedProjectId)
+    setSavedKeys((prev) => new Set(prev).add(savedKeyOf(taskId)))
     await mutate()
     return count
   }
@@ -184,7 +188,9 @@ export default function TracePage() {
               )}
 
               <NextPromptPanel
+                key={selectedEntry.task_id}
                 entry={selectedEntry}
+                saved={savedKeys.has(savedKeyOf(selectedEntry.task_id))}
                 onSave={handleSaveSuggestedRules}
                 targetProjectName={selectedProject?.name}
               />

@@ -27,6 +27,7 @@ import {
   type TranscriptRef,
 } from "./desktopSessions"
 import { CliProcessWatcher, type CliProcessSource } from "./cliProcesses"
+import { DEFAULT_HOUSEKEEPING_THRESHOLDS, type HousekeepingThresholds } from "./housekeepingTypes"
 import type { SessionIdentity } from "./usageEstimate"
 import { getClaudeProjectsRoot } from "./sessionMonitor"
 import {
@@ -57,6 +58,8 @@ export interface DesktopSessionServiceOptions {
   cliProcesses?: CliProcessSource
   /** 組織図で、グループの指揮役を見つけるタイトルの接頭辞。省略時は DEFAULT_ORCHESTRATOR_PREFIX */
   orchestratorPrefix?: string
+  /** 整理ページ(⑦)の判定のしきい値。省略した項目は DEFAULT_HOUSEKEEPING_THRESHOLDS */
+  housekeeping?: Partial<HousekeepingThresholds>
 }
 
 /** 指揮役のタイトルの既定の接頭辞(設定ファイルの `orchestratorPrefix` で変えられる) */
@@ -354,6 +357,11 @@ export class DesktopSessionService {
     return this.opts.orchestratorPrefix ?? DEFAULT_ORCHESTRATOR_PREFIX
   }
 
+  /** 整理ページ(⑦)の判定のしきい値(設定ファイルの `housekeeping` で上書きした値) */
+  housekeepingThresholds(): HousekeepingThresholds {
+    return { ...DEFAULT_HOUSEKEEPING_THRESHOLDS, ...this.opts.housekeeping }
+  }
+
   /** コンテキストの上限(一覧と同じ、モデルごとの仮置き値。使用量が上限を超えていれば引き上げる) */
   contextLimitOf(model: string | null, tokens: number): number {
     return resolveContextLimit(model, tokens, this.opts.contextLimits)
@@ -514,6 +522,7 @@ export class DesktopSessionService {
       transcript: ref && digest ? "found" : "missing",
       digest: !digest ? "none" : digest.complete ? "full" : "partial",
       context,
+      lastAssistantAt: digest?.lastAssistantAt ?? null,
       phase,
       compactionCount: digest?.complete ? digest.compactionCount : null,
       latestInstruction: instruction
@@ -544,6 +553,20 @@ interface DesktopSessionConfigFile {
   runningWindowSec?: unknown
   pendingWindowSec?: unknown
   orchestratorPrefix?: unknown
+  housekeeping?: unknown
+}
+
+/** 設定ファイルの `housekeeping`(idleMinutes・minIdleTokens・unansweredMinutes)を読む。正の数でない項目は無視する */
+export function parseHousekeepingConfig(raw: Record<string, unknown>): Partial<HousekeepingThresholds> {
+  const positive = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : null)
+  const result: Partial<HousekeepingThresholds> = {}
+  const idleMinutes = positive(raw.idleMinutes)
+  if (idleMinutes !== null) result.idleMs = idleMinutes * 60_000
+  const minIdleTokens = positive(raw.minIdleTokens)
+  if (minIdleTokens !== null) result.minIdleTokens = minIdleTokens
+  const unansweredMinutes = positive(raw.unansweredMinutes)
+  if (unansweredMinutes !== null) result.unansweredMs = unansweredMinutes * 60_000
+  return result
 }
 
 async function loadConfigFile(): Promise<DesktopSessionServiceOptions> {
@@ -562,6 +585,9 @@ async function loadConfigFile(): Promise<DesktopSessionServiceOptions> {
   }
   if (typeof raw.highContextRatio === "number" && raw.highContextRatio > 0 && raw.highContextRatio <= 1) {
     options.highContextRatio = raw.highContextRatio
+  }
+  if (raw.housekeeping && typeof raw.housekeeping === "object") {
+    options.housekeeping = parseHousekeepingConfig(raw.housekeeping as Record<string, unknown>)
   }
   if (raw.contextLimits && typeof raw.contextLimits === "object") {
     const limits: ContextLimitOverrides = {}

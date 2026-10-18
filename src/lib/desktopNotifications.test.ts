@@ -31,6 +31,7 @@ function session(id: string, status: DesktopSessionStatus, overrides: Partial<De
     transcript: "found",
     digest: "full",
     context: null,
+    lastAssistantAt: null,
     phase: null,
     compactionCount: 0,
     latestInstruction: { excerpt: "会話の本文の抜粋(通知には含めない)", origin: "human", at: null },

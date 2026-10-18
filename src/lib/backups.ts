@@ -3,6 +3,7 @@ import path from "path"
 import { BACKUP_INFIX, backupFile, resolveProjectPath, resolveProjectRoot } from "./fileIO"
 import { parseFrontmatter } from "./frontmatter"
 import { BackupEntry, BackupKind, ProjectConfig } from "./types"
+import { InvalidInputError, NotFoundError } from "./errors"
 
 const TIMESTAMP_RE = /\.(\d{10,})$/
 const CCD_BACKUP_RE = new RegExp(`^(.+)${BACKUP_INFIX.replace(/\./g, "\\.")}(\\d{10,})$`)
@@ -165,22 +166,22 @@ export async function restoreBackup(
   location?: string
 ): Promise<void> {
   if (fileName.includes("/") || fileName.includes("\\") || fileName.includes("..")) {
-    throw new Error("不正なファイル名です")
+    throw new InvalidInputError("不正なファイル名です")
   }
   if (location !== undefined && (kind !== "ccd" || !isValidLocation(location))) {
-    throw new Error("不正な場所です")
+    throw new InvalidInputError("不正な場所です")
   }
 
   if (kind === "ccd") {
     const backup = (await listCcdBackups(project)).find((b) => b.fileName === fileName && b.location === location)
-    if (!backup || !backup.originalName) throw new Error("指定されたバックアップが見つかりません")
+    if (!backup || !backup.originalName) throw new NotFoundError("指定されたバックアップが見つかりません")
     await replaceFileKeepingBackup(path.join(backup.dir, backup.fileName), path.join(backup.dir, backup.originalName))
     return
   }
 
   const backups = await listBackups(project)
   if (!backups.some((b) => b.kind === "claude-json" && b.fileName === fileName)) {
-    throw new Error("指定されたバックアップが見つかりません")
+    throw new NotFoundError("指定されたバックアップが見つかりません")
   }
   const backupsDir = resolveProjectPath(project.path, "backups")
   await replaceFileKeepingBackup(path.join(backupsDir, fileName), claudeJsonPath(project))

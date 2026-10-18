@@ -1,6 +1,7 @@
 import path from "path"
 import { getAppDataRoot, isGlobalClaudeConfig, readJsonFile, writeJsonFile } from "./fileIO"
 import { ProjectConfig, ProjectsFile } from "./types"
+import { NotFoundError } from "./errors"
 
 const PROJECTS_CONFIG_PATH = path.join(getAppDataRoot(), "config", "projects.json")
 
@@ -56,7 +57,7 @@ export async function updateProject(
   const data = await getProjectsFile()
   const project = data.projects.find((p) => p.id === id)
   if (!project) {
-    throw new Error("指定されたプロジェクトが見つかりません")
+    throw new NotFoundError("指定されたプロジェクトが見つかりません")
   }
   if (updates.name !== undefined) project.name = updates.name
   if (updates.path !== undefined) project.path = updates.path
@@ -76,7 +77,7 @@ export async function removeProject(id: string): Promise<void> {
 export async function selectProject(id: string): Promise<void> {
   const data = await getProjectsFile()
   if (!data.projects.some((p) => p.id === id)) {
-    throw new Error("指定されたプロジェクトが見つかりません")
+    throw new NotFoundError("指定されたプロジェクトが見つかりません")
   }
   data.selectedProjectId = id
   await saveProjectsFile(data)

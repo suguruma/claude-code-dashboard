@@ -25,6 +25,7 @@ function session(id: string, overrides: Partial<DesktopSessionSummary> = {}): De
     transcript: "found",
     digest: "full",
     context: null,
+    lastAssistantAt: null,
     phase: null,
     compactionCount: 0,
     latestInstruction: null,

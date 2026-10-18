@@ -18,6 +18,7 @@
  *                 やりとりが無くて作業中のもの1。指揮役が作ったグループ外のセッション（2層目に出る）1。
  *                 木に出ないもの: 親が見つからないグループ外のセッション1・アーカイブ済み1
  *   別グループ:   指揮役1・子1。指示1・報告1。子が作ったグループ外のセッション1（3層目に出る）
+ *   判断待ち（整理ページ用。どのグループにも入っていない）4: 質問の回答待ち・要約が要対応・エラー・宛先不明の送信
  */
 import { appendFile, mkdir, rm, writeFile, utimes } from "node:fs/promises"
 import path from "node:path"
@@ -55,6 +56,11 @@ const S = {
   leaderB: 201,
   research: 202,
   sideB: 203, // 調査の子。グループの外（別グループの3層目に出る）
+  // 整理ページ（⑦）の確認用。どのグループにも入っていない、判断待ちのセッション
+  askUser: 301, // ユーザーへの質問の回答待ち（要対応）
+  blockedSummary: 302, // ターン後の要約が「要対応」（内容の先頭60文字が出る）
+  errored: 303, // エラーで止まっている
+  unreachable: 304, // 宛先の見つからない送信がある
 }
 
 /**
@@ -78,6 +84,10 @@ const SESSIONS = [
   { n: S.leaderB, title: "00_リーダー_別", group: GROUP_B, createdAgo: 600 },
   { n: S.research, title: "01_調査", group: GROUP_B, createdAgo: 590 },
   { n: S.sideB, title: "補助_別グループの下調べ", createdAgo: 500, parent: S.research },
+  { n: S.askUser, title: "判断_方針の確認待ち", createdAgo: 480 },
+  { n: S.blockedSummary, title: "判断_承認待ちの変更", createdAgo: 470, needsAction: "本番への反映を承認してください（合成のデータ）" },
+  { n: S.errored, title: "判断_エラーで停止", createdAgo: 460, error: "合成のエラー" },
+  { n: S.unreachable, title: "判断_宛先不明の送信", createdAgo: 450 },
 ]
 
 export function makeOrgChartSample(outDir, options = {}) {
@@ -207,6 +217,10 @@ export function makeOrgChartSample(outDir, options = {}) {
     [S.leaderB, "別グループの方針"],
     [S.research, "待機"],
     [S.sideB, "待機"],
+    [S.askUser, "方針を相談したい"],
+    [S.blockedSummary, "変更を進めてください"],
+    [S.errored, "処理を続けてください"],
+    [S.unreachable, "別のセッションへ連絡してください"],
   ]) {
     humanRow(n, 236, text)
   }
@@ -292,6 +306,21 @@ export function makeOrgChartSample(outDir, options = {}) {
   // ---- 別グループ ---------------------------------------------------------
   task({ child: S.research, ago: 100, text: "競合3社の価格を比べてください", tools: 10, workMin: 5, ctx: 120_000, perTool: 2_000, outcome: "report" })
 
+  // ---- 整理ページ（⑦）用: 判断待ちのセッション（どのグループにも入っていない）-----------------
+  // 回答待ち: ユーザーへの質問のツールを呼んだまま止まっている（要対応）
+  assistantRow(S.askUser, 150, 60_000, { tools: [{ name: "AskUserQuestion", input: { question: "合成の質問" } }] })
+  // 要約が「要対応」: ターンは終わり、Desktopが要対応と分類している（書き出しのときに要約をメタデータへ付ける）
+  assistantRow(S.blockedSummary, 100, 70_000)
+  // エラー: 最後の応答のあとでエラーが記録されている
+  assistantRow(S.errored, 90, 65_000)
+  // 宛先の見つからない送信: 届かなかった送信が1件ある
+  {
+    const id = nextId("toolu")
+    assistantRow(S.unreachable, 70, 55_000, { tools: [{ id, name: "SendMessage", input: { to: "synthetic-missing", message: "合成の送信" } }] })
+    toolResultRow(S.unreachable, 69.98, id, "No agent named synthetic-missing is reachable")
+    assistantRow(S.unreachable, 69.9, 55_000)
+  }
+
   // ---- 書き出し -----------------------------------------------------------
   const dataDir = path.join(outDir, "data")
   const projectsRoot = path.join(outDir, "projects")
@@ -339,6 +368,7 @@ export function makeOrgChartSample(outDir, options = {}) {
       const file = path.join(projectDir, `${cli(s.n)}.jsonl`)
       await writeFile(file, list.map((r) => JSON.stringify(r)).join("\n") + "\n", "utf-8")
       const last = list.length > 0 ? Date.parse(list[list.length - 1].timestamp) : now
+      const lastAssistantUuid = [...list].reverse().find((r) => r.type === "assistant")?.uuid
       await utimes(file, new Date(last), new Date(last))
       await writeFile(
         path.join(sessionsDir, `${sid(s.n)}.json`),
@@ -357,6 +387,16 @@ export function makeOrgChartSample(outDir, options = {}) {
           completedTurns: 5,
           // 親(そのセッションを作ったセッション)。実際のDesktopの形式に合わせ、sessionId のほかの項目も付ける(取り込まれない)
           ...(s.parent ? { spawnedFrom: { sessionId: sid(s.parent), taskId: "synthetic-task", title: "synthetic" }, sideSession: true } : {}),
+          // ターン後の要約が「要対応」(最後の応答に対応する要約)。内容の先頭60文字が、整理ページに出る
+          ...(s.needsAction
+            ? {
+                postTurnSummary: { status_category: "blocked", status_detail: "合成の詳細", needs_action: s.needsAction, summarizes_uuid: lastAssistantUuid },
+                postTurnSummaryFor: lastAssistantUuid,
+                lastAssistantUuid,
+              }
+            : {}),
+          // エラーの記録(最後の活動より後)
+          ...(s.error ? { error: s.error, errorAt: last + 1_000 } : {}),
         }),
         "utf-8"
       )
@@ -405,6 +445,37 @@ export function makeOrgChartSample(outDir, options = {}) {
         },
         notInTree: [sid(S.stray), sid(S.archived)],
         subWorking: sid(S.practiceD),
+      },
+      // 整理ページ（⑦）の期待値（現在時刻を基準にした、この合成データでの結果）。ID の並びは、画面の並び順
+      housekeeping: {
+        // コンテキスト整理の候補: [セッション, 理由, キャッシュ]。再開コスト（コンテキスト量×単価）の大きい順で、キャッシュが有効なものは最後
+        cleanup: [
+          [sid(S.verify), ["large", "idle"], "expired"],
+          [sid(S.leaderB), ["idle"], "expired"],
+          [sid(S.research), ["idle"], "expired"],
+          [sid(S.report), ["idle"], "expired"],
+          [sid(S.blockedSummary), ["idle"], "expired"],
+          [sid(S.helperB), ["idle"], "expired"],
+          [sid(S.errored), ["idle"], "expired"],
+          [sid(S.askUser), ["idle"], "expired"],
+          [sid(S.unreachable), ["idle"], "expired"],
+          [sid(S.docs), ["large"], "valid"],
+        ],
+        // 返事の来ていない指示（古い指示から）: [種類, 送り手, 宛先, 作業中]
+        unanswered: [
+          ["ended-without-report", sid(S.leaderA), sid(S.report), false],
+          ["possibly-undelivered", sid(S.leaderA), sid(S.docs), false],
+          ["ended-without-report", sid(S.leaderA), sid(S.verify), false],
+          ["awaiting-report", sid(S.leaderA), sid(S.screen), true],
+        ],
+        // 判断待ち: [セッション, 理由]
+        decisions: [
+          [sid(S.askUser), ["needs-action"]],
+          [sid(S.blockedSummary), ["needs-action"]],
+          [sid(S.verify), ["send-limit"]],
+          [sid(S.errored), ["error"]],
+          [sid(S.unreachable), ["undelivered"]],
+        ],
       },
       groupB: {
         leader: sid(S.leaderB),

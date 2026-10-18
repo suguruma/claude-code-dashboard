@@ -142,6 +142,28 @@ describe("コンテキスト・状態の手がかり", () => {
     expect(d.lastAssistantUuid).toBe("u1")
   })
 
+  it("lastAssistantAt: メインスレッドの最後の、使用量のある応答の時刻。サブエージェント・API エラーの代替応答・人の入力の行は含めない", () => {
+    const d = digestOf([
+      assistantRow({ input: 10, ts: tsAt(100) }),
+      humanRow("次の入力", { ts: tsAt(500) }),
+      assistantRow({ input: 999, sidechain: true, ts: tsAt(900) }),
+      assistantRow({ input: 1, model: "<synthetic>", apiError: true, ts: tsAt(950) }),
+    ])
+    expect(d.lastAssistantAt).toBe(Date.parse(tsAt(100)))
+    applyEntry(d, assistantRow({ input: 20, ts: tsAt(1000) }) as never)
+    expect(d.lastAssistantAt).toBe(Date.parse(tsAt(1000)))
+    // 応答が1つも無ければ null
+    expect(digestOf([humanRow("x", { ts: tsAt(1) })]).lastAssistantAt).toBeNull()
+  })
+
+  it("lastAssistantAt は、末尾だけの暫定の要約にも入る", async () => {
+    const rows = [humanRow("最初", { ts: tsAt(0) }), assistantRow({ input: 5, cacheRead: 1000, ts: tsAt(60) }), humanRow("次", { ts: tsAt(120) })]
+    const file = await tmpFile(toJsonl(rows))
+    const stat = await fs.stat(file)
+    const tail = await readTailDigest(file, stat.size, 4096)
+    expect(tail.lastAssistantAt).toBe(Date.parse(tsAt(60)))
+  })
+
   it("最後の行の種類と stop_reason を記録する", () => {
     expect(digestOf([humanRow("x")]).lastRow).toMatchObject({ role: "user", stopReason: null })
     expect(digestOf([assistantRow({ stop: "tool_use" })]).lastRow).toMatchObject({ role: "assistant", stopReason: "tool_use" })

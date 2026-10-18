@@ -117,6 +117,11 @@ export interface DesktopSessionSummary {
   /** 会話ログの解析状態。partial は末尾のみ解析した暫定値(圧縮回数・フェーズが不完全な場合がある) */
   digest: "full" | "partial" | "none"
   context: DesktopSessionContext | null
+  /**
+   * context の値を記録した応答の時刻(メインスレッドの最後の assistant の応答)。プロンプトキャッシュはここから数えて切れるので、
+   * 整理ページの「再開すると書き直すか」の判断に使う。会話ログが無い・応答がまだ無ければ null
+   */
+  lastAssistantAt: number | null
   phase: DesktopSessionPhase | null
   /** 圧縮の回数。会話ログを全体解析するまで null */
   compactionCount: number | null

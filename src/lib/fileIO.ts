@@ -1,9 +1,11 @@
 import { constants as fsConstants, promises as fs } from "fs"
 import os from "os"
 import path from "path"
+import { FileIOError } from "./errors"
 import { selectExpired } from "./retention"
 
-export class FileIOError extends Error {}
+// 既存の import 元(@/lib/fileIO)を変えずに使えるよう、エラーの定義は errors.ts に置いたまま再公開する
+export { FileIOError }
 
 export async function readJsonFile<T>(filePath: string, fallback: T): Promise<T> {
   try {

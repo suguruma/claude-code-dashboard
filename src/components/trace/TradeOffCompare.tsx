@@ -23,7 +23,7 @@ export function TradeOffCompare({ conflictPoint, tradeOffs }: TradeOffComparePro
           </Card>
           <Card className="border-amber-200 dark:border-amber-900">
             <CardContent className="pt-4">
-              <p className="text-xs font-medium text-amber-600 dark:text-amber-400 mb-1">案B</p>
+              <p className="text-xs font-medium text-amber-700 dark:text-amber-400 mb-1">案B</p>
               <p className="text-sm leading-relaxed">{t.option_b}</p>
             </CardContent>
           </Card>

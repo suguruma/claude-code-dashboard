@@ -11,6 +11,7 @@ import {
   ToolCallEvent,
   TokenPoint,
 } from "./types"
+import { NotFoundError } from "./errors"
 
 /**
  * Claude Codeのセッション実行ログ(`.jsonl`)が格納される場所。ダッシュボードで登録した
@@ -399,7 +400,7 @@ export async function getSessionMetrics(dirName: string, sessionId: string): Pro
   try {
     await fs.access(filePath)
   } catch {
-    throw new Error("セッションが見つかりません")
+    throw new NotFoundError("セッションが見つかりません")
   }
   return parseSessionFile(filePath)
 }

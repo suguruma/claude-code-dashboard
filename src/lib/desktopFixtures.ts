@@ -7,6 +7,7 @@
  */
 import { promises as fs } from "fs"
 import path from "path"
+import type { DesktopSessionSummary } from "./desktopSessionTypes"
 
 export const SENTINEL = "SENTINEL-DO-NOT-LEAK-7f3a9c"
 
@@ -322,4 +323,41 @@ export async function writeDesktopConfigs(
 export async function touch(file: string, nowMs: number, agoSec: number): Promise<void> {
   const t = new Date(nowMs - agoSec * 1000)
   await fs.utimes(file, t, t)
+}
+
+/** セッション一覧の1件（DesktopSessionSummary）のテスト用の組み立て。指定しない項目は、会話ログのない完了したセッション */
+export function makeSessionSummary(id: string, overrides: Partial<DesktopSessionSummary> = {}): DesktopSessionSummary {
+  return {
+    id,
+    title: `セッション${id}`,
+    cwd: null,
+    folderName: null,
+    model: "claude-opus-5-5",
+    effort: null,
+    permissionMode: null,
+    isArchived: false,
+    isRoutine: false,
+    pinned: false,
+    group: null,
+    status: "completed",
+    statusReason: "",
+    needsAction: false,
+    needsActionExcerpt: null,
+    createdAt: null,
+    lastActivityAt: null,
+    completedTurns: null,
+    transcript: "found",
+    digest: "full",
+    context: null,
+    lastAssistantAt: null,
+    phase: null,
+    compactionCount: 0,
+    latestInstruction: null,
+    latestInputOrigin: null,
+    queuedInputs: 0,
+    messaging: null,
+    cliProcess: "unknown",
+    spawnedFromId: null,
+    ...overrides,
+  }
 }

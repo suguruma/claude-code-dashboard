@@ -5,6 +5,7 @@ import { parseFrontmatter, serializeFrontmatter } from "./frontmatter"
 import { assertValidModelName } from "./skillArchivePaths"
 import { moveSkillToTrash } from "./skillTrash"
 import { ProjectConfig, SkillMeta } from "./types"
+import { ConflictError, InvalidInputError, NotFoundError } from "./errors"
 
 const VALID_NAME_RE = /^[a-zA-Z0-9_-]+$/
 
@@ -168,7 +169,7 @@ export async function getSkill(project: ProjectConfig, dirName: string): Promise
 
 export function validateSkillDirName(dirName: string): void {
   if (!VALID_NAME_RE.test(dirName)) {
-    throw new Error("スキル名は半角英数字・ハイフン・アンダースコアのみ使用できます")
+    throw new InvalidInputError("スキル名は半角英数字・ハイフン・アンダースコアのみ使用できます")
   }
 }
 
@@ -186,7 +187,7 @@ export async function createSkill(
   validateSkillDirName(input.dirName)
   if (input.targetModel) assertValidModelName(input.targetModel)
   const existing = await readSkill(project, input.dirName)
-  if (existing) throw new Error(`スキル "${input.dirName}" は既に存在します`)
+  if (existing) throw new ConflictError(`スキル "${input.dirName}" は既に存在します`)
 
   const now = new Date().toISOString()
   const skill: SkillMeta = {
@@ -222,9 +223,9 @@ export async function updateSkill(
   validateSkillDirName(dirName)
   if (patch.targetModel) assertValidModelName(patch.targetModel)
   const located = await locateSkillDir(project, dirName)
-  if (!located) throw new Error("スキルが見つかりません")
+  if (!located) throw new NotFoundError("スキルが見つかりません")
   const existing = await readSkillAt(located.dir, dirName, located.enabled)
-  if (!existing) throw new Error("スキルが見つかりません")
+  if (!existing) throw new NotFoundError("スキルが見つかりません")
 
   const updated: SkillMeta = {
     ...existing,
@@ -254,17 +255,17 @@ export async function renameSkill(
   validateSkillDirName(oldDirName)
   if (oldDirName === newDirName) {
     const existing = await readSkill(project, oldDirName)
-    if (!existing) throw new Error("スキルが見つかりません")
+    if (!existing) throw new NotFoundError("スキルが見つかりません")
     return existing
   }
 
   validateSkillDirName(newDirName)
   const located = await locateSkillDir(project, oldDirName)
-  if (!located) throw new Error("スキルが見つかりません")
+  if (!located) throw new NotFoundError("スキルが見つかりません")
   const existing = await readSkillAt(located.dir, oldDirName, located.enabled)
-  if (!existing) throw new Error("スキルが見つかりません")
+  if (!existing) throw new NotFoundError("スキルが見つかりません")
   const conflict = await readSkill(project, newDirName)
-  if (conflict) throw new Error(`スキル "${newDirName}" は既に存在します`)
+  if (conflict) throw new ConflictError(`スキル "${newDirName}" は既に存在します`)
 
   // 書き換える前に、今の SKILL.md を退避する。フォルダ名を変える前に作るので、退避ファイルはフォルダごと新しい名前へ移る。
   // 退避に失敗したときは例外になり、フォルダ名も SKILL.md も変えない
@@ -295,7 +296,7 @@ export async function renameSkill(
 export async function deleteSkill(project: ProjectConfig, dirName: string): Promise<void> {
   validateSkillDirName(dirName)
   const located = await locateSkillDir(project, dirName)
-  if (!located) throw new Error("スキルが見つかりません")
+  if (!located) throw new NotFoundError("スキルが見つかりません")
   await moveSkillToTrash(project, dirName, located.dir, located.enabled)
 }
 
@@ -303,8 +304,8 @@ export async function deleteSkill(project: ProjectConfig, dirName: string): Prom
 export async function disableSkill(project: ProjectConfig, dirName: string): Promise<SkillMeta> {
   validateSkillDirName(dirName)
   const located = await locateSkillDir(project, dirName)
-  if (!located) throw new Error("スキルが見つかりません")
-  if (!located.enabled) throw new Error("既に無効化されています")
+  if (!located) throw new NotFoundError("スキルが見つかりません")
+  if (!located.enabled) throw new ConflictError("既に無効化されています")
 
   const destDir = disabledSkillsDir(project)
   await fs.mkdir(destDir, { recursive: true })
@@ -320,8 +321,8 @@ export async function disableSkill(project: ProjectConfig, dirName: string): Pro
 export async function enableSkill(project: ProjectConfig, dirName: string): Promise<SkillMeta> {
   validateSkillDirName(dirName)
   const located = await locateSkillDir(project, dirName)
-  if (!located) throw new Error("スキルが見つかりません")
-  if (located.enabled) throw new Error("既に有効化されています")
+  if (!located) throw new NotFoundError("スキルが見つかりません")
+  if (located.enabled) throw new ConflictError("既に有効化されています")
 
   const destDir = skillsDir(project)
   await fs.mkdir(destDir, { recursive: true })

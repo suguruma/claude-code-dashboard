@@ -2,6 +2,7 @@ import {
   Activity,
   ArrowLeftRight,
   BrainCircuit,
+  BrushCleaning,
   Gauge,
   HelpCircle,
   Home,
@@ -67,6 +68,13 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: Gauge,
         description:
           "5時間・週・週のモデル別の利用上限のゲージと、誰が使っているかを見ます。公式値と、会話記録からの推定を並べます（読み取り専用）。",
+      },
+      {
+        href: "/desktop-sessions/housekeeping",
+        label: "整理",
+        icon: BrushCleaning,
+        description:
+          "コンテキストが大きい・長く止まっているセッション（再開すると上限をどれだけ使うかの目安つき）、返事の来ていない指示、あなたの判断を待っているセッションを、1画面にまとめます。対処はセッションを開いて行います（読み取り専用）。",
       },
     ],
   },

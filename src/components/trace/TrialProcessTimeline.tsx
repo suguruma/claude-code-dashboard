@@ -43,7 +43,7 @@ export function TrialProcessTimeline({ steps }: TrialProcessTimelineProps) {
                 {s.action}
               </p>
               {isProblem && s.note && (
-                <p className="text-xs text-red-600/90 dark:text-red-400/90">{s.note}</p>
+                <p className="text-xs text-[var(--status-critical-text)]">{s.note}</p>
               )}
             </div>
           </li>

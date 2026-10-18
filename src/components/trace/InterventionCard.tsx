@@ -14,7 +14,7 @@ export function InterventionCard({ intervention }: InterventionCardProps) {
           <p className="font-medium text-red-700 dark:text-red-300">
             Step {intervention.step}: 「{intervention.user_input}」
           </p>
-          <p className="text-red-600/90 dark:text-red-400/90 text-xs">
+          <p className="text-xs text-[var(--status-critical-text)]">
             原因分析: {intervention.cause_analysis}
           </p>
         </div>

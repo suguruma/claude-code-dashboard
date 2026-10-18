@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { FileIOError } from "@/lib/fileIO"
+import { errorResponse } from "@/lib/apiHelpers"
 import { getSessionMetrics } from "@/lib/sessionMonitor"
 import { readSessionSemanticDiagnosis } from "@/lib/sessionSemanticDiagnosis"
 
@@ -15,10 +15,6 @@ export async function GET(
     const diagnosis = await readSessionSemanticDiagnosis(metrics.summary.cwd, sessionId)
     return NextResponse.json({ diagnosis })
   } catch (err) {
-    if (err instanceof FileIOError) {
-      return NextResponse.json({ error: err.message }, { status: 500 })
-    }
-    const message = err instanceof Error ? err.message : "予期しないエラーが発生しました"
-    return NextResponse.json({ error: message }, { status: 404 })
+    return errorResponse(err)
   }
 }

@@ -95,7 +95,7 @@ export function LogList({ logs, selectedTaskId, onSelect, onDelete }: LogListPro
               )}
             </div>
             {log.user_interventions.length > 0 && (
-              <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+              <p className="mt-1 text-xs text-[var(--status-critical-text)]">
                 介入 {log.user_interventions.length}件
               </p>
             )}

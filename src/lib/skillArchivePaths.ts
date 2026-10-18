@@ -1,3 +1,4 @@
+import { InvalidInputError } from "./errors"
 /**
  * スキルのアーカイブ(`skills-archive/<モデル>/<スキル名>`)の、フォルダ名の決め方。fs に触れない純粋な関数だけを置く
  * (サーバー側の skillArchive.ts と、画面の文言が同じ決め方を使うため)。
@@ -16,7 +17,7 @@ export function isDotOnlyName(name: string): boolean {
 
 /** モデル名が、アーカイブのフォルダ名として使えない（`.` だけの名前）なら例外にする。モデル名を受け取る入口・書き込む側で使う */
 export function assertValidModelName(model: string): void {
-  if (isDotOnlyName(model)) throw new Error("不正なモデル名です（. だけの名前は使えません）")
+  if (isDotOnlyName(model)) throw new InvalidInputError("不正なモデル名です（. だけの名前は使えません）")
 }
 
 /**

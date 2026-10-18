@@ -4,6 +4,7 @@ import { BACKUP_INFIX, FileIOError, pruneDirBackups, resolveProjectPath } from "
 import { parseFrontmatter } from "./frontmatter"
 import { UNSET_MODEL_DIR, assertValidModelName, sanitizeModelDirName } from "./skillArchivePaths"
 import { ArchivedSkillVersion, ProjectConfig } from "./types"
+import { InvalidInputError, NotFoundError } from "./errors"
 
 /**
  * 切り替え前の自動退避のフォルダ名の区切り。`<スキル名>.switch-backup.<epoch ms>` を、モデルのフォルダの中に作る。
@@ -20,7 +21,7 @@ const SKILL_MD_BACKUP_RE = new RegExp(`^SKILL\\.md${BACKUP_INFIX.replace(/\./g, 
  */
 function assertSafeDirName(dirName: string): void {
   if (!dirName || dirName === "." || dirName === ".." || /[\\/]/.test(dirName)) {
-    throw new Error("不正なスキル名です")
+    throw new InvalidInputError("不正なスキル名です")
   }
 }
 
@@ -183,7 +184,7 @@ export async function archiveCurrentVersion(
   assertSafeDirName(dirName)
   const activePath = activeSkillPath(project, dirName)
   if (!(await pathExists(path.join(activePath, "SKILL.md")))) {
-    throw new Error("スキルが見つかりません")
+    throw new NotFoundError("スキルが見つかりません")
   }
   const model = (await readTargetModel(activePath)) ?? ""
   const destPath = archivedSkillPath(project, model, dirName)
@@ -214,14 +215,14 @@ export async function restoreArchivedVersion(
   assertSafeDirName(dirName)
   assertValidModelName(model)
   if (switchBackupAt !== undefined && !/^\d{10,}$/.test(String(switchBackupAt))) {
-    throw new Error("不正な退避の指定です")
+    throw new InvalidInputError("不正な退避の指定です")
   }
   const activePath = activeSkillPath(project, dirName)
   const modelArchivePath = archivedSkillPath(project, model, dirName)
   const sourcePath =
     switchBackupAt === undefined ? modelArchivePath : `${modelArchivePath}${SWITCH_BACKUP_INFIX}${switchBackupAt}`
   if (!(await pathExists(path.join(sourcePath, "SKILL.md")))) {
-    throw new Error("指定されたモデルのアーカイブが見つかりません")
+    throw new NotFoundError("指定されたモデルのアーカイブが見つかりません")
   }
 
   let prune: (() => Promise<unknown>) | null = null

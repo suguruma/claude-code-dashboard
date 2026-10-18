@@ -5,7 +5,7 @@ import { getClaudeProjectsRoot } from "./sessionMonitor"
 import { getDesktopSessionService } from "./desktopSessionService"
 import { FIVE_HOUR_MS, USAGE_NOTE, WEEK_MS, buildContributions, buildUsage, type SessionIdentity } from "./usageEstimate"
 import { UsageLedger } from "./usageLedger"
-import { PriceBook, parsePriceOverrides } from "./usagePricing"
+import { PriceBook, parsePriceOverrides, type PriceResolution } from "./usagePricing"
 import { defaultSnapshotsPath, readSnapshots, type SnapshotReadResult } from "./usageSnapshots"
 import type { UsagePrice, UsageResponse } from "./usageTypes"
 
@@ -61,6 +61,11 @@ export class UsageService {
     // 読めなかったときは、更新時刻を覚えず、次の取得で読み直す
     if (result.found) this.snapshotCache = { mtimeMs: stat.mtimeMs, size: stat.size, result }
     return result
+  }
+
+  /** モデルの単価(設定ファイルの上書きを含む価格表から引く)。整理ページ(⑦)が再開コストを出すために使う */
+  priceOf(model: string): PriceResolution {
+    return this.prices.resolve(model)
   }
 
   async get(): Promise<UsageResponse> {

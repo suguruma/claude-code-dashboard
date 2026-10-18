@@ -9,20 +9,20 @@ import { ExecutionLogEntry } from "@/lib/types"
 
 interface NextPromptPanelProps {
   entry: ExecutionLogEntry
+  /** このログの提案ルールを、もう保存したか（保存したログを選び直しても、二重に保存させない） */
+  saved: boolean
   onSave: (taskId: string) => Promise<number>
   /** ルールの保存先プロジェクト名（分析対象とは別の、設定管理で選択中のプロジェクト） */
   targetProjectName?: string | null
 }
 
-export function NextPromptPanel({ entry, onSave, targetProjectName }: NextPromptPanelProps) {
+export function NextPromptPanel({ entry, saved, onSave, targetProjectName }: NextPromptPanelProps) {
   const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
 
   async function handleSave() {
     setSaving(true)
     try {
       const count = await onSave(entry.task_id)
-      setSaved(true)
       toast.success(`新規ルールを${count}件 CLAUDE.md に保存しました`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "保存に失敗しました")
@@ -58,14 +58,19 @@ export function NextPromptPanel({ entry, onSave, targetProjectName }: NextPrompt
       )}
 
       <div className="flex items-center gap-2">
-        <Button
-          size="sm"
-          onClick={handleSave}
-          disabled={saving || saved || entry.suggested_new_rules.length === 0}
-        >
-          {saved ? <Check className="size-4" /> : null}
-          {saved ? "保存済み" : "このルールを保存"}
-        </Button>
+        {/* 押せない(無効の)ボタンは文字が薄くなりコントラストが足りないので、状態は文字で示す。保存できるときだけボタンを出す */}
+        {saved ? (
+          <span className="inline-flex items-center gap-1 text-sm font-medium">
+            <Check className="size-4" aria-hidden />
+            保存済み
+          </span>
+        ) : entry.suggested_new_rules.length > 0 ? (
+          <Button size="sm" onClick={handleSave} disabled={saving}>
+            {saving ? "保存中..." : "このルールを保存"}
+          </Button>
+        ) : (
+          <span className="text-xs text-muted-foreground">保存できる新規ルールはありません</span>
+        )}
         {targetProjectName && (
           <span className="text-xs text-muted-foreground">保存先: {targetProjectName}</span>
         )}

@@ -65,6 +65,12 @@ export interface TranscriptDigest {
   /** メインスレッドの最後の assistant 行の uuid(ターン後の要約との突き合わせに使う) */
   lastAssistantUuid: string | null
   context: { tokens: number; model: string | null } | null
+  /**
+   * context の値を記録した応答(メインスレッドの最後の、使用量のある assistant 行)の時刻。
+   * プロンプトキャッシュはこの時刻から数えて切れるので、再開時にコンテキストを書き直すか(整理ページ)の判断に使う。
+   * サブエージェントの行・API エラーの代替応答は含めない
+   */
+  lastAssistantAt: number | null
   model: string | null
   effort: string | null
   permissionMode: string | null
@@ -101,6 +107,7 @@ export function createDigest(): TranscriptDigest {
     lastRow: null,
     lastAssistantUuid: null,
     context: null,
+    lastAssistantAt: null,
     model: null,
     effort: null,
     permissionMode: null,
@@ -466,7 +473,10 @@ export function applyEntry(d: TranscriptDigest, entry: RawEntry): void {
           (usage.input_tokens ?? 0) +
           (usage.cache_read_input_tokens ?? 0) +
           (usage.cache_creation_input_tokens ?? 0)
-        if (tokens > 0) d.context = { tokens, model: typeof message?.model === "string" ? message.model : d.model }
+        if (tokens > 0) {
+          d.context = { tokens, model: typeof message?.model === "string" ? message.model : d.model }
+          if (at !== null) d.lastAssistantAt = at
+        }
       }
       if (Array.isArray(message?.content)) {
         for (const block of message.content) {

@@ -3,6 +3,14 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react"
 import type { DesktopSessionSummary } from "@/lib/desktopSessionTypes"
 import { wirePaths, type Rect } from "@/lib/flowLayout"
+import {
+  SENDER_ONLY,
+  applySpec,
+  lineLabelSpec,
+  particleSpec,
+  receiptConfirmedSpec,
+  type FlowDir,
+} from "@/lib/flowParticleSpec"
 import { particleRadius, type MemberState } from "@/lib/flowPlayback"
 import type { FlowEvent, FlowMember } from "@/lib/flowTypes"
 import { OrgCard, type CardFx } from "./OrgCard"
@@ -59,7 +67,7 @@ interface Particle {
   label: HTMLDivElement
   path: SVGPathElement
   container: HTMLElement
-  dir: "down" | "up" | "cross"
+  dir: FlowDir
   start: number
   duration: number
   length: number
@@ -126,10 +134,6 @@ class ParticleEngine {
 }
 
 const NO_SUBS: Record<string, OrgNode[]> = {}
-
-const DIR_COLOR = { down: "var(--flow-down)", up: "var(--flow-up)", cross: "var(--flow-cross)" } as const
-/** 粒とラベルの `data-kind`(確認用の属性): 下向き=指示、上向き=報告 */
-const KIND_OF_DIR = { down: "instruct", up: "report", cross: "cross" } as const
 
 /** 組織図の本体: 指揮役のカードを上に、子のカードを下に並べ、肘型の線と、指示・報告の粒を重ねる */
 export function OrgChartCanvas({
@@ -256,18 +260,10 @@ export function OrgChartCanvas({
         onDone()
         return
       }
-      const color = DIR_COLOR[dir]
       path.setAttribute("data-hot", dir)
+      // 属性・スタイルは flowParticleSpec が決める（ここは要素を作って当てはめるだけ）
       const label = document.createElement("div")
-      label.className =
-        "pointer-events-none absolute z-[3] whitespace-nowrap rounded-md border bg-card px-1.5 py-0.5 text-[11px] text-foreground shadow-sm"
-      label.style.borderColor = color
-      if (senderOnly) label.style.borderStyle = "dashed"
-      label.dataset.testid = "org-line-label"
-      label.dataset.kind = KIND_OF_DIR[dir]
-      label.dataset.pathKey = key
-      if (senderOnly) label.dataset.receipt = "sender-only"
-      label.textContent = labelText
+      applySpec(label, lineLabelSpec({ dir, pathKey: key, senderOnly, text: labelText }))
       container.appendChild(label)
 
       const length = path.getTotalLength()
@@ -283,21 +279,7 @@ export function OrgChartCanvas({
       }
 
       const el = document.createElementNS(SVG_NS, "circle")
-      el.setAttribute("r", radius.toFixed(1))
-      el.setAttribute("class", "org-particle")
-      el.dataset.testid = "org-particle"
-      el.dataset.kind = KIND_OF_DIR[dir]
-      el.dataset.pathKey = key
-      if (senderOnly) {
-        el.dataset.receipt = "sender-only"
-        el.style.fill = "var(--card)"
-        el.style.stroke = color
-        el.style.strokeWidth = "2"
-        el.style.strokeDasharray = "2 2"
-      } else {
-        el.style.fill = color
-      }
-      el.style.color = color
+      applySpec(el, particleSpec({ dir, pathKey: key, radius, senderOnly }))
       group.appendChild(el)
       engine.current ??= new ParticleEngine()
       engine.current.add({
@@ -321,18 +303,9 @@ export function OrgChartCanvas({
   const confirmReceipt = useCallback((key: string, summary: string) => {
     const container = containerRef.current
     if (!container) return
-    for (const el of container.querySelectorAll<HTMLElement | SVGElement>('[data-receipt="sender-only"]')) {
+    for (const el of container.querySelectorAll<HTMLElement | SVGElement>(`[data-receipt="${SENDER_ONLY}"]`)) {
       if (el.dataset.pathKey !== key) continue
-      delete el.dataset.receipt
-      if (el.dataset.testid === "org-line-label") {
-        el.textContent = summary || "指示"
-        el.style.borderStyle = "solid"
-      } else {
-        el.style.fill = DIR_COLOR.down
-        el.style.stroke = ""
-        el.style.strokeWidth = ""
-        el.style.strokeDasharray = ""
-      }
+      applySpec(el, receiptConfirmedSpec(el.dataset.testid, summary))
     }
   }, [])
 

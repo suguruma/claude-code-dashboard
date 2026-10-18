@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse } from "@/lib/apiHelpers"
 import { removeProject, updateProject } from "@/lib/projects"
 
 export const dynamic = "force-dynamic"
@@ -21,8 +22,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const project = await updateProject(id, updates)
     return NextResponse.json(project)
   } catch (err) {
-    const message = err instanceof Error ? err.message : "プロジェクトの更新に失敗しました"
-    return NextResponse.json({ error: message }, { status: 400 })
+    return errorResponse(err, { fallbackStatus: 400, fallbackMessage: "プロジェクトの更新に失敗しました" })
   }
 }
 
@@ -32,7 +32,6 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     await removeProject(id)
     return NextResponse.json({ ok: true })
   } catch (err) {
-    const message = err instanceof Error ? err.message : "プロジェクトの削除に失敗しました"
-    return NextResponse.json({ error: message }, { status: 500 })
+    return errorResponse(err, { fallbackMessage: "プロジェクトの削除に失敗しました" })
   }
 }

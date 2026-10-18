@@ -1,6 +1,7 @@
 import { parseClaudeMd, serializeClaudeMd } from "./claudeMdParser"
 import { backupFile, readTextFile, resolveProjectPath, writeTextFile } from "./fileIO"
 import { ProjectConfig, Rule } from "./types"
+import { ConflictError, NotFoundError } from "./errors"
 
 async function readParsed(project: ProjectConfig) {
   const claudeMdPath = resolveProjectPath(project.path, "CLAUDE.md")
@@ -46,7 +47,7 @@ export async function updateRule(
 ): Promise<Rule> {
   const { claudeMdPath, preamble, rules } = await readParsed(project)
   const idx = rules.findIndex((r) => r.id === id)
-  if (idx === -1) throw new Error("ルールが見つかりません")
+  if (idx === -1) throw new NotFoundError("ルールが見つかりません")
   rules[idx] = { ...rules[idx], ...patch }
   await persist(claudeMdPath, preamble, rules)
   return rules[idx]
@@ -69,11 +70,11 @@ export async function reorderRules(project: ProjectConfig, orderedIds: string[])
   const byId = new Map(rules.map((r) => [r.id, r]))
   const uniqueOrderedIds = new Set(orderedIds)
   if (orderedIds.length !== rules.length || uniqueOrderedIds.size !== rules.length) {
-    throw new Error("並び替え対象のルール一覧が現在の内容と一致しません。画面を再読み込みしてください")
+    throw new ConflictError("並び替え対象のルール一覧が現在の内容と一致しません。画面を再読み込みしてください")
   }
   const reordered = orderedIds.map((id) => {
     const rule = byId.get(id)
-    if (!rule) throw new Error("並び替え対象のルール一覧が現在の内容と一致しません。画面を再読み込みしてください")
+    if (!rule) throw new ConflictError("並び替え対象のルール一覧が現在の内容と一致しません。画面を再読み込みしてください")
     return rule
   })
   await persist(claudeMdPath, preamble, reordered)

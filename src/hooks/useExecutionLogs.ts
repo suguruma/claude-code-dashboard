@@ -18,7 +18,7 @@ export function useExecutionLogs(projectId: string | null) {
   async function saveSuggestedRules(taskId: string, targetProjectId?: string): Promise<number> {
     if (!projectId) throw new Error("プロジェクトが選択されていません")
     const res = await apiMutate<{ ok: boolean; savedCount: number }>(
-      `/api/execution-log/${taskId}/suggested-rules?projectId=${encodeURIComponent(projectId)}`,
+      `/api/execution-log/${encodeURIComponent(taskId)}/suggested-rules?projectId=${encodeURIComponent(projectId)}`,
       "POST",
       targetProjectId ? { targetProjectId } : undefined
     )
@@ -28,7 +28,7 @@ export function useExecutionLogs(projectId: string | null) {
   async function deleteLog(taskId: string): Promise<void> {
     if (!projectId) throw new Error("プロジェクトが選択されていません")
     await apiMutate<{ ok: boolean }>(
-      `/api/execution-log/${taskId}?projectId=${encodeURIComponent(projectId)}`,
+      `/api/execution-log/${encodeURIComponent(taskId)}?projectId=${encodeURIComponent(projectId)}`,
       "DELETE"
     )
     await mutate()

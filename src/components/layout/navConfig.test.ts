@@ -19,12 +19,13 @@ describe("サイドバーの項目", () => {
     expect(new Set(items.map((i) => i.label)).size).toBe(items.length)
   })
 
-  it("Claude Desktop の画面は、見たい内容ごとに3ページに分かれ、グループにまとまっている", () => {
+  it("Claude Desktop の画面は、見たい内容ごとに4ページに分かれ、グループにまとまっている", () => {
     const group = NAV_GROUPS.find((g) => g.label === "Claude Desktop")
     expect(group?.items.map((i) => [i.href, i.label])).toEqual([
       ["/desktop-sessions", "セッション一覧"],
       ["/desktop-sessions/org", "組織図"],
       ["/desktop-sessions/usage", "利用上限"],
+      ["/desktop-sessions/housekeeping", "整理"],
     ])
     // 各ページの見出しの下に出す説明がある
     expect(group?.items.every((i) => (i.description ?? "").length > 0)).toBe(true)
@@ -34,6 +35,7 @@ describe("サイドバーの項目", () => {
     expect(findNavItem("/desktop-sessions")?.label).toBe("セッション一覧")
     expect(findNavItem("/desktop-sessions/org")?.label).toBe("組織図")
     expect(findNavItem("/desktop-sessions/usage")?.label).toBe("利用上限")
+    expect(findNavItem("/desktop-sessions/housekeeping")?.label).toBe("整理")
     expect(findNavItem("/help")?.label).toBe(HELP_ITEM.label)
     expect(findNavItem("/no-such-page")).toBeNull()
   })
