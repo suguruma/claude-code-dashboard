@@ -1,6 +1,7 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { Suspense, useMemo, useState } from "react"
+import { useSearchParams } from "next/navigation"
 import { ChevronRight } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -29,9 +30,20 @@ import { SkillSubagentUsage } from "@/components/sessionMonitor/SkillSubagentUsa
 import { CompactionTimeline } from "@/components/sessionMonitor/CompactionTimeline"
 
 export default function SessionMonitorPage() {
+  // useSearchParams を使うため、静的生成時のためにSuspenseで包む
+  return (
+    <Suspense fallback={<p className="text-sm text-muted-foreground">読み込み中...</p>}>
+      <SessionMonitorContent />
+    </Suspense>
+  )
+}
+
+function SessionMonitorContent() {
   const { projects, isLoading: projectsLoading, error: projectsError } = useSessionProjects()
-  const [manuallySelectedDir, setManuallySelectedDir] = useState<string | null>(null)
-  const [manuallySelectedSession, setManuallySelectedSession] = useState<string | null>(null)
+  // Desktopセッション画面からの遷移(?dir=...&session=...)で、対象のセッションを最初から選択する
+  const searchParams = useSearchParams()
+  const [manuallySelectedDir, setManuallySelectedDir] = useState<string | null>(searchParams.get("dir"))
+  const [manuallySelectedSession, setManuallySelectedSession] = useState<string | null>(searchParams.get("session"))
   const [live, setLive] = useState(false)
   const [detailOpen, setDetailOpen] = useState(false)
 

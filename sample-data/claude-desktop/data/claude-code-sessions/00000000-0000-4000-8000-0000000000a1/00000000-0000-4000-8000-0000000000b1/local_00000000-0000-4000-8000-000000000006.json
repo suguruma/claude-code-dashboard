@@ -1,0 +1,29 @@
+{
+  "sessionId": "local_00000000-0000-4000-8000-000000000006",
+  "cliSessionId": "11111111-1111-4111-8111-000000000006",
+  "cwd": "C:\\sample-projects\\no-log",
+  "originCwd": "C:\\sample-projects\\no-log",
+  "createdAt": 1792000006000,
+  "lastActivityAt": 1792010800000,
+  "model": "claude-sonnet-5-5",
+  "effort": "medium",
+  "isArchived": false,
+  "title": "サンプル: 会話ログなし",
+  "permissionMode": "acceptEdits",
+  "completedTurns": 2,
+  "enabledMcpTools": [
+    "（合成データ）APIでは返さない項目"
+  ],
+  "promptAppendSnapshot": "（合成データ）システムプロンプトの写しの代わり",
+  "toolSurfaceSnapshot": {
+    "tools": []
+  },
+  "sessionPermissionUpdates": [],
+  "postTurnSummary": {
+    "status_category": "review_ready",
+    "status_detail": "（合成データ）状態の説明",
+    "needs_action": "",
+    "summarizes_uuid": "22222222-2222-4222-8222-000000000609"
+  },
+  "postTurnSummaryFor": "22222222-2222-4222-8222-000000000609"
+}

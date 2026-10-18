@@ -60,6 +60,11 @@ describe("getPreviewBlockReason", () => {
     expect(getPreviewBlockReason(p("Claude_samplepackage", "LocalCache", "Roaming", "Claude", "config.json"))).not.toBeNull()
   })
 
+  it("~/.claude 配下の会話ログ(.jsonl)は拒否し、それ以外の場所の .jsonl は許可する", () => {
+    expect(getPreviewBlockReason(p(".claude", "projects", "-sample", "session.jsonl"))).not.toBeNull()
+    expect(getPreviewBlockReason(p("notes", "data.jsonl"))).toBeNull()
+  })
+
   it(".git/config は拒否する", () => {
     expect(getPreviewBlockReason(p(".git", "config"))).not.toBeNull()
   })

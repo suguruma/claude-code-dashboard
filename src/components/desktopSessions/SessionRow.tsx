@@ -1,0 +1,112 @@
+import { Archive, CalendarClock, Folder, ListChecks, MessageSquareText, Pin, Users } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { cn } from "@/lib/utils"
+import type { DesktopSessionSummary } from "@/lib/desktopSessionTypes"
+import { ContextBar } from "./ContextBar"
+import { DesktopStatusBadge } from "./statusMeta"
+import { ORIGIN_LABEL, formatAgo } from "./format"
+
+interface SessionRowProps {
+  session: DesktopSessionSummary
+  highContextRatio: number
+  onSelect: (id: string) => void
+}
+
+export function SessionRow({ session: s, highContextRatio, onSelect }: SessionRowProps) {
+  const instruction = s.latestInstruction
+  // 人の指示を表示している間に、他セッション・通知からの入力が届いていたら、その旨を添える
+  const newerOtherInput =
+    instruction?.origin === "human" && s.latestInputOrigin !== null && s.latestInputOrigin !== "human"
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(s.id)}
+      className={cn(
+        "w-full rounded-lg border p-3 text-left transition-colors hover:border-primary",
+        s.isArchived && "opacity-60"
+      )}
+    >
+      <div className="grid gap-x-4 gap-y-2 md:grid-cols-[minmax(0,1fr)_240px]">
+        <div className="min-w-0 space-y-1.5">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <DesktopStatusBadge status={s.status} reason={s.statusReason} />
+            <span className="min-w-0 truncate text-sm font-medium">{s.title}</span>
+            {s.pinned && <Pin className="size-3.5 shrink-0 text-muted-foreground" aria-label="ピン留め" />}
+            {s.group && (
+              <Badge variant="secondary" className="shrink-0">
+                {s.group.name}
+              </Badge>
+            )}
+            {s.isRoutine && (
+              <Badge variant="outline" className="shrink-0">
+                <CalendarClock aria-hidden />
+                定期実行
+              </Badge>
+            )}
+            {s.isArchived && (
+              <Badge variant="outline" className="shrink-0">
+                <Archive aria-hidden />
+                アーカイブ済み
+              </Badge>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+            {s.folderName && (
+              <span className="inline-flex items-center gap-1" title={s.cwd ?? undefined}>
+                <Folder className="size-3" aria-hidden />
+                {s.folderName}
+              </span>
+            )}
+            {s.model && <span>{s.model}</span>}
+            {s.effort && <span>エフォート {s.effort}</span>}
+            {s.permissionMode && <span>権限 {s.permissionMode}</span>}
+            {s.completedTurns !== null && <span>{s.completedTurns}ターン</span>}
+            <span>最終活動 {formatAgo(s.lastActivityAt)}</span>
+            {s.queuedInputs > 0 && <span>待機中の入力 {s.queuedInputs}件</span>}
+          </div>
+
+          {instruction ? (
+            <p className="flex min-w-0 items-start gap-1.5 text-xs">
+              <MessageSquareText className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+              {instruction.origin !== "human" && (
+                <Badge variant="outline" className="shrink-0">
+                  <Users aria-hidden />
+                  {ORIGIN_LABEL[instruction.origin]}
+                </Badge>
+              )}
+              <span className="min-w-0 truncate">{instruction.excerpt || "（本文なし）"}</span>
+              {newerOtherInput && s.latestInputOrigin && (
+                <span className="shrink-0 text-muted-foreground">
+                  ／その後に{ORIGIN_LABEL[s.latestInputOrigin]}からの入力あり
+                </span>
+              )}
+            </p>
+          ) : (
+            s.transcript === "missing" && (
+              <p className="text-xs text-muted-foreground">会話ログが見つからないため、指示・フェーズは表示できません。</p>
+            )
+          )}
+        </div>
+
+        <div className="min-w-0 space-y-2">
+          <ContextBar context={s.context} highRatio={highContextRatio} />
+          {s.phase && (
+            <p className="flex min-w-0 items-center gap-1.5 text-xs">
+              <ListChecks className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+              <span className="shrink-0 tabular-nums">
+                {s.phase.completed}/{s.phase.total}
+              </span>
+              {s.phase.currentStep && (
+                <span className="min-w-0 truncate text-muted-foreground" title={s.phase.currentStep}>
+                  {s.phase.currentStep}
+                </span>
+              )}
+            </p>
+          )}
+        </div>
+      </div>
+    </button>
+  )
+}
