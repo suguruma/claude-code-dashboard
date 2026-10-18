@@ -3,6 +3,7 @@ import os from "os"
 import path from "path"
 import { afterEach, describe, expect, it } from "vitest"
 import {
+  WRAP_UP_TOOL,
   advanceDigest,
   applyEntry,
   applyLine,
@@ -65,6 +66,25 @@ describe("最新の指示", () => {
     expect(d.latestInput?.excerpt).toBe("他からの依頼")
   })
 
+  it("他セッション由来の行は isMeta が付く形式でも指示として拾う(タグなしの文字列)", () => {
+    const peerRow = {
+      ...humanRow("別セッションからの依頼です", { origin: { kind: "peer", from: "local_x" }, turnOrigin: "peer" }),
+      isMeta: true,
+    }
+    const d = digestOf([humanRow("人の指示"), peerRow])
+    expect(d.latestInput).toMatchObject({ origin: "peer", excerpt: "別セッションからの依頼です" })
+    expect(d.latestHuman?.excerpt).toBe("人の指示")
+    // 人の指示が無くても、他セッションの指示が最新の指示になる
+    expect(digestOf([peerRow]).latestInput?.origin).toBe("peer")
+  })
+
+  it("isMeta の除外は peer 以外にだけ効く(人・通知の isMeta 行は指示にしない)", () => {
+    const metaHuman = { ...humanRow("メタな人の行"), isMeta: true }
+    const metaNotification = { ...humanRow("通知"), origin: { kind: "task-notification" }, isMeta: true }
+    expect(digestOf([metaHuman]).latestInput).toBeNull()
+    expect(digestOf([metaNotification]).latestInput).toBeNull()
+  })
+
   it("通知由来は発信元だけを残し、本文の抜粋は保持しない", () => {
     const d = digestOf([humanRow("<task-notification>done</task-notification>", { origin: { kind: "task-notification" } })])
     expect(d.latestInput).toMatchObject({ origin: "notification", excerpt: "" })
@@ -110,6 +130,26 @@ describe("コンテキスト・状態の手がかり", () => {
     expect(digestOf([humanRow("x")]).lastRow).toMatchObject({ role: "user", stopReason: null })
     expect(digestOf([assistantRow({ stop: "tool_use" })]).lastRow).toMatchObject({ role: "assistant", stopReason: "tool_use" })
     expect(digestOf([assistantRow({ stop: "end_turn" })]).lastRow).toMatchObject({ role: "assistant", stopReason: "end_turn" })
+  })
+
+  it("最後の行で呼んだツールの名前と、ツール結果の行がどのツールの結果かを記録する", () => {
+    const d = digestOf([
+      assistantRow({ stop: "tool_use", tools: [{ name: "Bash", input: { command: "x" }, id: "toolu_a" }, { name: "AskUserQuestion", input: {}, id: "toolu_b" }] }),
+    ])
+    expect(d.lastRow?.toolNames).toEqual(["Bash", "AskUserQuestion"])
+    applyEntry(d, toolResultRow({ toolUseId: "toolu_a" }) as never)
+    expect(d.lastRow).toMatchObject({ role: "user", resultOf: "Bash", toolNames: [] })
+    applyEntry(d, humanRow("ふつうの入力") as never)
+    expect(d.lastRow?.resultOf).toBeNull()
+  })
+
+  it("圧縮の直後は、次の応答が来るまで圧縮後のトークン量をコンテキスト量にする", () => {
+    const d = digestOf([assistantRow({ input: 1, cacheRead: 700_000, uuid: "a1" })])
+    expect(d.context?.tokens).toBe(700_001)
+    applyEntry(d, compactRow(tsAt(5)) as never)
+    expect(d.context?.tokens).toBe(100)
+    applyEntry(d, assistantRow({ input: 50, cacheRead: 150, uuid: "a2" }) as never)
+    expect(d.context?.tokens).toBe(200)
   })
 
   it("圧縮の回数・直近の時刻と、待機中の入力の数を数える", () => {
@@ -185,8 +225,68 @@ describe("タスクリスト(フェーズ)", () => {
     applyEntry(d, update({ taskId: "2", status: "completed" }) as never)
     applyEntry(d, create("三") as never)
     expect(d.tasks?.map((t) => t.content)).toEqual(["三"])
-    applyEntry(d, update({ taskId: "3", status: "deleted" }) as never)
+    // 新しい一覧のIDは1から始まる
+    expect(d.tasks?.[0].id).toBe("1")
+    applyEntry(d, update({ taskId: "1", status: "deleted" }) as never)
     expect(d.tasks).toEqual([])
+  })
+
+  it("wrap_up を呼んだら、完了していないステップをすべて完了にする(その後に update_plan は来ない)", () => {
+    const d = digestOf([
+      planRow({ items: [{ content: "a", status: "completed" }, { content: "b", status: "in_progress" }, { content: "c", status: "pending" }] }),
+    ])
+    expect(d.tasks?.map((t) => t.status)).toEqual(["completed", "in_progress", "pending"])
+    applyEntry(d, assistantRow({ stop: "tool_use", tools: [{ name: WRAP_UP_TOOL, input: { recap: "終わりました" } }] }) as never)
+    expect(d.tasks?.map((t) => t.status)).toEqual(["completed", "completed", "completed"])
+  })
+
+  it("wrap_up はタスクリストが無くても何も起こさず、サブエージェントの wrap_up は反映しない", () => {
+    const wrap = (o = {}) => assistantRow({ stop: "tool_use", tools: [{ name: WRAP_UP_TOOL, input: { recap: "x" } }], ...o })
+    expect(() => digestOf([wrap()])).not.toThrow()
+    expect(digestOf([wrap()]).tasks).toBeNull()
+    const d = digestOf([planRow({ items: [{ content: "a", status: "in_progress" }] }), wrap({ sidechain: true })])
+    expect(d.tasks?.[0].status).toBe("in_progress")
+  })
+
+  it("旧CLIのタスクIDは、ツール結果の「Task #N created」で確定する(新しい一覧でIDが1に戻っても追従する)", () => {
+    const create = (subject: string, id: string) =>
+      assistantRow({ stop: "tool_use", tools: [{ name: "TaskCreate", input: { subject, description: "d", activeForm: "f" }, id }] })
+    const created = (id: string, n: number, subject: string) =>
+      toolResultRow({ toolUseId: id, text: `Task #${n} created successfully: ${subject}` })
+    const update = (taskId: string, status: string) =>
+      assistantRow({ stop: "tool_use", tools: [{ name: "TaskUpdate", input: { taskId, status }, id: `toolu_u${taskId}${status}` }] })
+
+    const d = digestOf([
+      // 1つ目の一覧(ID 1,2)
+      create("一", "toolu_c1"), created("toolu_c1", 1, "一"),
+      create("二", "toolu_c2"), created("toolu_c2", 2, "二"),
+      update("1", "completed"), update("2", "completed"),
+      // 全完了のあとの新しい一覧は、IDが1から始まる
+      create("新一", "toolu_c3"), created("toolu_c3", 1, "新一"),
+      create("新二", "toolu_c4"), created("toolu_c4", 2, "新二"),
+      update("1", "completed"), update("2", "in_progress"),
+    ])
+    expect(d.tasks?.map((t) => [t.id, t.content, t.status])).toEqual([
+      ["1", "新一", "completed"],
+      ["2", "新二", "in_progress"],
+    ])
+  })
+
+  it("ツール結果のIDが仮の番号とずれていても、結果の番号を優先する", () => {
+    const d = digestOf([
+      assistantRow({ stop: "tool_use", tools: [{ name: "TaskCreate", input: { subject: "ずれたタスク" }, id: "toolu_x" }] }),
+      toolResultRow({ toolUseId: "toolu_x", text: "Task #7 created successfully: ずれたタスク" }),
+      assistantRow({ stop: "tool_use", tools: [{ name: "TaskUpdate", input: { taskId: "7", status: "in_progress" } }] }),
+      assistantRow({ stop: "tool_use", tools: [{ name: "TaskCreate", input: { subject: "次" }, id: "toolu_y" }] }),
+    ])
+    expect(d.tasks?.map((t) => [t.id, t.status])).toEqual([["7", "in_progress"], ["8", "pending"]])
+  })
+
+  it("結果の行が来ていなくても(末尾だけの読み取り等)、一覧を作り直すときは仮の番号を1に戻す", () => {
+    const create = (subject: string) => assistantRow({ stop: "tool_use", tools: [{ name: "TaskCreate", input: { subject } }] })
+    const update = (taskId: string, status: string) => assistantRow({ stop: "tool_use", tools: [{ name: "TaskUpdate", input: { taskId, status } }] })
+    const d = digestOf([create("一"), create("二"), update("1", "completed"), update("2", "completed"), create("新一"), update("1", "in_progress")])
+    expect(d.tasks?.map((t) => [t.id, t.content, t.status])).toEqual([["1", "新一", "in_progress"]])
   })
 
   it("task_reminder の内容でタスクリストを同期する(空の通知は無視)", () => {

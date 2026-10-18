@@ -10,6 +10,7 @@ export const EXTENDED_CONTEXT_LIMIT = 1_000_000
 
 const DEFAULT_LIMIT_TABLE: Array<{ prefix: string; limit: number }> = [
   { prefix: "claude-haiku", limit: 200_000 },
+  { prefix: "claude-opus-4-8", limit: EXTENDED_CONTEXT_LIMIT },
   { prefix: "claude-opus-5", limit: EXTENDED_CONTEXT_LIMIT },
   { prefix: "claude-sonnet-5", limit: EXTENDED_CONTEXT_LIMIT },
   { prefix: "claude-fable-5", limit: EXTENDED_CONTEXT_LIMIT },

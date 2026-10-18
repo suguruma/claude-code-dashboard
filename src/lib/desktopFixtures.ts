@@ -43,6 +43,7 @@ export interface MetaOptions {
   createdAt?: number
   completedTurns?: number
   error?: string
+  errorAt?: number
   scheduledTaskId?: string
   noCliSessionId?: boolean
 }
@@ -82,6 +83,7 @@ export function makeMeta(o: MetaOptions): Record<string, unknown> {
   }
   if (o.lastAssistantUuid) meta.lastAssistantUuid = o.lastAssistantUuid
   if (o.error) meta.error = o.error
+  if (o.errorAt !== undefined) meta.errorAt = o.errorAt
   if (o.scheduledTaskId) meta.scheduledTaskId = o.scheduledTaskId
   return meta
 }
@@ -112,12 +114,15 @@ export function humanRow(text: string, o: RowOptions & { origin?: Record<string,
   }
 }
 
-export function toolResultRow(o: RowOptions = {}) {
+export function toolResultRow(o: RowOptions & { toolUseId?: string; text?: string } = {}) {
   return {
     type: "user",
     timestamp: o.ts ?? tsAt(0),
     isSidechain: o.sidechain ?? false,
-    message: { role: "user", content: [{ type: "tool_result", tool_use_id: "toolu_fake", content: "ok" }] },
+    message: {
+      role: "user",
+      content: [{ type: "tool_result", tool_use_id: o.toolUseId ?? "toolu_fake", content: o.text ?? "ok" }],
+    },
   }
 }
 
@@ -128,7 +133,7 @@ export interface AssistantOptions extends RowOptions {
   cacheCreation?: number
   model?: string
   effort?: string
-  tools?: Array<{ name: string; input: Record<string, unknown> }>
+  tools?: Array<{ name: string; input: Record<string, unknown>; id?: string }>
   text?: string
   apiError?: boolean
 }
@@ -136,7 +141,7 @@ export interface AssistantOptions extends RowOptions {
 export function assistantRow(o: AssistantOptions = {}) {
   const content: Array<Record<string, unknown>> = []
   if (o.text) content.push({ type: "text", text: o.text })
-  for (const tool of o.tools ?? []) content.push({ type: "tool_use", id: "toolu_fake", name: tool.name, input: tool.input })
+  for (const tool of o.tools ?? []) content.push({ type: "tool_use", id: tool.id ?? "toolu_fake", name: tool.name, input: tool.input })
   return {
     type: "assistant",
     uuid: o.uuid,

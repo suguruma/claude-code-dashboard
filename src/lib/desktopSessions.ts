@@ -38,6 +38,8 @@ export interface DesktopMeta {
   lastAssistantUuid: string | null
   /** Desktopがエラーを記録しているか(内容は保持しない) */
   hasError: boolean
+  /** エラーを記録した時刻。回復後もエラーの記録が残るため、その後に活動があったかの判断に使う */
+  errorAt: number | null
 }
 
 export interface DesktopGroup {
@@ -193,6 +195,7 @@ export function projectMeta(raw: unknown): DesktopMeta | null {
     summaryFor: str(r.postTurnSummaryFor) ?? str(summary?.summarizes_uuid),
     lastAssistantUuid: str(r.lastAssistantUuid),
     hasError: typeof r.error === "string" ? r.error.length > 0 : r.error != null && r.error !== false,
+    errorAt: num(r.errorAt),
   }
 }
 
@@ -332,13 +335,11 @@ export function extractSidebarPrefs(epitaxyPrefs: unknown): SidebarPrefs {
     }
   }
 
+  // ピン留めの判定は starred-local-code-sessions だけ。dframe-local-slice.pinnedOrder は並び順のための情報で、
+  // ピン留めの有無を表さない(読まない)
   const starred = prefs["starred-local-code-sessions"]
   if (Array.isArray(starred)) {
     for (const id of starred) if (typeof id === "string") result.pinned.add(stripCodePrefix(id))
-  }
-  const pinnedOrder = asObject(prefs["dframe-local-slice"])?.pinnedOrder
-  if (Array.isArray(pinnedOrder)) {
-    for (const id of pinnedOrder) if (typeof id === "string") result.pinned.add(stripCodePrefix(id))
   }
   return result
 }

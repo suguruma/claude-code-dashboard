@@ -364,3 +364,97 @@ describe("DesktopSessionService.detail", () => {
     expect(await service(fx).detail("local_does-not-exist")).toBeNull()
   })
 })
+
+describe("実データとの照合で見つかった不具合の修正(合成データ)", () => {
+  /** 会話の時刻を NOW 基準にする(状態の推定は会話の行の時刻を使うため) */
+  const at = (agoSec: number) => new Date(NOW - agoSec * 1000).toISOString()
+
+  it("他セッションからの指示(isMeta付きのpeer行)が最新の入力として表示され、人の指示は優先して残る", async () => {
+    const fx = await fixture()
+    await writeMeta(fx, makeMeta({ n: 1, title: "peerあり", category: "completed", summaryFor: fakeUuid(1) }))
+    const peer = {
+      ...humanRow("別セッションからの連絡です", { ts: at(7000), origin: { kind: "peer", from: "local_other" }, turnOrigin: "peer" }),
+      isMeta: true,
+    }
+    const t = await writeTranscript(fx, fakeCliId(1), [
+      humanRow("人の指示", { ts: at(9000) }),
+      peer,
+      assistantRow({ stop: "end_turn", uuid: fakeUuid(1), ts: at(6900) }),
+    ])
+    await touch(t, NOW, 6900)
+    const svc = service(fx)
+    await svc.list()
+    await svc.settle()
+    const s = (await svc.list()).sessions[0]
+    expect(s.latestInstruction).toMatchObject({ origin: "human", excerpt: "人の指示" })
+    expect(s.latestInputOrigin).toBe("peer")
+
+    // 人の指示が無いセッションでは、他セッションの指示がそのまま最新の指示になる
+    await writeMeta(fx, makeMeta({ n: 2, title: "peerのみ", category: "completed", summaryFor: fakeUuid(2) }))
+    const t2 = await writeTranscript(fx, fakeCliId(2), [peer, assistantRow({ stop: "end_turn", uuid: fakeUuid(2), ts: at(6900) })])
+    await touch(t2, NOW, 6900)
+    // 時計を固定しているため、会話ログの所在キャッシュを使わないよう新しいサービスで取得する
+    const only = (await service(fx).list()).sessions.find((x) => x.title === "peerのみ")!
+    expect(only.latestInstruction).toMatchObject({ origin: "peer", excerpt: "別セッションからの連絡です" })
+  })
+
+  it("wrap_up で終わったセッションは、最後のステップが実行中のまま残らず、要約が無くても中断扱いにならない", async () => {
+    const fx = await fixture()
+    await writeMeta(fx, makeMeta({ n: 1, title: "wrap_upで終了", category: null as never }))
+    const t = await writeTranscript(fx, fakeCliId(1), [
+      humanRow("依頼", { ts: at(9000) }),
+      planRow({ items: [{ content: "調査", status: "completed" }, { content: "報告", status: "in_progress" }] }, { ts: at(8900) }),
+      assistantRow({ stop: "tool_use", ts: at(8800), tools: [{ name: "mcp__ccd_turn__wrap_up", input: { recap: "完了" }, id: "toolu_wrap" }] }),
+      toolResultRow({ toolUseId: "toolu_wrap", ts: at(8790) }),
+    ])
+    await touch(t, NOW, 8790)
+    const svc = service(fx)
+    await svc.list()
+    await svc.settle()
+    const s = (await svc.list()).sessions[0]
+    expect(s.phase).toEqual({ completed: 2, total: 2, currentStep: null })
+    expect(s.status).toBe("waiting")
+  })
+
+  it("AskUserQuestion の回答待ちは、何日経っても中断ではなく要対応になる", async () => {
+    const fx = await fixture()
+    await writeMeta(fx, makeMeta({ n: 1, title: "質問中", category: "completed", summaryFor: "old" }))
+    const t = await writeTranscript(fx, fakeCliId(1), [
+      humanRow("依頼", { ts: at(86_400 * 5) }),
+      assistantRow({ stop: "tool_use", ts: at(86_400 * 5 - 10), tools: [{ name: "AskUserQuestion", input: { questions: [] }, id: "toolu_q" }] }),
+    ])
+    await touch(t, NOW, 86_400 * 5)
+    const svc = service(fx)
+    const s = (await svc.list()).sessions[0]
+    expect(s.status).toBe("blocked")
+    expect(s.statusReason).toContain("回答待ち")
+  })
+
+  it("エラーの記録より後に活動があれば、エラー表示を解除する", async () => {
+    const fx = await fixture()
+    const base = { hasError: true }
+    await writeMeta(fx, makeMeta({ n: 1, title: "回復済み", category: "completed", summaryFor: fakeUuid(1), error: "e", errorAt: NOW - 7200_000, lastActivityAt: NOW - 600_000 }))
+    await writeMeta(fx, makeMeta({ n: 2, title: "エラーのまま", category: "completed", summaryFor: fakeUuid(2), error: "e", errorAt: NOW - 7200_000, lastActivityAt: NOW - 7200_000 }))
+    for (const n of [1, 2]) {
+      const t = await writeTranscript(fx, fakeCliId(n), [humanRow("x", { ts: at(7300) }), assistantRow({ stop: "end_turn", uuid: fakeUuid(n), ts: at(7200) })])
+      await touch(t, NOW, 7200)
+    }
+    expect(base.hasError).toBe(true)
+    const list = await service(fx).list()
+    expect(list.sessions.find((x) => x.title === "回復済み")!.status).toBe("completed")
+    expect(list.sessions.find((x) => x.title === "エラーのまま")!.status).toBe("error")
+  })
+
+  it("実測が60万トークンを超えるclaude-opus-4-8は1M上限として約6割と表示し、300%にならない", async () => {
+    const fx = await fixture()
+    await writeMeta(fx, makeMeta({ n: 1, title: "大きな会話", model: "claude-opus-4-8", category: "completed", summaryFor: fakeUuid(1) }))
+    const t = await writeTranscript(fx, fakeCliId(1), [
+      humanRow("依頼", { ts: at(7300) }),
+      assistantRow({ stop: "end_turn", uuid: fakeUuid(1), ts: at(7200), model: "claude-opus-4-8", input: 7_659, cacheRead: 600_000 }),
+    ])
+    await touch(t, NOW, 7200)
+    const s = (await service(fx).list()).sessions[0]
+    expect(s.context).toMatchObject({ tokens: 607_659, limit: 1_000_000 })
+    expect(Math.round(s.context!.ratio * 100)).toBe(61)
+  })
+})

@@ -16,6 +16,7 @@ import type {
 export const INSTRUCTION_EXCERPT_CHARS = 60
 const STEP_MAX_CHARS = 80
 const MAX_TASKS = 200
+const MAX_PENDING = 64
 /** 暫定の要約のために読む末尾のバイト数 */
 export const TAIL_BYTES = 512 * 1024
 const CHUNK_BYTES = 1024 * 1024
@@ -40,7 +41,16 @@ export interface DigestLastRow {
   /** ユーザーによる中断(`[Request interrupted by user`)の行 */
   interrupted: boolean
   at: number | null
+  /** assistantのみ。この行で呼び出したツールの名前 */
+  toolNames: string[]
+  /** userのみ。この行が結果を返しているツールの名前(ツール結果の行でなければ null) */
+  resultOf: string | null
 }
+
+/** ターンの終わりを宣言するツール。呼ぶとタスクリストの残りは完了になる */
+export const WRAP_UP_TOOL = "mcp__ccd_turn__wrap_up"
+/** ユーザーの回答を待つツール。呼び出したまま止まっているのは、中断ではなく回答待ち */
+export const ASK_USER_TOOLS = ["AskUserQuestion", "ExitPlanMode"]
 
 export interface TranscriptDigest {
   /** ファイルの先頭から読んだ要約なら true。末尾だけの暫定なら false */
@@ -61,6 +71,10 @@ export interface TranscriptDigest {
   lastCompactionAt: number | null
   tasks: DigestTask[] | null
   legacyNextId: number
+  /** 結果が来るまで、TaskCreate のIDを仮の番号で持っているタスク(tool_use_id → タスク) */
+  pendingCreates: Map<string, DigestTask>
+  /** 直近のツール呼び出し(tool_use_id → ツール名)。ツール結果がどのツールのものかを知るために持つ */
+  recentTools: Map<string, string>
   queued: number
   /** 人が書いた直近の指示 */
   latestHuman: DigestInstruction | null
@@ -85,6 +99,8 @@ export function createDigest(): TranscriptDigest {
     lastCompactionAt: null,
     tasks: null,
     legacyNextId: 1,
+    pendingCreates: new Map(),
+    recentTools: new Map(),
     queued: 0,
     latestHuman: null,
     latestInput: null,
@@ -102,8 +118,11 @@ export function makeExcerpt(text: string, maxChars: number): string {
 interface RawBlock {
   type?: string
   text?: string
+  id?: string
   name?: string
   input?: unknown
+  tool_use_id?: string
+  content?: unknown
 }
 
 interface RawEntry {
@@ -125,6 +144,7 @@ interface RawEntry {
   customTitle?: string
   aiTitle?: string
   attachment?: { type?: string; content?: unknown }
+  compactMetadata?: { postTokens?: unknown }
   message?: {
     model?: string
     stop_reason?: string | null
@@ -170,13 +190,26 @@ function originOf(entry: RawEntry): InstructionOrigin {
   }
 }
 
-/** userの行から、ツール結果ではない発言の本文を取り出す。ツール結果の行は toolResult:true */
-function userText(content: RawBlock[] | string | undefined): { text: string | null; toolResult: boolean } {
-  if (typeof content === "string") return { text: content, toolResult: false }
-  if (!Array.isArray(content)) return { text: null, toolResult: false }
-  if (content.some((b) => b.type === "tool_result")) return { text: null, toolResult: true }
+/** userの行から、ツール結果ではない発言の本文を取り出す。ツール結果の行は toolResults に結果のブロックを返す */
+function userText(content: RawBlock[] | string | undefined): {
+  text: string | null
+  toolResults: RawBlock[]
+} {
+  if (typeof content === "string") return { text: content, toolResults: [] }
+  if (!Array.isArray(content)) return { text: null, toolResults: [] }
+  const toolResults = content.filter((b) => b.type === "tool_result")
+  if (toolResults.length > 0) return { text: null, toolResults }
   const block = content.find((b) => b.type === "text" && typeof b.text === "string")
-  return { text: block?.text ?? null, toolResult: false }
+  return { text: block?.text ?? null, toolResults: [] }
+}
+
+/** ツール結果の本文(文字列、または text ブロックの配列)を1つの文字列にする */
+function resultText(content: unknown): string {
+  if (typeof content === "string") return content
+  if (!Array.isArray(content)) return ""
+  return content
+    .map((b) => (b && typeof b === "object" && typeof (b as RawBlock).text === "string" ? (b as RawBlock).text : ""))
+    .join("\n")
 }
 
 // ---------------------------------------------------------------------------
@@ -218,19 +251,28 @@ function applyPlanInput(d: TranscriptDigest, input: Record<string, unknown>): vo
   }
 }
 
-function applyLegacyTaskTool(d: TranscriptDigest, name: string, input: Record<string, unknown>): void {
+function applyLegacyTaskTool(
+  d: TranscriptDigest,
+  name: string,
+  input: Record<string, unknown>,
+  toolUseId: string | undefined
+): void {
   if (name === "TaskCreate") {
     const subject = typeof input.subject === "string" ? input.subject : ""
-    // 前の計画がすべて完了していたら、新しい計画の始まりとみなして一覧を作り直す
-    if (!d.tasks || d.tasks.every((t) => t.status === "completed")) d.tasks = []
-    if (d.tasks.length < MAX_TASKS) {
-      d.tasks.push({
-        id: String(d.legacyNextId),
-        content: makeExcerpt(subject, STEP_MAX_CHARS),
-        status: "pending",
-      })
+    // 前の計画がすべて完了していたら、新しい計画の始まりとみなして一覧を作り直す。
+    // タスクのIDは新しい一覧で1に戻るため、仮の番号も1から数え直す
+    if (!d.tasks || d.tasks.every((t) => t.status === "completed")) {
+      d.tasks = []
+      d.legacyNextId = 1
     }
+    // IDはツール結果の「Task #N created」で確定する。結果が来るまでは仮の番号を使う
+    const task: DigestTask = { id: String(d.legacyNextId), content: makeExcerpt(subject, STEP_MAX_CHARS), status: "pending" }
+    if (d.tasks.length < MAX_TASKS) d.tasks.push(task)
     d.legacyNextId++
+    if (toolUseId) {
+      d.pendingCreates.set(toolUseId, task)
+      if (d.pendingCreates.size > MAX_PENDING) d.pendingCreates.delete(d.pendingCreates.keys().next().value as string)
+    }
     return
   }
   if (name === "TaskUpdate" && d.tasks) {
@@ -244,6 +286,24 @@ function applyLegacyTaskTool(d: TranscriptDigest, name: string, input: Record<st
     if (typeof input.status === "string") d.tasks[idx].status = normalizeStatus(input.status)
     if (typeof input.subject === "string") d.tasks[idx].content = makeExcerpt(input.subject, STEP_MAX_CHARS)
   }
+}
+
+/** wrap_up はターンの終わりの宣言。完了していないステップはすべて完了として扱う */
+function completeAllTasks(d: TranscriptDigest): void {
+  if (!d.tasks) return
+  for (const t of d.tasks) t.status = "completed"
+}
+
+/** TaskCreate の結果(`Task #N created successfully`)から、タスクのIDを確定する */
+function resolveCreatedTaskId(d: TranscriptDigest, block: RawBlock): void {
+  if (!block.tool_use_id) return
+  const task = d.pendingCreates.get(block.tool_use_id)
+  if (!task) return
+  d.pendingCreates.delete(block.tool_use_id)
+  const match = /Task #(\d+)/.exec(resultText(block.content))
+  if (!match) return
+  task.id = match[1]
+  d.legacyNextId = Number(match[1]) + 1
 }
 
 function applyTaskReminder(d: TranscriptDigest, content: unknown): void {
@@ -271,11 +331,18 @@ export function applyEntry(d: TranscriptDigest, entry: RawEntry): void {
     case "user": {
       if (entry.isSidechain) return
       if (typeof entry.permissionMode === "string") d.permissionMode = entry.permissionMode
-      const { text, toolResult } = userText(entry.message?.content)
+      const { text, toolResults } = userText(entry.message?.content)
       const interrupted = text !== null && text.startsWith(INTERRUPT_MARK)
-      d.lastRow = { role: "user", stopReason: null, interrupted, at }
-      if (toolResult || entry.isMeta || entry.isCompactSummary || text === null || interrupted) return
+      let resultOf: string | null = null
+      for (const result of toolResults) {
+        if (result.tool_use_id) resultOf = d.recentTools.get(result.tool_use_id) ?? resultOf
+        resolveCreatedTaskId(d, result)
+      }
+      d.lastRow = { role: "user", stopReason: null, interrupted, at, toolNames: [], resultOf }
+      if (toolResults.length > 0 || entry.isCompactSummary || text === null || interrupted) return
       const origin = originOf(entry)
+      // 他セッションからの入力(peer)は、システムが差し込む形式のため isMeta が付く。peer だけは指示として扱う
+      if (entry.isMeta && origin !== "peer") return
       if (origin === "human" && (SYSTEM_WRAPPER.test(text) || text.startsWith(CONTINUATION_MARK))) return
       const body = origin === "peer" ? text.replace(/^<[^>]*>\s*/, "") : text
       const instruction: DigestInstruction = {
@@ -291,7 +358,8 @@ export function applyEntry(d: TranscriptDigest, entry: RawEntry): void {
       if (entry.isSidechain) return
       const message = entry.message
       const stopReason = message?.stop_reason ?? null
-      d.lastRow = { role: "assistant", stopReason, interrupted: false, at }
+      const toolNames: string[] = []
+      d.lastRow = { role: "assistant", stopReason, interrupted: false, at, toolNames, resultOf: null }
       if (typeof entry.uuid === "string") d.lastAssistantUuid = entry.uuid
       if (typeof entry.effort === "string") d.effort = entry.effort
       const synthetic = entry.isApiErrorMessage === true || message?.model === "<synthetic>"
@@ -307,11 +375,19 @@ export function applyEntry(d: TranscriptDigest, entry: RawEntry): void {
       if (Array.isArray(message?.content)) {
         for (const block of message.content) {
           if (block.type !== "tool_use" || typeof block.name !== "string") continue
+          toolNames.push(block.name)
+          if (typeof block.id === "string") {
+            d.recentTools.set(block.id, block.name)
+            if (d.recentTools.size > MAX_PENDING) d.recentTools.delete(d.recentTools.keys().next().value as string)
+          }
+          if (block.name === WRAP_UP_TOOL) completeAllTasks(d)
           const input =
             block.input && typeof block.input === "object" ? (block.input as Record<string, unknown>) : null
           if (!input) continue
           if (block.name === "mcp__ccd_turn__update_plan") applyPlanInput(d, input)
-          else if (block.name === "TaskCreate" || block.name === "TaskUpdate") applyLegacyTaskTool(d, block.name, input)
+          else if (block.name === "TaskCreate" || block.name === "TaskUpdate") {
+            applyLegacyTaskTool(d, block.name, input, block.id)
+          }
         }
       }
       return
@@ -320,6 +396,9 @@ export function applyEntry(d: TranscriptDigest, entry: RawEntry): void {
       if (entry.subtype === "compact_boundary") {
         d.compactionCount++
         d.lastCompactionAt = at
+        // 圧縮の直後は、次の応答が来るまで使用量が分からない。圧縮後の量を仮の値にする
+        const postTokens = entry.compactMetadata?.postTokens
+        if (typeof postTokens === "number" && postTokens > 0) d.context = { tokens: postTokens, model: d.model }
       }
       return
     }

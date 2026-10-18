@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { inferStatus } from "./desktopSessionStatus"
 import type { DesktopMeta } from "./desktopSessions"
-import { createDigest, type DigestLastRow, type TranscriptDigest } from "./transcriptDigest"
+import { WRAP_UP_TOOL, createDigest, type DigestLastRow, type TranscriptDigest } from "./transcriptDigest"
 
 const NOW = 1_000_000_000_000
 
@@ -24,13 +24,16 @@ function meta(overrides: Partial<DesktopMeta> = {}): DesktopMeta {
     summaryFor: null,
     lastAssistantUuid: null,
     hasError: false,
+    errorAt: null,
     ...overrides,
   }
 }
 
 function digest(lastRow: Partial<DigestLastRow> | null, lastAssistantUuid: string | null = null): TranscriptDigest {
   const d = createDigest()
-  d.lastRow = lastRow ? { role: "assistant", stopReason: "end_turn", interrupted: false, at: null, ...lastRow } : null
+  d.lastRow = lastRow
+    ? { role: "assistant", stopReason: "end_turn", interrupted: false, at: null, toolNames: [], resultOf: null, ...lastRow }
+    : null
   d.lastAssistantUuid = lastAssistantUuid
   return d
 }
@@ -120,5 +123,73 @@ describe("inferStatus", () => {
       { runningWindowMs: 1000, pendingWindowMs: 60_000 }
     )
     expect(r.status).toBe("interrupted")
+  })
+  it("AskUserQuestion を呼び出したまま止まっているのは、中断ではなく回答待ち(要対応)", () => {
+    const base = { meta: meta({ statusCategory: "completed", summaryFor: "old" }), now: NOW }
+    const asked = digest({ stopReason: "tool_use", toolNames: ["Read", "AskUserQuestion"] })
+    // 質問した直後でも、何日も経っていても、実行中・中断ではなく要対応にする
+    for (const sec of [5, 3600, 86_400 * 30]) {
+      const r = inferStatus({ ...base, digest: asked, transcriptMtimeMs: ago(sec) })
+      expect(r.status).toBe("blocked")
+      expect(r.reason).toContain("回答待ち")
+    }
+  })
+
+  it("ExitPlanMode の承認待ちも要対応", () => {
+    const r = inferStatus({
+      meta: meta(),
+      digest: digest({ stopReason: "tool_use", toolNames: ["ExitPlanMode"] }),
+      transcriptMtimeMs: ago(7200),
+      now: NOW,
+    })
+    expect(r.status).toBe("blocked")
+    expect(r.reason).toContain("プランの承認待ち")
+  })
+
+  it("ユーザーが回答したあと(最後がユーザーの行)は、回答待ちとは扱わない", () => {
+    const r = inferStatus({
+      meta: meta(),
+      digest: digest({ role: "user", stopReason: null, toolNames: [] }),
+      transcriptMtimeMs: ago(30),
+      now: NOW,
+    })
+    expect(r.status).toBe("running")
+  })
+
+  it("wrap_up の結果の行で終わっていれば、ターン後の要約が無くても中断ではなく入力待ち", () => {
+    const wrapped = digest({ role: "user", stopReason: null, resultOf: WRAP_UP_TOOL })
+    expect(inferStatus({ meta: meta(), digest: wrapped, transcriptMtimeMs: ago(7200), now: NOW }).status).toBe("waiting")
+    // Desktopの分類があればそれを使う
+    expect(
+      inferStatus({ meta: meta({ statusCategory: "review_ready", summaryFor: "x" }), digest: wrapped, transcriptMtimeMs: ago(7200), now: NOW }).status
+    ).toBe("review_ready")
+  })
+
+  it("ほかのツールの結果の行で止まっていれば、従来どおり中断の可能性", () => {
+    const stuck = digest({ role: "user", stopReason: null, resultOf: "Bash" })
+    expect(inferStatus({ meta: meta(), digest: stuck, transcriptMtimeMs: ago(7200), now: NOW }).status).toBe("interrupted")
+  })
+
+  it("長いコマンド(Bash・PowerShellのタイムアウト上限10分)の実行中を、中断と誤判定しない", () => {
+    const d = digest({ stopReason: "tool_use", toolNames: ["Bash"] })
+    d.lastEventAt = ago(9 * 60)
+    expect(inferStatus({ meta: meta(), digest: d, transcriptMtimeMs: ago(9 * 60), now: NOW }).status).toBe("running")
+    d.lastEventAt = ago(12 * 60)
+    expect(inferStatus({ meta: meta(), digest: d, transcriptMtimeMs: ago(12 * 60), now: NOW }).status).toBe("interrupted")
+  })
+
+  it("エラーの記録より後に活動があれば、回復済みとしてエラーにしない", () => {
+    const base = { digest: digest({ stopReason: "end_turn" }), transcriptMtimeMs: ago(7200), now: NOW }
+    const errored = { hasError: true, statusCategory: "completed" as const, summaryFor: "x" }
+    // 活動の時刻がエラーと同じ(エラーで止まっている)ならエラー
+    expect(inferStatus({ ...base, meta: meta({ ...errored, errorAt: ago(3600), lastActivityAt: ago(3600) }) }).status).toBe("error")
+    // エラーより後にメタデータの最終活動がある
+    expect(inferStatus({ ...base, meta: meta({ ...errored, errorAt: ago(3600), lastActivityAt: ago(600) }) }).status).toBe("completed")
+    // エラーより後に会話が進んでいる
+    const later = digest({ stopReason: "end_turn" })
+    later.lastEventAt = ago(300)
+    expect(inferStatus({ ...base, digest: later, meta: meta({ ...errored, errorAt: ago(3600), lastActivityAt: ago(3600) }) }).status).toBe("completed")
+    // エラーの時刻が分からなければ、エラーとして扱う
+    expect(inferStatus({ ...base, meta: meta({ ...errored, errorAt: null, lastActivityAt: ago(60) }) }).status).toBe("error")
   })
 })

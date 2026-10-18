@@ -46,6 +46,7 @@ describe("projectMeta(許可リスト方式の射影、S3)", () => {
         "createdAt",
         "cwd",
         "effort",
+        "errorAt",
         "hasError",
         "id",
         "isArchived",
@@ -61,6 +62,11 @@ describe("projectMeta(許可リスト方式の射影、S3)", () => {
       ].sort()
     )
     expect(meta).toMatchObject({ id: fakeSessionId(1), statusCategory: "blocked", needsAction: true, hasError: true })
+  })
+
+  it("エラーの記録時刻(errorAt)を取り込む。無ければ null", () => {
+    expect(projectMeta(makeMeta({ n: 1, error: "e", errorAt: 123 }))).toMatchObject({ hasError: true, errorAt: 123 })
+    expect(projectMeta(makeMeta({ n: 2, error: "e" }))?.errorAt).toBeNull()
   })
 
   it("すべてのキーを省略可能として読み、不明な分類は null にする", () => {
@@ -120,7 +126,8 @@ describe("extractSidebarPrefs(S2)", () => {
     expect(prefs.groups.get("cg-1")).toEqual({ id: "cg-1", name: "設計", order: 2 })
     expect(prefs.assignments.get("local_a")).toBe("cg-1")
     expect(prefs.assignments.get("local_b")).toBe("cg-2")
-    expect([...prefs.pinned].sort()).toEqual(["local_a", "local_b"])
+    // ピン留めは starred-local-code-sessions だけで判定する。pinnedOrder は並び順の情報で、ピン留めを意味しない
+    expect([...prefs.pinned]).toEqual(["local_a"])
     expect(JSON.stringify([...prefs.groups.values(), [...prefs.assignments], [...prefs.pinned]])).not.toContain(SENTINEL)
   })
 
