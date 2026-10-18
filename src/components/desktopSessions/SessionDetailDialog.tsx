@@ -82,6 +82,13 @@ export function SessionDetailDialog({ sessionId, highContextRatio, onClose }: Se
                   : `${detail.compactionCount}回${detail.lastCompactionAt ? `（直近 ${formatAgo(detail.lastCompactionAt)}）` : ""}`}
               </Field>
               <Field label="待機中の入力">{detail.queuedInputs}件</Field>
+              <Field label="CLIプロセス">
+                {detail.cliProcess === "running"
+                  ? "あり（--resume で起動中。「実行中」とは別の情報）"
+                  : detail.cliProcess === "none"
+                    ? "なし"
+                    : "確認できていません"}
+              </Field>
             </dl>
 
             <div className="space-y-1">

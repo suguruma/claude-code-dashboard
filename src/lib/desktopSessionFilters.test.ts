@@ -30,6 +30,7 @@ function session(id: string, overrides: Partial<DesktopSessionSummary> = {}): De
     latestInstruction: null,
     latestInputOrigin: null,
     queuedInputs: 0,
+    cliProcess: "unknown",
     ...overrides,
   }
 }

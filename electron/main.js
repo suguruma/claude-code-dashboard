@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain } = require("electron")
+const { app, BrowserWindow, Notification, dialog, ipcMain } = require("electron")
 const { spawn } = require("child_process")
 const path = require("path")
 const fs = require("fs")
@@ -6,6 +6,9 @@ const net = require("net")
 const http = require("http")
 
 const isDev = !app.isPackaged
+
+// Windowsのトースト通知を出すために必要なアプリ識別子(electron-builder.yml の appId と同じ値)
+if (process.platform === "win32") app.setAppUserModelId("com.claudecodedashboard.app")
 
 let serverProcess = null
 let mainWindow = null
@@ -239,6 +242,47 @@ ipcMain.handle("dialog:pick-import-file", async () => {
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) }
   }
+})
+
+/**
+ * 要対応のデスクトップ通知(段階2)。外部のサービスは使わず、OSの通知(Electron Notification)を表示する。
+ * 表示するのは、レンダラーから渡されたセッション名と要対応の内容の抜粋だけ。
+ * クリックされたらウィンドウを前面に出し、対象のセッションIDをレンダラーへ渡して詳細を開かせる。
+ */
+const NOTIFICATION_SESSION_ID = /^[A-Za-z0-9_-]{1,100}$/
+/** Notificationはガベージコレクションされるとクリックイベントが届かなくなるため、閉じるまで参照を保持する */
+const liveNotifications = new Set()
+
+ipcMain.handle("desktop-notify:supported", (event) => {
+  if (!mainWindow || event.sender !== mainWindow.webContents) return false
+  return Notification.isSupported()
+})
+
+ipcMain.handle("desktop-notify:show", (event, payload) => {
+  // 本アプリのウィンドウ以外からの要求は受け付けない
+  if (!mainWindow || event.sender !== mainWindow.webContents) return { ok: false }
+  if (!Notification.isSupported()) return { ok: false }
+  const title = typeof payload?.title === "string" ? payload.title.slice(0, 120) : ""
+  const body = typeof payload?.body === "string" ? payload.body.slice(0, 240) : ""
+  const sessionId =
+    typeof payload?.sessionId === "string" && NOTIFICATION_SESSION_ID.test(payload.sessionId) ? payload.sessionId : null
+  if (!title) return { ok: false }
+
+  const notification = new Notification({ title, body, silent: false })
+  liveNotifications.add(notification)
+  const release = () => liveNotifications.delete(notification)
+  notification.on("close", release)
+  notification.on("failed", release)
+  notification.on("click", () => {
+    release()
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.show()
+    mainWindow.focus()
+    mainWindow.webContents.send("desktop-notify:open", sessionId)
+  })
+  notification.show()
+  return { ok: true }
 })
 
 async function createWindow() {

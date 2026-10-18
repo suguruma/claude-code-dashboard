@@ -10,8 +10,8 @@ const POLL_HIDDEN_MS = 30_000
 
 const interval = () => (typeof document !== "undefined" && document.hidden ? POLL_HIDDEN_MS : POLL_VISIBLE_MS)
 
-export function useDesktopSessions() {
-  const { data, error, isLoading } = useSWR<DesktopSessionListResponse>("/api/desktop-sessions", fetcher, {
+export function useDesktopSessions(enabled: boolean = true) {
+  const { data, error, isLoading } = useSWR<DesktopSessionListResponse>(enabled ? "/api/desktop-sessions" : null, fetcher, {
     refreshInterval: interval,
     refreshWhenHidden: true,
     keepPreviousData: true,

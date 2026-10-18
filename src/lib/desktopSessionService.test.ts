@@ -488,3 +488,68 @@ describe("実データとの照合で見つかった不具合の修正(合成デ
     expect(Math.round(s.context!.ratio * 100)).toBe(61)
   })
 })
+
+describe("起動中のCLIプロセスの確認(段階2)", () => {
+  async function seedTwo() {
+    const fx = await fixture()
+    for (const n of [1, 2]) {
+      await writeMeta(fx, makeMeta({ n, title: `セッション${n}`, category: "completed", summaryFor: fakeUuid(n) }))
+      const t = await writeTranscript(fx, fakeCliId(n), [
+        humanRow("依頼", { ts: new Date(NOW - 7300_000).toISOString() }),
+        assistantRow({ stop: "end_turn", uuid: fakeUuid(n), ts: new Date(NOW - 7200_000).toISOString() }),
+      ])
+      await touch(t, NOW, 7200)
+    }
+    return fx
+  }
+
+  it("プロセスがある/無いセッションを区別し、「実行中」の判定は変えない", async () => {
+    const fx = await seedTwo()
+    const svc = service(fx, { cliProcesses: { peek: () => new Set([fakeCliId(1)]) } })
+    const list = await svc.list()
+    const a = list.sessions.find((x) => x.title === "セッション1")!
+    const b = list.sessions.find((x) => x.title === "セッション2")!
+    expect(a.cliProcess).toBe("running")
+    expect(b.cliProcess).toBe("none")
+    // プロセスが残っていても、動いているとは限らない(待機中でもプロセスは残る)。状態は従来どおり
+    expect(a.status).toBe("completed")
+    expect((await svc.detail(fakeSessionId(1)))?.cliProcess).toBe("running")
+  })
+
+  it("取得できていない(Windows以外・失敗・初回の取得前)ときは「情報なし」として扱う", async () => {
+    const fx = await seedTwo()
+    const unknown = await service(fx, { cliProcesses: { peek: () => null } }).list()
+    expect(unknown.sessions.every((x) => x.cliProcess === "unknown")).toBe(true)
+    const none = await service(fx).list()
+    expect(none.sessions.every((x) => x.cliProcess === "unknown")).toBe(true)
+  })
+
+  it("一覧の応答は、プロセスの確認の完了を待たない(peek を一覧1回につき1回、同期的に呼ぶだけ)", async () => {
+    const fx = await seedTwo()
+    let peeked = 0
+    const svc = service(fx, {
+      cliProcesses: {
+        peek: () => {
+          peeked++
+          return new Set<string>()
+        },
+      },
+    })
+    const list = await svc.list()
+    expect(peeked).toBe(1)
+    expect(list.sessions.every((x) => x.cliProcess === "none")).toBe(true)
+  })
+
+  it("縮退表示(会話ログだけ)でも、会話ログのIDでプロセスの有無を表示する", async () => {
+    const fx = await fixture()
+    const t = await writeTranscript(fx, fakeCliId(1), [humanRow("指示"), assistantRow({ stop: "end_turn" })])
+    await touch(t, NOW, 7200)
+    const svc = new DesktopSessionService({
+      dataDir: path.join(fx.dataDir, "..", "nothing"),
+      projectsRoot: fx.projectsRoot,
+      now: () => NOW,
+      cliProcesses: { peek: () => new Set([fakeCliId(1)]) },
+    })
+    expect((await svc.list()).sessions[0].cliProcess).toBe("running")
+  })
+})

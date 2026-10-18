@@ -26,6 +26,7 @@ import {
   type SidebarPrefs,
   type TranscriptRef,
 } from "./desktopSessions"
+import { CliProcessWatcher, type CliProcessSource } from "./cliProcesses"
 import { getClaudeProjectsRoot } from "./sessionMonitor"
 import {
   INSTRUCTION_EXCERPT_CHARS,
@@ -50,6 +51,8 @@ export interface DesktopSessionServiceOptions {
   tailBytes?: number
   /** 会話ログだけの縮退表示で並べる最大件数 */
   fallbackLimit?: number
+  /** 起動中のCLIプロセスの確認(段階2)。省略時は確認せず、画面には「情報なし」として扱う */
+  cliProcesses?: CliProcessSource
 }
 
 const DATA_DIR_TTL_MS = 30_000
@@ -106,6 +109,8 @@ export class DesktopSessionService {
   private prefsCache: { mtimeMs: number; size: number; prefs: SidebarPrefs } | null = null
   private lastPrefs: SidebarPrefs | null = null
   private built = new Map<string, BuiltSession>()
+  /** この一覧の組み立てで使う、起動中のCLIが開いているセッションIDの集合(取得できていなければ null) */
+  private cliIds: Set<string> | null = null
 
   constructor(options: DesktopSessionServiceOptions = {}) {
     this.opts = options
@@ -241,6 +246,8 @@ export class DesktopSessionService {
     const warnings: string[] = []
     const highContextRatio = this.opts.highContextRatio ?? 0.8
     const dataDir = await this.getDataDir()
+    // 手元の結果を即座に受け取るだけで、プロセスの確認(約1秒)の完了は待たない
+    this.cliIds = this.opts.cliProcesses?.peek() ?? null
 
     let metas: DesktopMeta[] = []
     let prefs: SidebarPrefs | null = null
@@ -342,6 +349,11 @@ export class DesktopSessionService {
     }
   }
 
+  private cliProcessOf(cliSessionId: string | null): DesktopSessionSummary["cliProcess"] {
+    if (this.cliIds === null || cliSessionId === null) return "unknown"
+    return this.cliIds.has(cliSessionId.toLowerCase()) ? "running" : "none"
+  }
+
   private countSessions(sessions: DesktopSessionSummary[], highContextRatio: number): DesktopSessionCounts {
     const active = sessions.filter((s) => !s.isArchived)
     return {
@@ -440,6 +452,7 @@ export class DesktopSessionService {
         : null,
       latestInputOrigin: input?.origin ?? null,
       queuedInputs: digest?.queued ?? 0,
+      cliProcess: this.cliProcessOf(meta?.cliSessionId ?? ref?.sessionId ?? null),
     }
     return { summary, tasks, ref, lastCompactionAt: digest?.lastCompactionAt ?? null }
   }
@@ -508,7 +521,11 @@ export function getDesktopSessionService(): Promise<DesktopSessionService> {
   }
   const service = loadConfigFile().then((fileOptions) => {
     const projectsRoot = process.env.CLAUDE_DESKTOP_PROJECTS_ROOT?.trim()
-    return new DesktopSessionService({ ...fileOptions, ...(projectsRoot ? { projectsRoot } : {}) })
+    return new DesktopSessionService({
+      ...fileOptions,
+      ...(projectsRoot ? { projectsRoot } : {}),
+      cliProcesses: new CliProcessWatcher(),
+    })
   })
   globalForService.__ccdDesktopSessionService = { service, cls: DesktopSessionService }
   return service

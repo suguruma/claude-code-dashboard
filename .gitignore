@@ -45,6 +45,8 @@ next-env.d.ts
 /config/projects.local.json
 # dashboard: Claude Desktop データフォルダの場所など、利用者ごとの設定（ローカルの絶対パスを含みうる）
 /config/desktop-sessions.json
+# dashboard: 要対応のデスクトップ通知のオン・オフ(利用者ごとの設定)
+/config/desktop-notify.json
 
 # dashboard: real ~/.claude data provided for local testing (contains personal session logs)
 /sample-data-user/

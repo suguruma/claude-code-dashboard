@@ -107,6 +107,12 @@ export interface DesktopSessionSummary {
   latestInputOrigin: InstructionOrigin | null
   /** 実行中に届いて、まだ処理されていない入力の数 */
   queuedInputs: number
+  /**
+   * claude.exe が `--resume=<セッションID>` でこのセッションを開いているか。「実行中」とは別の情報
+   * (待機中のセッションでもプロセスは残る)。running: プロセスあり / none: 無し / unknown: 取得できていない
+   * (Windows以外・取得に失敗・初回の取得前)。
+   */
+  cliProcess: "running" | "none" | "unknown"
 }
 
 export interface DesktopSessionGroup {

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, type ReactNode } from "react"
+import { DesktopNotificationWatcher } from "@/components/desktopSessions/DesktopNotificationWatcher"
 import { SideNav } from "./SideNav"
 import { TopBar } from "./TopBar"
 
@@ -9,6 +10,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex h-full">
+      <DesktopNotificationWatcher />
       <SideNav mobileOpen={mobileNavOpen} onMobileClose={() => setMobileNavOpen(false)} />
       <div className="flex h-full min-w-0 flex-1 flex-col">
         <TopBar onMenuClick={() => setMobileNavOpen(true)} />

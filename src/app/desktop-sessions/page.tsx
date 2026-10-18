@@ -1,9 +1,11 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { Suspense, useCallback, useMemo } from "react"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import { NotificationToggle } from "@/components/desktopSessions/NotificationToggle"
 import { SessionDetailDialog } from "@/components/desktopSessions/SessionDetailDialog"
 import { SessionRow } from "@/components/desktopSessions/SessionRow"
 import { SummaryCards } from "@/components/desktopSessions/SummaryCards"
@@ -36,11 +38,30 @@ const selectClass =
   "h-8 min-w-0 rounded-lg border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
 
 export default function DesktopSessionsPage() {
+  // useSearchParams を使うため、静的生成時のためにSuspenseで包む
+  return (
+    <Suspense fallback={<p className="text-sm text-muted-foreground">読み込み中...</p>}>
+      <DesktopSessionsContent />
+    </Suspense>
+  )
+}
+
+function DesktopSessionsContent() {
   const { data, error, isLoading } = useDesktopSessions()
   const [stored, setFilters] = usePersistedState<DesktopSessionFilters>(FILTER_STORAGE_KEY, DEFAULT_FILTERS)
   // 保存された値に新しい項目が無い場合に備えて、既定値で埋める
   const filters = useMemo(() => ({ ...DEFAULT_FILTERS, ...stored }), [stored])
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  // 詳細を開いているセッションはURLの ?session= で持つ。通知のクリックから、そのセッションの詳細を直接開ける
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const selectedId = searchParams.get("session")
+  const setSelectedId = useCallback(
+    (id: string | null) => {
+      router.replace(id ? `${pathname}?session=${encodeURIComponent(id)}` : pathname, { scroll: false })
+    },
+    [router, pathname]
+  )
 
   const sessions = useMemo(() => data?.sessions ?? [], [data])
   const highContextRatio = data?.highContextRatio ?? 0.8
@@ -73,6 +94,8 @@ export default function DesktopSessionsPage() {
           状態の「実行中」「中断の可能性」は、会話ログの更新状況からの推定です。
         </p>
       </div>
+
+      <NotificationToggle />
 
       {error && (
         <Alert variant="destructive">
