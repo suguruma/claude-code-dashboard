@@ -461,6 +461,8 @@ export function makeOrgChartSample(outDir, options = {}) {
     expected: {
       // セッション一覧の API が返すセッションの数(アーカイブ済み・サイドチャットを含む)。撮影の前の確認(scripts/check-sample-server.mjs)で使う
       sessionCount: Object.keys(S).length,
+      // 同じく、セッションの ID の一覧。件数がたまたま同じ別のデータ(本物を含む)を、合成データと見誤らないために照らし合わせる
+      sessionIds: Object.values(S).map(sid).sort(),
       groupA: {
         leader: sid(S.leaderA),
         // 指示・報告の数は、3層目の親子の分を含む（指揮役自身の分は、leaderInstructs・leaderReports）

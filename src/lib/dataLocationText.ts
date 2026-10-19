@@ -17,3 +17,12 @@ export function dataLocationText(location: DataLocation): string {
       return `${head}自動で探すのを止めています（CCD_DESKTOP_AUTODETECT=0）。設定ファイルか環境変数で指定したフォルダだけを読みます`
   }
 }
+
+/**
+ * 「セッションが見つかりません」の枠に添える一言(⑧-3)。自動の探索を止めているときだけ返す(それ以外は null)。
+ * 枠だけを見て「この PC に Claude Desktop が無い」と読み違えないようにする
+ */
+export function autodetectStoppedNote(location: DataLocation): string | null {
+  if (location.origin !== "disabled") return null
+  return "いまは自動で探すのを止めています（環境変数 CCD_DESKTOP_AUTODETECT=0）。この PC に Claude Desktop のデータがあっても読みません。ふだん使うときは、この環境変数を外して起動し直してください。"
+}

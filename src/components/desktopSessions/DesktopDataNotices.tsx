@@ -1,5 +1,5 @@
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { dataLocationText } from "@/lib/dataLocationText"
+import { autodetectStoppedNote, dataLocationText } from "@/lib/dataLocationText"
 import type { DataLocation, DesktopSessionListResponse } from "@/lib/desktopSessionTypes"
 
 /**
@@ -31,6 +31,12 @@ export function DesktopDataNotices({
             Claude Desktopのデータフォルダも、会話ログ（<code className="font-mono">~/.claude/projects/</code>）も見つかりませんでした。
             データフォルダが標準の場所にない場合は、設定ファイル <code className="font-mono">config/desktop-sessions.json</code> の
             <code className="font-mono"> dataDir</code> で指定できます。
+            {/* 撮影者が枠だけを見て「Desktop が無い」と読まないよう、スイッチで止めているときはその旨も出す(⑧-3) */}
+            {data.dataLocation && autodetectStoppedNote(data.dataLocation) && (
+              <span className="mt-1 block font-medium" data-testid="autodetect-stopped">
+                {autodetectStoppedNote(data.dataLocation)}
+              </span>
+            )}
           </AlertDescription>
         </Alert>
       )}

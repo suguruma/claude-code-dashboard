@@ -5,10 +5,11 @@
  *   node scripts/check-sample-server.mjs <サーバーのURL> <合成データの出力先のフォルダ>
  *   例: node scripts/check-sample-server.mjs http://127.0.0.1:3961 C:/sample/data/sample
  *
- * セッション一覧の API(`/api/desktop-sessions`)を1回だけ呼び、次の2つを満たすときだけ終了コード0で終わる。
+ * セッション一覧の API(`/api/desktop-sessions`)を1回だけ呼び、次の3つを満たすときだけ終了コード0で終わる。
  *   - データの場所の出どころが、設定ファイルか環境変数での明示(explicit-config・explicit-env)であること
  *     (自動で見つけた場所 = この PC の本物のデータかもしれない場所 を読んでいないこと)
  *   - セッションの数が、合成データの期待値(出力先の expected.json の sessionCount)と同じであること
+ *   - セッションの ID の一覧が、expected.json の sessionIds と一致すること(件数がたまたま同じ本物のデータでも通らないように)
  * 満たさなければ、理由を出して終了コード1で終わる。撮影のスクリプトは、これが0で終わったときだけ撮る。
  * 呼ぶのは、この PC の中のサーバー(127.0.0.1・localhost・[::1])だけ。それ以外のURLは呼ばずに止まる。
  */
@@ -30,6 +31,18 @@ export function checkSampleResponse(response, expected) {
     problems.push("expected.json に sessionCount がありません。合成データを作り直してください")
   } else if (count !== expected.sessionCount) {
     problems.push(`セッションの数が合成データと違います（${count ?? "不明"}件。期待は${expected.sessionCount}件）`)
+  }
+  // 件数がたまたま同じ別のデータ(本物を含む)でも通らないよう、ID の一覧も照らし合わせる(⑧-3)。ID そのものは出さない
+  if (!Array.isArray(expected?.sessionIds)) {
+    problems.push("expected.json に sessionIds がありません。合成データを作り直してください")
+  } else {
+    const want = new Set(expected.sessionIds)
+    const got = new Set(Array.isArray(response?.sessions) ? response.sessions.map((s) => s?.id) : [])
+    const missing = [...want].filter((id) => !got.has(id)).length
+    const extra = [...got].filter((id) => !want.has(id)).length
+    if (missing > 0 || extra > 0) {
+      problems.push(`セッションの ID が合成データと一致しません（合成データに無い ID ${extra}件・見つからない合成の ID ${missing}件）`)
+    }
   }
   return problems
 }

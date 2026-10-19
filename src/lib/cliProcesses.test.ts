@@ -120,3 +120,22 @@ describe("CliProcessWatcher", () => {
     expect(run).not.toHaveBeenCalled()
   })
 })
+
+describe("自動の探索を止めているとき（⑧-3）", () => {
+  it("CCD_DESKTOP_AUTODETECT=0 なら PowerShell を1回も実行せず、情報なし(null)を返す", async () => {
+    const run = vi.fn(async () => `${fakeCliId(1)}\n`)
+    const watcher = new CliProcessWatcher({ run, platform: "win32", env: { CCD_DESKTOP_AUTODETECT: "0" } })
+    expect(watcher.peek()).toBeNull()
+    await watcher.refresh()
+    expect(watcher.peek()).toBeNull()
+    expect(run).not.toHaveBeenCalled()
+  })
+
+  it("スイッチが無ければ今までどおり取得する", async () => {
+    const run = vi.fn(async () => `${fakeCliId(1)}\n`)
+    const watcher = new CliProcessWatcher({ run, platform: "win32", env: {} })
+    await watcher.refresh()
+    expect(run).toHaveBeenCalledTimes(1)
+    expect(watcher.peek()?.size).toBe(1)
+  })
+})

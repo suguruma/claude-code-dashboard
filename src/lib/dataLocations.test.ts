@@ -1,6 +1,8 @@
-import { promises as fs } from "fs"
+import fsModule, { existsSync, promises as fs, readFileSync, statSync } from "fs"
+import { syncBuiltinESMExports } from "module"
 import os from "os"
 import path from "path"
+import { fileURLToPath, pathToFileURL } from "url"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import {
   AUTODETECT_ENV,
@@ -10,6 +12,7 @@ import {
   locateData,
   resolveProjectsRoot,
 } from "./dataLocations"
+import { CliProcessWatcher } from "./cliProcesses"
 import { DesktopSessionService } from "./desktopSessionService"
 import { locateDesktopDataDir } from "./desktopSessions"
 import { assistantRow, fakeCliId, humanRow, makeDesktopFixture, makeMeta, tsAt, writeMeta, writeTranscript, type DesktopFixture } from "./desktopFixtures"
@@ -77,6 +80,8 @@ beforeEach(async () => {
 
 afterEach(async () => {
   vi.restoreAllMocks()
+  // 名前つきの import に反映した差し替えも、元に戻す
+  syncBuiltinESMExports()
   for (const k of ENV_KEYS) {
     if (saved[k] === undefined) delete process.env[k]
     else process.env[k] = saved[k]
@@ -104,22 +109,63 @@ async function plantDecoy(): Promise<void> {
   await fs.rm(fx.dataDir, { recursive: true, force: true })
 }
 
-/** fs の読み取りを見張り、渡されたパスを集める */
+/** 見張りが受け取った引数を、パスの文字列にする(文字列・file: の URL・Buffer) */
+function toPathString(arg: unknown): string | null {
+  if (typeof arg === "string") return arg
+  if (arg instanceof URL) return arg.protocol === "file:" ? fileURLToPath(arg) : null
+  if (Buffer.isBuffer(arg)) return arg.toString("utf8")
+  return null
+}
+
+/** 見張る読み取りの API。同期・コールバック・ストリーム(fs)と、Promise(fs.promises)。realpath は .native を持つので外す */
+const WATCHED_FS = [
+  "readdirSync", "readFileSync", "statSync", "lstatSync", "existsSync", "openSync", "accessSync", "opendirSync", "createReadStream",
+  "readdir", "readFile", "stat", "lstat", "exists", "open", "access", "opendir",
+] as const
+const WATCHED_PROMISES = ["readdir", "stat", "lstat", "readFile", "open", "access", "opendir"] as const
+
+/**
+ * fs の読み取りを見張り、渡されたパスを集める(⑧-3 で、同期の API・URL・Buffer の引数にも広げた)。
+ * fs の関数を差し替えたあと syncBuiltinESMExports で、`import { readFileSync } from "fs"` のような名前つきの import にも反映する
+ */
 function watchReads(): string[] {
   const seen: string[] = []
-  for (const name of ["readdir", "stat", "lstat", "readFile", "open", "access"] as const) {
-    const original = fs[name] as (...args: unknown[]) => unknown
-    vi.spyOn(fs, name).mockImplementation(((...args: unknown[]) => {
-      if (typeof args[0] === "string") seen.push(path.resolve(args[0]))
-      return original.apply(fs, args)
-    }) as never)
+  const watch = (target: Record<string, unknown>, name: string) => {
+    const original = target[name]
+    if (typeof original !== "function") return
+    vi.spyOn(target as Record<string, (...args: unknown[]) => unknown>, name).mockImplementation((...args: unknown[]) => {
+      const p = toPathString(args[0])
+      if (p !== null) seen.push(path.resolve(p))
+      return (original as (...a: unknown[]) => unknown).apply(target, args)
+    })
   }
+  for (const name of WATCHED_FS) watch(fsModule as unknown as Record<string, unknown>, name)
+  for (const name of WATCHED_PROMISES) watch(fs as unknown as Record<string, unknown>, name)
+  syncBuiltinESMExports()
   return seen
 }
 
 const underDecoy = (seen: string[]) => seen.filter((p) => p.toLowerCase().startsWith(path.resolve(decoyHome).toLowerCase()))
 
 describe("自動の探索のスイッチ（⑧-2）", () => {
+  it("見張りは、同期の API・file: の URL・Buffer の引数での読み取りも捉える（⑧-3）", async () => {
+    await plantDecoy()
+    const seen = watchReads()
+    const file = defaultSnapshotsPath()
+    // 1回ごとに、おとりの下のパスが記録に増えることを確かめる(内部で別の API を呼んで、さらに増えることはある)
+    const reads: Array<() => unknown> = [
+      () => readFileSync(pathToFileURL(file)),
+      () => statSync(Buffer.from(file, "utf8")),
+      () => existsSync(file),
+      () => fs.readFile(pathToFileURL(file)),
+    ]
+    for (const read of reads) {
+      const before = underDecoy(seen).length
+      await read()
+      expect(underDecoy(seen).length).toBeGreaterThan(before)
+    }
+  })
+
   it("スイッチが無いときは、今までどおり自動で探す（おとりが見つかり、出どころは auto）", async () => {
     await plantDecoy()
     const svc = new DesktopSessionService({ now: () => NOW })
@@ -133,8 +179,13 @@ describe("自動の探索のスイッチ（⑧-2）", () => {
     process.env[AUTODETECT_ENV] = "0"
     const seen = watchReads()
 
-    const sessions = new DesktopSessionService({ now: () => NOW })
+    // 実行中の claude.exe を調べる処理(PowerShell)も、スイッチで止まる(⑧-3)
+    const runPowerShell = vi.fn(async () => "")
+    const cliProcesses = new CliProcessWatcher({ run: runPowerShell, platform: "win32" })
+    const sessions = new DesktopSessionService({ now: () => NOW, cliProcesses })
     const list = await sessions.list()
+    await cliProcesses.refresh()
+    expect(runPowerShell).not.toHaveBeenCalled()
     expect(list.source).toBe("none")
     expect(list.dataLocation).toEqual({ path: null, origin: "disabled" })
     expect(list.sessions).toEqual([])

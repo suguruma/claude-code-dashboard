@@ -1,5 +1,6 @@
 import { execFile } from "child_process"
 import path from "path"
+import { isAutodetectDisabled, type Env } from "./dataLocations"
 
 /**
  * 起動中のClaude Code CLI(claude.exe)が、どのセッションを開いているかを調べる(段階2)。
@@ -11,6 +12,8 @@ import path from "path"
  * - 1回に0.1〜1秒かかるため、30秒以上の間隔でバックグラウンド実行し、結果をキャッシュする。
  *   呼び出し側(一覧API)は peek() で手元の結果を即座に受け取り、待たされない。
  * - Windows以外・取得に失敗したときは null を返し、呼び出し側は「この情報なし」として扱う。
+ * - 自動の探索を止めているとき(`CCD_DESKTOP_AUTODETECT=0`。合成データで撮る・確かめるとき)は、この PC で動いている
+ *   本物の claude.exe を見ないよう、PowerShell を1回も実行せずに null を返す(⑧-3)。
  */
 
 const UUID_PATTERN = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
@@ -65,6 +68,8 @@ export interface CliProcessWatcherOptions {
   now?: () => number
   intervalMs?: number
   platform?: NodeJS.Platform
+  /** 環境変数(テスト用に差し替え可能)。`CCD_DESKTOP_AUTODETECT=0` なら取得しない */
+  env?: Env
 }
 
 const DEFAULT_INTERVAL_MS = 30_000
@@ -80,6 +85,7 @@ export class CliProcessWatcher implements CliProcessSource {
   private readonly now: () => number
   private readonly intervalMs: number
   private readonly supported: boolean
+  private readonly env: Env | undefined
 
   private result: { ids: Set<string>; at: number } | null = null
   private lastAttemptAt = -Infinity
@@ -90,10 +96,11 @@ export class CliProcessWatcher implements CliProcessSource {
     this.now = options.now ?? Date.now
     this.intervalMs = options.intervalMs ?? DEFAULT_INTERVAL_MS
     this.supported = (options.platform ?? process.platform) === "win32"
+    this.env = options.env
   }
 
   peek(): Set<string> | null {
-    if (!this.supported) return null
+    if (!this.supported || isAutodetectDisabled(this.env ?? process.env)) return null
     if (!this.inFlight && this.now() - this.lastAttemptAt >= this.intervalMs) {
       void this.refresh()
     }
@@ -104,6 +111,7 @@ export class CliProcessWatcher implements CliProcessSource {
 
   /** 読み直す。実行中なら、その完了を待つ(テスト用。peek() は待たない) */
   refresh(): Promise<void> {
+    if (isAutodetectDisabled(this.env ?? process.env)) return Promise.resolve()
     if (this.inFlight) return this.inFlight
     this.lastAttemptAt = this.now()
     this.inFlight = this.run()

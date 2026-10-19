@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { dataLocationText } from "./dataLocationText"
+import { autodetectStoppedNote, dataLocationText } from "./dataLocationText"
 import { displayUsageLevel, formatPercent, guardEstimateNote, shownPercent } from "./usageFormat"
 import { createUsageNotifyTracker } from "./usageNotifications"
 import type { UsageGuard, UsageWindowView } from "./usageTypes"
@@ -98,6 +98,13 @@ describe("読んでいるデータの場所の文言（dataLocationText）", () 
     expect(dataLocationText(location)).toBe(`読んでいる Claude Desktop のデータ：${tail}`)
   })
 
+  it("スイッチで止めているときだけ、見つからない枠に一言添える（⑧-3）", () => {
+    expect(autodetectStoppedNote({ path: null, origin: "disabled" })).toContain("CCD_DESKTOP_AUTODETECT=0")
+    for (const origin of ["explicit-config", "explicit-env", "auto"] as const) {
+      expect(autodetectStoppedNote({ path: null, origin })).toBeNull()
+    }
+  })
+
   it("文言に場所（パス）を入れない", () => {
     expect(dataLocationText({ path: "C:\\secret\\place", origin: "auto" })).not.toContain("secret")
   })
@@ -113,22 +120,42 @@ describe("撮影の前の確認（scripts/check-sample-server.mjs）", () => {
     }
     return mod.checkSampleResponse
   }
-  const sessions = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `s${i}` }))
+  const ids = (n: number, prefix = "s") => Array.from({ length: n }, (_, i) => `${prefix}${i}`)
+  const sessions = (n: number, prefix = "s") => ids(n, prefix).map((id) => ({ id }))
+  const expected20 = { sessionCount: 20, sessionIds: ids(20) }
+  const explicit = { origin: "explicit-config", path: "X" }
 
-  it("出どころが明示で、件数が期待どおりなら合格", async () => {
+  it("出どころが明示で、件数と ID が期待どおりなら合格", async () => {
     const check = await load()
-    expect(check({ dataLocation: { origin: "explicit-config", path: "X" }, sessions: sessions(20) }, { sessionCount: 20 })).toEqual([])
-    expect(check({ dataLocation: { origin: "explicit-env", path: "X" }, sessions: sessions(20) }, { sessionCount: 20 })).toEqual([])
+    expect(check({ dataLocation: explicit, sessions: sessions(20) }, expected20)).toEqual([])
+    expect(check({ dataLocation: { origin: "explicit-env", path: "X" }, sessions: sessions(20) }, expected20)).toEqual([])
   })
 
   it.each(["auto", "disabled", undefined])("出どころが %s なら止める", async (origin) => {
     const check = await load()
-    expect(check({ dataLocation: origin ? { origin, path: null } : undefined, sessions: sessions(20) }, { sessionCount: 20 })).toHaveLength(1)
+    expect(check({ dataLocation: origin ? { origin, path: null } : undefined, sessions: sessions(20) }, expected20)).toHaveLength(1)
   })
 
   it("件数が違えば止める。期待値が無くても止める", async () => {
     const check = await load()
-    expect(check({ dataLocation: { origin: "explicit-config", path: "X" }, sessions: sessions(48) }, { sessionCount: 20 })[0]).toContain("48件")
-    expect(check({ dataLocation: { origin: "explicit-config", path: "X" }, sessions: sessions(20) }, {})).toHaveLength(1)
+    expect(check({ dataLocation: explicit, sessions: sessions(48) }, expected20)[0]).toContain("48件")
+    expect(check({ dataLocation: explicit, sessions: sessions(20) }, { sessionIds: ids(20) })).toHaveLength(1)
+  })
+
+  it("件数がちょうど同じでも、ID が合成データと違えば止める（⑧-3）", async () => {
+    const check = await load()
+    const problems = check({ dataLocation: explicit, sessions: sessions(20, "real") }, expected20)
+    expect(problems).toHaveLength(1)
+    expect(problems[0]).toContain("ID が合成データと一致しません")
+    // 1件だけ入れ替わっていても止める。メッセージに ID そのものは出さない
+    const mixed = [...sessions(19), { id: "real-x" }]
+    const one = check({ dataLocation: explicit, sessions: mixed }, expected20)
+    expect(one[0]).toContain("合成データに無い ID 1件")
+    expect(one[0]).not.toContain("real-x")
+  })
+
+  it("expected.json に ID の一覧が無ければ止める（古い合成データ）", async () => {
+    const check = await load()
+    expect(check({ dataLocation: explicit, sessions: sessions(20) }, { sessionCount: 20 })[0]).toContain("sessionIds")
   })
 })
