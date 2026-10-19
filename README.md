@@ -4,13 +4,15 @@ Claude Code とのやり取りにおける「ルール」「スキル」「実�
 Webアプリ側は重い処理を行わず、実際の `.claude/CLAUDE.md` / `.claude/skills/*/SKILL.md` / `execution_log.json` を直接
 読み書きして描画するだけのCPUモード（外部API通信なし・コスト0円）で動作する。
 
+使い方（起動・各ページの見方・利用上限と送信上限・整理ページ・安全の設計・困ったとき）は [使い方ガイド](docs/manual/使い方ガイド.md) を参照。
+
 ## 実装済み機能
 
 - **ルール管理**（`/rules`）— `CLAUDE.md` の `## 見出し` をルールとして直接パース。ON/OFFトグル（`<!-- CCD:DISABLED -->` で無効化）、追加/編集/削除（削除は確認ダイアログつき。CLAUDE.mdを書き換えるたびに直前の内容を自動で退避）、ドラッグ&ドロップによる表示順（=CLAUDE.mdの記載順）の並び替え、次回用プロンプト集（実行ログ由来）
-- **スキル管理**（`/skills`）— `.claude/skills/*/SKILL.md` の一覧・追加・編集・削除（確認ダイアログつき。完全削除はせず`skills-trash/`へ退避し、「削除済みスキル」から復元できる）・改名（ディレクトリ名変更。呼び出しコマンドが変わる旨を確認表示）・カテゴリ別グルーピング表示（frontmatterの`category`フィールドに基づく表示上の分類。実ファイルはフラット配置のまま）・成熟度バッジ（`references`/`scripts`/`evals`サブフォルダの有無を表示）・対象モデルの記録（frontmatterの`target-model`。自由入力。一覧に🎯バッジで表示）
+- **スキル管理**（`/skills`）— `.claude/skills/*/SKILL.md` の一覧・追加・編集・削除（確認ダイアログつき。完全削除はせず`skills-trash/`へ退避し、「削除済みスキル」から復元できる）・改名（ディレクトリ名変更。呼び出しコマンドが変わる旨を確認表示）・カテゴリ別グルーピング表示（frontmatterの`category`フィールドに基づく表示上の分類。実ファイルはフラット配置のまま）・成熟度バッジ（`references`/`scripts`/`evals`サブフォルダの有無を表示）・対象モデルの記録（frontmatterの`target-model`。自由入力。一覧に🎯バッジで表示）・有効/無効の切り替え（無効にすると`skills-disabled/`へ移し、Claude Codeから呼び出せなくなる）・モデル別アーカイブ（現在のバージョンを対象モデルごとに退避し、過去のバージョンへ切り替える。「すべてアーカイブ」で一括も可。新しい順に30世代・90日まで残す）・似ているスキルの検出（同じカテゴリ内でdescriptionが似た組を警告）
 - **メモリ管理**（`/memory`）— `.claude/projects/*/memory/*.md`（AIメモリシステム）の一覧・閲覧。type別（user/feedback/project/reference）フィルタ。読み取り専用
 - **タスク実行履歴**（`/tasks`）— `.claude/tasks/<session-id>/*.json` をセッション別に進捗バー・ステータスアイコン付きで可視化。読み取り専用
-- **設定 & システム情報**（`/settings`）— `settings.json`（権限モード・環境変数・statusLine）/ バックアップ / ブロック済みプラグイン一覧をTabsで表示。バックアップのタブには、Claude Code本体の`.claude.json`バックアップと、このダッシュボードが書き換え・削除の直前に作った退避（`*.ccd-backup.<epoch>`）が並び、復元できる（復元の直前の内容も退避される）。プラグインは読み取り専用
+- **設定 & システム情報**（`/settings`）— `settings.json`（権限モード・環境変数・statusLine）/ バックアップ / ブロック済みプラグイン一覧をTabsで表示。「編集する」でJSONを直接編集して保存できる（保存の前に確認が出て、保存の直前に現在の内容を退避する）。バックアップのタブには、Claude Code本体の`.claude.json`バックアップと、このダッシュボードが書き換え・削除の直前に作った退避（`*.ccd-backup.<epoch>`）が並び、復元できる（復元の直前の内容も退避される）。プラグインは読み取り専用
 - **移行（エクスポート/インポート）**（`/migrate`）— ルール・スキルを1つのJSONファイルに書き出し、他のPC（別プロジェクト）に差分プレビュー付きで取り込む。上書き前に自動バックアップ。インポートの「ファイルを選択」はドラッグ&ドロップにも対応し、配布版exeでは`dialog.showOpenDialog`をIPC経由で直接呼び出す経路を優先する（環境差でファイル選択ダイアログが開かない事例への対処）
 - **セッション監視**（`/session-monitor`）— `~/.claude/projects/*/*.jsonl`（Claude Codeの実行ログ）を解析し、**そのセッションが健全かを8つの観点で診断**する。セッションの寿命（コンパクション）・無限ループの兆候（エラー率）・読み取りの精度・コストと応答速度（キャッシュヒット率）・ワークフローの安定性・作業の分業・MCPの稼働・お任せ度をそれぞれ良好/注意/要対処で判定し、`/clear`でのリセットやgrepでの読み取り範囲の限定といった**具体的な対処を提示**する。判定の根拠としきい値も併記するため、しきい値の妥当性を自分で確認できる。数値の多寡は単独では判断できないため、同一プロジェクトの過去セッションを古い順に並べた推移グラフ（選択中のみ強調）と中央値との比較を用意。セッション一覧には先頭発話の抜粋（表示名）と発火したスキル名を表示し、どのやりとりだったか判別できるようにしている。生の集計値と個別グラフ（トークン推移・ツール呼び出し・MCP別・出力サイズ・圧縮履歴）は「詳細データ」を開いたときだけ取得・表示し、初期表示のペイロードを抑えている。Claude Code側のスキル`session-diagnostician`を実行すると、要求の誤解・手戻りの繰り返しといった意味的な診断（AI診断）も併記表示される（ダッシュボード自身はLLMを呼ばない方針のため、スキルが生成する`session_diagnosis.json`を読むだけ）。自動更新トグルで3秒間隔のポーリングにも対応。読み取り専用
 - **セッション一覧**（`/desktop-sessions`）— Claude Desktopの全セッションを一覧する読み取り専用ビュー（5秒更新。サイドバーの「Claude Desktop」は、見たい内容ごとに「セッション一覧」「組織図」「利用上限」「整理」の4ページに分かれている）。一覧の主データはDesktopが保存するセッションのメタデータ（`claude-code-sessions/*/*/local_*.json`）で、要対応のセッションには要対応の内容の先頭60文字を表示し、会話ログ（`~/.claude/projects/*/<id>.jsonl`）から最新の指示（先頭60文字・発信元つき）・コンテキスト使用量・タスクリストの進み具合・圧縮回数を補い、サイドバーのグループ・ピン留めは`claude_desktop_config.json`の`preferences.epitaxyPrefs`の該当キーだけを読む。状態は、Desktopが付ける分類（要対応・確認待ち・完了）と、会話ログの更新状況からの推定（実行中・中断の可能性）を併記する。Desktopの内部形式は非公開・非保証のため読み取り処理は`src/lib/desktopSessions.ts`に隔離し、読めない場合は会話ログだけの縮退表示に切り替える。認証トークンを含む`config.json`は読まず、APIは表示用の許可リスト項目だけを返す。新しく要対応になったセッションのデスクトップ通知（初期値はオフ。exeはElectron、ブラウザはNotification API。外部サービスは使わず、本文はセッション名と要対応の内容の抜粋だけ。クリックで詳細を開く）と、起動中のclaude.exe（`--resume=<id>`）の有無の「CLIプロセスあり」表示（固定のPowerShellで`--resume`のIDだけを取得し、「実行中」とは別の表示）に対応。他のセッションへのメッセージ送信には「人が最後に入力してから10回まで」という上限があるため、各セッションに**送信回数**（送信 n/10。8回以上で黄、10回で赤。届かなかった送信も数える）を表示し、上限で止まっているセッションは**「送信上限で停止中」**を赤で目立たせて、Claude Desktopでそのセッションを開くボタン（`claude://`のリンク。exeは許可した形式のURLだけを開く）を出す。新しく停止したときのデスクトップ通知（要対応の通知と同じスイッチ）にも対応。回数は会話ログの送信ツール（`SendMessage`・セッション管理の送信ツール）の呼び出しから数え、停止は送信ツールの結果の文言から判定する（文言は非保証のため、判定条件は`src/lib/sessionMessaging.ts`の1か所に集約）。サンプルは`sample-data/claude-desktop/`（すべて合成データ）
@@ -35,13 +37,14 @@ Webアプリ側は重い処理を行わず、実際の `.claude/CLAUDE.md` / `.c
 | ルールの追加・編集・有効/無効・並べ替え・削除（`CLAUDE.md`） | `CLAUDE.md.ccd-backup.<epoch>` | 設定 & システム情報 →「バックアップ」→「復元する」 |
 | 実行ログの削除（`execution_log.json`） | `execution_log.json.ccd-backup.<epoch>` | 同上 |
 | 設定の保存（`settings.json`）・ルール整理の適用・ルールのインポート | `<ファイル名>.ccd-backup.<epoch>` | 同上 |
+| スキルの編集・改名・インポートでの上書き（`SKILL.md`） | `skills/<名前>/SKILL.md.ccd-backup.<epoch>` | 同上 |
 | スキルの削除 | `skills-trash/<名前>-<yyyyMMdd-HHmmss>/`（`skills/`の外。Claude Codeからは呼び出されない） | スキル管理 →「削除済みスキル」→「復元する」 |
 
 - ルール・スキル・実行ログの削除は、確認ダイアログを経てから実行される。
 - 退避の作成に失敗したときは、書き込み・削除を行わずにエラーにする。
 - **保持方針**: 同じファイル（同じスキル名）につき、新しい順に**30世代**まで残し、**90日**より古いものは自動で削除する。ただし最新の**5世代**は期間にかかわらず残す。整理は退避を作るたび（スキルは削除するたび）に自動で行われる。
 - 退避ファイル（`*.ccd-backup.*`）は `.gitignore` 済みで、リポジトリには入らない。
-- スキル本体の編集（`SKILL.md`）は退避の対象外（スキルのモデル別アーカイブ機能を使う）。スキルのインポートで上書きされる `SKILL.md` は `skills/<名前>/SKILL.md.ccd-backup.<epoch>` に退避されるが、バックアップ画面の一覧には出ない（ファイルを直接戻す）。
+- スキル本体（`SKILL.md`）は、編集・改名・インポートでの上書きの直前に退避され、「バックアップ」の一覧から復元できる。これとは別に、版を残したいときはスキルのモデル別アーカイブ機能を使う。
 
 ナビゲーションは左サイドバーに「設定管理」「Claude Desktop」「分析・振り返り」「ツール」のカテゴリでグループ化されている（「Claude Desktop」は、セッション一覧・組織図・利用上限・整理の4ページ）。
 サイドバー下部のボタンでアイコンのみの表示に折りたためる。
@@ -53,7 +56,7 @@ npm install
 npm run dev
 ```
 
-[http://localhost:3000](http://localhost:3000) を開く。初回は `sample-data/` を対象にしたサンプルプロジェクトが登録済み。
+[http://127.0.0.1:3000](http://127.0.0.1:3000) を開く（開発サーバーは`-H 127.0.0.1`で、このPCの中だけで待ち受ける）。初回は `sample-data/` を対象にしたサンプルプロジェクトが登録済み。
 
 画面右上の「+」から、`CLAUDE.md`（と任意で `skills/`, `execution_log.json`）を配置している任意の Claude Code
 プロジェクト、または実際の `~/.claude` フォルダのルートパスを登録すると、そのプロジェクトを切り替えて管理できる。
@@ -118,16 +121,24 @@ npm run build      # 本番ビルド
 
 ```
 src/
-├── app/            # ページ & API Routes (App Router)、help/page.tsx（使い方ガイド）
-├── components/     # UIコンポーネント (layout[SideNav/TopBar/ThemeToggle] / rules / skills / trace / ui / projects / memory / tasks / settings / migrate / sessionMonitor / refactor)、theme-provider.tsx
-├── hooks/          # SWRベースのデータ取得フック
-└── lib/            # ファイルI/O・CLAUDE.mdパーサー・スキル/実行ログ/メモリ/タスク履歴/設定/バックアップ/プラグイン/移行/セッション監視/ルール整理提案操作
+├── app/            # ページ & API Routes (App Router)。ページは / ・rules・skills・memory・tasks・settings・trace・session-monitor・migrate・refactor・help・desktop-sessions（＋org・usage・housekeeping）。help/page.tsx が使い方ガイド
+├── components/     # UIコンポーネント (layout / rules / skills / trace / analysis / projects / memory / tasks / settings / migrate / sessionMonitor / refactor / desktopSessions / ui)、theme-provider.tsx
+├── hooks/          # SWRベースのデータ取得フック・画面の設定の保存（useLocalStorage）
+└── lib/            # ファイルI/O・CLAUDE.mdパーサー・スキル/実行ログ/メモリ/タスク履歴/設定/バックアップ/プラグイン/移行/セッション監視/ルール整理提案操作、
+                    # Desktopセッション（desktopSessions・transcriptDigest・desktopSessionStatus・desktopSessionService）、組織図（flow*）、利用上限（usage*）、
+                    # 整理ページ（housekeeping*）、APIのエラー（errors.ts）、リクエストの検証（requestGuard.ts）
+electron/             # 配布exeの本体（main.js・preload.js・port.js・externalUrl.js・origin.js・splash.html など）
 config/
-├── projects.json          # 監視対象プロジェクトの登録・選択状態（.gitignore対象）
-└── projects.example.json  # コミット対象のテンプレート
+├── projects.json                 # 監視対象プロジェクトの登録・選択状態（.gitignore対象）
+├── projects.example.json         # コミット対象のテンプレート
+├── desktop-sessions.example.json # Desktopセッションの設定の見本（dataDir・projectsRoot・orchestratorPrefix・housekeeping・しきい値）。実体 desktop-sessions.json は.gitignore対象
+├── usage.example.json            # 利用上限の設定の見本（価格表 prices など）。実体 usage.json は.gitignore対象
+└── desktop-notify.json           # 通知のオン・オフ（実行時に作られる。.gitignore対象）
 sample-data/          # 自由記述形式のCLAUDE.md・サンプルスキル・settings.json・backups・pluginsを含むダミープロジェクト
+└── claude-desktop/   # Desktopセッション画面の動作確認用の合成データ（すべて架空。手順は同フォルダのREADME.md）
 scripts/
-└── package-sample-data.mjs # sample-data/ をRelease添付用zipにまとめるスクリプト
+├── package-sample-data.mjs     # sample-data/ をRelease添付用zipにまとめるスクリプト
+└── make-org-chart-sample.mjs   # 組織図・整理ページの確認用の合成データを作るスクリプト
 LICENSE                # MITライセンス
 ```
 
