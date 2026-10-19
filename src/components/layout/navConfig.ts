@@ -14,6 +14,7 @@ import {
   Settings as SettingsIcon,
   Sparkles,
   ScrollText,
+  Smartphone,
   Wand2,
   type LucideIcon,
 } from "lucide-react"
@@ -113,6 +114,15 @@ export const NAV_GROUPS: NavGroup[] = [
       // 選んでいるプロジェクトへ書き込むので、対象が見えるよう切り替えを出す(⑧ Q6)
       { href: "/migrate", label: "移行", icon: ArrowLeftRight, usesProject: true },
       { href: "/refactor", label: "ルール整理", icon: Wand2, usesProject: true },
+      {
+        // ⑪。オン・オフと端末の管理は、この PC の画面からだけ(LAN の入り口は、このページを通さない)
+        href: "/lan-access",
+        label: "スマホから見る",
+        icon: Smartphone,
+        usesProject: false,
+        description:
+          "同じ家の Wi-Fi のスマホから、ホーム・セッション一覧・利用上限・整理の4ページを読み取り専用で見られるようにします。既定はオフです。オンにして「登録コードを出す」を押し、出てきた QR コードをスマホで読み取ると、その端末が登録されます。書き込みは PC からだけです。",
+      },
     ],
   },
 ]

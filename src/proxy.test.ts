@@ -7,8 +7,8 @@ function req(url: string, init: { method?: string; headers?: Record<string, stri
 }
 
 describe("proxy", () => {
-  it("matcher は /api 配下を対象にする", () => {
-    expect(config.matcher).toBe("/api/:path*")
+  it("matcher は /api 配下と、スマホから見られる4ページだけを対象にする(⑪-2。ほかのページでは proxy を動かさない)", () => {
+    expect(config.matcher).toEqual(["/api/:path*", "/", "/desktop-sessions", "/desktop-sessions/usage", "/desktop-sessions/housekeeping"])
   })
 
   it("偽のHostは403を返し、エラーメッセージをJSONで返す", async () => {

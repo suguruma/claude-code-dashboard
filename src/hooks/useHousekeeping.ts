@@ -1,6 +1,6 @@
 "use client"
 
-import useSWR from "swr"
+import useSWR, { type SWRConfiguration } from "swr"
 import { fetcher } from "@/lib/fetcher"
 import type { HousekeepingResponse } from "@/lib/housekeepingTypes"
 
@@ -10,12 +10,13 @@ const POLL_HIDDEN_MS = 120_000
 
 const interval = () => (typeof document !== "undefined" && document.hidden ? POLL_HIDDEN_MS : POLL_VISIBLE_MS)
 
-/** セッションの整理(コンテキスト整理の候補・返事の無い指示・判断待ち) */
-export function useHousekeeping() {
+/** セッションの整理(コンテキスト整理の候補・返事の無い指示・判断待ち)。options: 取り方を重ねる(スマホ用のページ) */
+export function useHousekeeping(options?: SWRConfiguration) {
   const { data, error, isLoading } = useSWR<HousekeepingResponse>("/api/desktop-sessions/housekeeping", fetcher, {
     refreshInterval: interval,
     refreshWhenHidden: true,
     keepPreviousData: true,
+    ...options,
   })
   return { data: data ?? null, error, isLoading }
 }

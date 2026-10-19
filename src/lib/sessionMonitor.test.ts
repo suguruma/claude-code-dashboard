@@ -11,10 +11,14 @@ beforeEach(async () => {
   homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "ccd-sessionmonitor-home-"))
   cleanupDirs.push(homeDir)
   vi.spyOn(os, "homedir").mockReturnValue(homeDir)
+  // 撮影の手順の環境変数(CCD_DESKTOP_AUTODETECT=0)や、データの場所の指定を付けたシェルで流しても、結果が変わらないように外す
+  vi.stubEnv("CCD_DESKTOP_AUTODETECT", undefined)
+  vi.stubEnv("CLAUDE_DESKTOP_PROJECTS_ROOT", undefined)
 })
 
 afterEach(async () => {
   vi.restoreAllMocks()
+  vi.unstubAllEnvs()
   await Promise.all(cleanupDirs.splice(0).map((d) => fs.rm(d, { recursive: true, force: true })))
 })
 

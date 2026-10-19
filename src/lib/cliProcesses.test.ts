@@ -52,6 +52,8 @@ describe("CliProcessWatcher", () => {
       now: () => clock,
       intervalMs: 30_000,
       platform: overrides.platform ?? "win32",
+      // 撮影の手順の環境変数(CCD_DESKTOP_AUTODETECT=0)を付けたシェルで流しても、結果が変わらないように、空の環境で動かす
+      env: {},
     })
     return { watcher, run, advance: (ms: number) => (clock += ms) }
   }

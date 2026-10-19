@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { getFlowService, parseFlowParams } from "@/lib/flowService"
+import { lanAwareJson } from "@/lib/lanAccess/apiGuard"
 
 export const dynamic = "force-dynamic"
 
@@ -17,7 +18,7 @@ export async function GET(req: Request) {
     const service = await getFlowService()
     const flow = await service.build(group, since)
     if (!flow) return NextResponse.json({ error: "グループが見つかりません" }, { status: 404 })
-    return NextResponse.json(flow)
+    return lanAwareJson(req, flow)
   } catch {
     return NextResponse.json({ error: "組織図のデータを取得できませんでした" }, { status: 500 })
   }

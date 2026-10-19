@@ -17,7 +17,7 @@ export async function fetcher<T>(url: string): Promise<T> {
 
 export async function apiMutate<T>(
   url: string,
-  method: "POST" | "PATCH" | "DELETE",
+  method: "POST" | "PUT" | "PATCH" | "DELETE",
   data?: unknown
 ): Promise<T> {
   const res = await fetch(url, {

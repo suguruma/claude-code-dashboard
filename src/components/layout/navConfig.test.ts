@@ -72,6 +72,7 @@ describe("プロジェクトの切り替えを出すページ(⑧の表)", () =>
     "/tasks": true,
     "/migrate": true,
     "/refactor": true,
+    "/lan-access": false,
     "/help": false,
   }
 
