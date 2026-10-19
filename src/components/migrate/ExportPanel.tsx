@@ -14,7 +14,7 @@ export function ExportPanel({ exportUrl }: ExportPanelProps) {
       <CardContent className="space-y-3">
         <p className="text-sm text-muted-foreground">
           現在のプロジェクトのルール（CLAUDE.md）とスキル（skills/*/SKILL.md）を1つのJSONファイルにまとめてダウンロードします。
-          settings.jsonの権限モードや環境変数など、個人環境依存の設定は含まれません。
+          settings.json・記憶（メモリ）・MCPなどは含まれません（上の「移るもの・移らないもの」）。
         </p>
         <Button nativeButton={false} render={<a href={exportUrl} download />}>
           エクスポート

@@ -5,6 +5,7 @@ import { useExportImport } from "@/hooks/useExportImport"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { ExportPanel } from "@/components/migrate/ExportPanel"
 import { ImportPanel } from "@/components/migrate/ImportPanel"
+import { MigrateScope } from "@/components/migrate/MigrateScope"
 
 export default function MigratePage() {
   const { selectedProjectId, selectedProject, isLoading: projectsLoading } = useProjects()
@@ -31,6 +32,8 @@ export default function MigratePage() {
           {selectedProject.name} のルール・スキルを他のPCへ持ち出したり、他のPCの設定を取り込んだりできます。
         </p>
       </div>
+
+      <MigrateScope />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <ExportPanel exportUrl={exportUrl()} />
