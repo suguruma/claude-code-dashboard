@@ -96,6 +96,7 @@ interface BuiltSession {
 const STATUS_RANK: Record<DesktopSessionStatus, number> = {
   blocked: 0,
   running: 1,
+  standby: 3,
   interrupted: 2,
   error: 2,
   review_ready: 3,
@@ -489,7 +490,7 @@ export class DesktopSessionService {
     const model = meta?.model ?? digest?.model ?? null
     const cwd = meta?.cwd ?? digest?.cwd ?? null
 
-    const { status, reason, awaitingAnswer } = inferStatus(
+    const { status, reason, awaitingAnswer, needsActionInfo, standbyInfo } = inferStatus(
       { meta, digest, transcriptMtimeMs, now },
       this.opts.thresholds ?? DEFAULT_THRESHOLDS
     )
@@ -534,7 +535,13 @@ export class DesktopSessionService {
       statusReason: reason,
       needsAction: status === "blocked" && (meta?.needsAction ?? false),
       // 要約文は前のターンのもの。回答待ちなど、会話ログからの判断で要対応になった場合は当てはまらないので出さない
-      needsActionExcerpt: status === "blocked" && !awaitingAnswer ? (meta?.needsActionExcerpt ?? null) : null,
+      // 要約に要対応の文が無ければ、最後のターンの wrap_up の質問の先頭60文字を出す(⑩ ゲート1の条件4。切り方は同じ関数)
+      needsActionExcerpt:
+        status === "blocked" && !awaitingAnswer
+          ? (meta?.needsActionExcerpt ?? (needsActionInfo?.source.startsWith("wrap-up") ? (digest?.lastWrapUp?.askExcerpt ?? null) : null))
+          : null,
+      needsActionInfo: needsActionInfo ?? null,
+      standbyInfo: standbyInfo ?? null,
       createdAt: meta?.createdAt ?? null,
       lastActivityAt,
       completedTurns: meta?.completedTurns ?? null,

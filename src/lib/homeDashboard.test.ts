@@ -27,7 +27,7 @@ interface SampleModule {
     write: () => Promise<void>
     groups: { a: string; b: string }
     ids: Record<string, string>
-    expected: { housekeeping: { decisions: unknown[] } }
+    expected: { housekeeping: { decisions: Array<[string, string[]]> }; needsAction: { decisionCount: number } }
   }
 }
 
@@ -134,7 +134,7 @@ describe("組織図に出ていないセッション（⑧）", () => {
     expect(total).toBe(13)
   })
 
-  it("合成データ: 判断待ちは整理ページと同じ5件、送信上限で停止は1件。試験グループの組織図に出ていないのは8件", async () => {
+  it("合成データ: 判断待ちは整理ページと同じ11件（待機は数えない）、送信上限で停止は1件。試験グループの組織図に出ていないのは16件で、判断待ちが整理ページと同じ順で先頭", async () => {
     const mod = (await import(/* @vite-ignore */ pathToFileURL(path.join(process.cwd(), "scripts", "make-org-chart-sample.mjs")).href)) as SampleModule
     const out = await fs.mkdtemp(path.join(os.tmpdir(), "ccd-home-test-"))
     cleanup.push(out)
@@ -145,17 +145,25 @@ describe("組織図に出ていないセッション（⑧）", () => {
     const list = await sessions.list()
 
     expect(countDecisions(list.sessions)).toBe(sample.expected.housekeeping.decisions.length)
-    expect(countDecisions(list.sessions)).toBe(5)
+    expect(countDecisions(list.sessions)).toBe(11)
+    expect(countDecisions(list.sessions)).toBe(sample.expected.needsAction.decisionCount)
     expect(countSendLimitStopped(list.sessions)).toBe(1)
 
     const flow = await new FlowService(sessions, { now: () => now }).build(sample.groups.a)
     const shown = new Set((flow?.members ?? []).map((m) => m.id))
     const { items, total } = selectOutsideSessions(list.sessions, shown)
     const ids = sample.ids
-    expect(total).toBe(8)
-    expect(new Set(items.map((s) => s.id))).toEqual(
-      new Set([ids.leaderB, ids.research, ids.sideB, ids.stray, ids.askUser, ids.blockedSummary, ids.errored, ids.unreachable])
-    )
+    expect(total).toBe(16)
+    // 上位10件は、組織図に出ていない判断待ち（検証の子〈送信上限〉は組織図に出ている）。
+    // 区分の順は整理ページと同じ（許可 → 承認 → 判断・種類不明 → エラー → 届かなかった送信。⑩）。同じ区分の中は新しい順
+    const got = items.map((s) => s.id)
+    expect(got[0]).toBe(ids.permission)
+    expect(new Set(got.slice(1, 4))).toEqual(new Set([ids.blockedSummary, ids.wrapCommit, ids.planApproval]))
+    expect(new Set(got.slice(4, 8))).toEqual(new Set([ids.askUser, ids.wrapAsk, ids.decideCommit, ids.unknownKind]))
+    expect(got.slice(8)).toEqual([ids.errored, ids.unreachable])
+    expect(got.slice(1, 4)).toEqual([ids.planApproval, ids.wrapCommit, ids.blockedSummary])
+    // 待機は判断待ちではないので、上位10件に入らない
+    for (const id of [ids.wrapStandby, ids.wordStandby]) expect(items.some((s) => s.id === id), id).toBe(false)
     // サイドチャット・アーカイブ済み・試験グループの木に入ったものは出ない
     for (const id of [ids.sideChat, ids.archived, ids.adhoc, ids.helperB, ids.deepA, ids.subC, ids.practiceD]) {
       expect(items.some((s) => s.id === id), id).toBe(false)

@@ -356,6 +356,8 @@ export function makeSessionSummary(id: string, overrides: Partial<DesktopSession
     statusReason: "",
     needsAction: false,
     needsActionExcerpt: null,
+    needsActionInfo: null,
+    standbyInfo: null,
     createdAt: null,
     lastActivityAt: null,
     completedTurns: null,

@@ -313,7 +313,8 @@ describe("OrgRulesService（フィクスチャ）", () => {
       assignments: { [fakeSessionId(1)]: "g1", [fakeSessionId(2)]: "g2", [fakeSessionId(3)]: "g3", [fakeSessionId(4)]: "g4", [fakeSessionId(6)]: "g4" },
     })
     const sessions = new DesktopSessionService({ dataDir: fx.dataDir, projectsRoot: fx.projectsRoot, now: () => NOW })
-    return { root, service: new OrgRulesService(sessions, { config: async () => config, platform, env, now: () => NOW }) }
+    const memoryDir = path.join(fx.projectsRoot, "-shared-work", "memory")
+    return { root, memoryDir, service: new OrgRulesService(sessions, { config: async () => config, platform, env, now: () => NOW }) }
   }
 
   it("同じ作業フォルダの指揮役は1枚にまとまり、効くグループが並ぶ", async () => {
@@ -334,6 +335,37 @@ describe("OrgRulesService（フィクスチャ）", () => {
     expect(res.folders.map((f) => f.cwd)).not.toContain(path.join(root, "outside"))
     expect(res.folders.map((f) => f.cwd)).not.toContain(path.join(root, "archived"))
     expect(res.folders.find((f) => f.groups[0]?.groupName === "四の組")?.groups[0]?.leaderTitle).toBe("00_指揮役_四")
+  })
+
+  it("記憶が200件を超えても、本文の API は一覧に出たファイルしか返さない（一覧と同じ並べ替えと打ち切り）", async () => {
+    const { service, memoryDir } = await fixtureService()
+    for (let i = 0; i < 205; i++) {
+      const name = `m${String(i).padStart(3, "0")}`
+      await fs.writeFile(path.join(memoryDir, `${name}.md`), `---\nname: ${name}\n---\n本文 ${name}\n`, "utf-8")
+    }
+    const res = await service.get()
+    const shared = res.folders.find((f) => f.groups.length === 2)!
+    expect(shared.memory.entries).toHaveLength(200)
+    const listed = shared.memory.entries.map((e) => e.fileName)
+    expect(listed).toContain("m199.md")
+    expect(listed).not.toContain("m200.md")
+    expect((await service.memoryBody(shared.key, "m199.md"))?.body).toBe("本文 m199")
+    expect(await service.memoryBody(shared.key, "m200.md")).toBeNull()
+    expect(await service.memoryBody(shared.key, "m204.md")).toBeNull()
+  })
+
+  it("256KB を超える記憶は一覧に「開けない」の印で出て、本文は返らない。拒否リストに当たる名前の記憶は一覧にも本文にも出ない", async () => {
+    const { service, memoryDir } = await fixtureService()
+    await fs.writeFile(path.join(memoryDir, "huge.md"), `---\nname: huge\n---\n${"あ".repeat(100_000)}\n`, "utf-8")
+    await fs.writeFile(path.join(memoryDir, "credentials.md"), "---\nname: secret\n---\n本文\n", "utf-8")
+    const res = await service.get()
+    const shared = res.folders.find((f) => f.groups.length === 2)!
+    const huge = shared.memory.entries.find((e) => e.fileName === "huge.md")
+    expect(huge?.tooLarge).toBe(true)
+    expect(shared.memory.entries.find((e) => e.fileName === "note.md")?.tooLarge).toBe(false)
+    expect(await service.memoryBody(shared.key, "huge.md")).toBeNull()
+    expect(shared.memory.entries.map((e) => e.fileName)).not.toContain("credentials.md")
+    expect(await service.memoryBody(shared.key, "credentials.md")).toBeNull()
   })
 
   it("R9: WSL の作業フォルダは「読めない」、会話ログの無い指揮役は記憶の場所が分からない。どちらも落ちない", async () => {

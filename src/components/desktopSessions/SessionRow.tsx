@@ -3,10 +3,11 @@ import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { isInstructionProvisional } from "@/lib/desktopInstruction"
 import type { DesktopSessionSummary } from "@/lib/desktopSessionTypes"
+import { NEEDS_ACTION_KIND_LABEL } from "@/lib/needsActionKind"
 import { ContextBar } from "./ContextBar"
 import { InstructionPendingBadge } from "./InstructionPendingBadge"
 import { SendCountBadge, SendLimitNotice } from "./Messaging"
-import { DesktopStatusBadge } from "./statusMeta"
+import { DesktopStatusBadge, NEEDS_ACTION_ICON } from "./statusMeta"
 import { ORIGIN_LABEL, formatAgo } from "./format"
 
 interface SessionRowProps {
@@ -26,6 +27,9 @@ export function SessionRow({ session: s, highContextRatio, onSelect, parentTitle
   const instruction = s.latestInstruction
   // 起動直後の暫定の要約のあいだ、人以外の本文は確定した値ではない（全体の解析が終わると人の指示に置き換わりうる）
   const provisional = isInstructionProvisional(s)
+  // 要対応の内容の行の見出し。種類が分かっていれば、種類の名前とアイコンにする(⑩)
+  const needsLabel = s.needsActionInfo ? NEEDS_ACTION_KIND_LABEL[s.needsActionInfo.kind] : "要対応"
+  const NeedsIcon = s.needsActionInfo ? NEEDS_ACTION_ICON[s.needsActionInfo.kind] : OctagonAlert
   // 人の指示を表示している間に、他セッション・通知からの入力が届いていたら、その旨を添える
   const newerOtherInput =
     instruction?.origin === "human" && s.latestInputOrigin !== null && s.latestInputOrigin !== "human"
@@ -43,7 +47,7 @@ export function SessionRow({ session: s, highContextRatio, onSelect, parentTitle
         <div className="grid gap-x-4 gap-y-2 md:grid-cols-[minmax(0,1fr)_240px]">
           <div className="min-w-0 space-y-1.5">
             <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-              <DesktopStatusBadge status={s.status} reason={s.statusReason} />
+              <DesktopStatusBadge status={s.status} reason={s.statusReason} info={s.needsActionInfo} standby={s.standbyInfo} />
               <span className="min-w-0 truncate text-sm font-medium">{s.title}</span>
               {s.pinned && <Pin className="size-3.5 shrink-0 text-muted-foreground" aria-label="ピン留め" />}
               {s.isSideChat && (
@@ -103,8 +107,8 @@ export function SessionRow({ session: s, highContextRatio, onSelect, parentTitle
 
             {s.needsActionExcerpt && (
               <p className="flex min-w-0 items-start gap-1.5 text-xs">
-                <OctagonAlert className="mt-0.5 size-3.5 shrink-0 text-[var(--status-critical)]" aria-hidden />
-                <span className="shrink-0 font-medium">要対応</span>
+                <NeedsIcon className="mt-0.5 size-3.5 shrink-0 text-[var(--status-critical)]" aria-hidden />
+                <span className="shrink-0 font-medium">{needsLabel}</span>
                 <span className="min-w-0 truncate" title={s.needsActionExcerpt}>
                   {s.needsActionExcerpt}
                 </span>

@@ -46,7 +46,8 @@ export function MemoryList({ folderKey, memory }: { folderKey: string; memory: O
 
 function MemoryRow({ folderKey, entry }: { folderKey: string; entry: OrgMemoryEntry }) {
   const [open, setOpen] = useState(false)
-  const { data, error, isLoading } = useOrgMemoryBody(folderKey, entry.fileName, open)
+  // 大きすぎる記憶は、本文を取りに行かず、開けない理由だけを出す
+  const { data, error, isLoading } = useOrgMemoryBody(folderKey, entry.fileName, open && !entry.tooLarge)
   return (
     <li data-testid="memory-row">
       <button
@@ -67,6 +68,7 @@ function MemoryRow({ folderKey, entry }: { folderKey: string; entry: OrgMemoryEn
               </Badge>
             )}
             {entry.notInIndex && <Badge variant="outline">索引に無い</Badge>}
+            {entry.tooLarge && <Badge variant="outline">大きすぎて開けない</Badge>}
           </span>
           {entry.description && <span className="block text-xs text-muted-foreground">{entry.description}</span>}
           <span className="block text-xs text-muted-foreground">
@@ -77,6 +79,11 @@ function MemoryRow({ folderKey, entry }: { folderKey: string; entry: OrgMemoryEn
       </button>
       {open && (
         <div className="space-y-2 border-t bg-muted/30 px-3 py-2">
+          {entry.tooLarge && (
+            <p className="text-xs text-muted-foreground" data-testid="memory-too-large">
+              256KB を超えるため、本文を開けません。
+            </p>
+          )}
           {isLoading && <p className="text-xs text-muted-foreground">読み込み中...</p>}
           {error && <p className="text-xs text-destructive">本文を読み込めませんでした。</p>}
           {data && (

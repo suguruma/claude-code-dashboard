@@ -19,6 +19,8 @@ function session(id: string, overrides: Partial<DesktopSessionSummary> = {}): De
     statusReason: "",
     needsAction: false,
     needsActionExcerpt: null,
+    needsActionInfo: null,
+    standbyInfo: null,
     createdAt: null,
     lastActivityAt: null,
     completedTurns: null,

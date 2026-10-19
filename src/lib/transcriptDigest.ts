@@ -5,6 +5,7 @@ import type {
   InstructionOrigin,
   TaskStatus,
 } from "./desktopSessionTypes"
+import { WRAP_UP_ACTIONS, kindFromWords, type WrapUpDigest } from "./needsActionKind"
 import { isPeerMessage, peerBodyOf } from "./peerMessage"
 import { SEND_LIMIT, classifySendResult, isSendTool } from "./sessionMessaging"
 
@@ -97,6 +98,11 @@ export interface TranscriptDigest {
   sendLimitStopped: boolean
   /** 人の入力をこの要約の中で読んだか。false の間は、送信回数が実際より少ない可能性がある */
   humanSeen: boolean
+  /**
+   * 最後のターンの wrap_up の呼び出し(⑩ 要対応の種類の手がかり)。新しい入力(ターンの始まり)で null に戻る。
+   * 保持する文は ask の先頭60文字だけ。recap・actions の label・message は取り込まない
+   */
+  lastWrapUp: WrapUpDigest | null
 }
 
 export function createDigest(): TranscriptDigest {
@@ -126,6 +132,7 @@ export function createDigest(): TranscriptDigest {
     undeliveredSinceHuman: 0,
     sendLimitStopped: false,
     humanSeen: false,
+    lastWrapUp: null,
   }
 }
 
@@ -412,6 +419,24 @@ function applyQueuedCommand(d: TranscriptDigest, attachment: NonNullable<RawEntr
   const instruction: DigestInstruction = { excerpt: makeExcerpt(text, INSTRUCTION_EXCERPT_CHARS), origin: "human", at }
   d.latestInput = instruction
   d.latestHuman = instruction
+  d.lastWrapUp = null
+}
+
+/** wrap_up の入力から、要対応の種類に使う値だけを取り出す。ask の全文は言葉の推定にだけ使い、保持しない */
+export function wrapUpDigestOf(input: Record<string, unknown>): WrapUpDigest {
+  const ask = typeof input.ask === "string" && input.ask.trim() ? input.ask : null
+  const allowed: readonly string[] = WRAP_UP_ACTIONS
+  const actions = Array.isArray(input.actions)
+    ? input.actions
+        .map((a) => (a && typeof a === "object" ? (a as Record<string, unknown>).action : undefined))
+        .filter((a): a is string => typeof a === "string" && allowed.includes(a))
+    : []
+  return {
+    askExcerpt: ask === null ? null : makeExcerpt(ask, INSTRUCTION_EXCERPT_CHARS),
+    askWordKind: kindFromWords(ask),
+    actions,
+    blocked: typeof input.blocked === "boolean" ? input.blocked : null,
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -451,6 +476,8 @@ export function applyEntry(d: TranscriptDigest, entry: RawEntry): void {
         at,
       }
       d.latestInput = instruction
+      // 新しい入力でターンが始まる。前のターンの wrap_up は、もう当てはまらない
+      d.lastWrapUp = null
       if (origin === "human") {
         d.latestHuman = instruction
         resetSendLimit(d)
@@ -493,6 +520,7 @@ export function applyEntry(d: TranscriptDigest, entry: RawEntry): void {
           if (block.name === WRAP_UP_TOOL) completeAllTasks(d)
           const input =
             block.input && typeof block.input === "object" ? (block.input as Record<string, unknown>) : null
+          if (block.name === WRAP_UP_TOOL) d.lastWrapUp = wrapUpDigestOf(input ?? {})
           if (!input) continue
           if (block.name === "mcp__ccd_turn__update_plan") applyPlanInput(d, input)
           else if (block.name === "TaskCreate" || block.name === "TaskUpdate") {

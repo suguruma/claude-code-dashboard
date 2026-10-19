@@ -1,5 +1,5 @@
 import type { DesktopSessionSummary } from "./desktopSessionTypes"
-import { collectDecisions } from "./housekeeping"
+import { collectDecisions, decisionRank } from "./housekeeping"
 import type { UsageWindowView } from "./usageTypes"
 
 /**
@@ -45,15 +45,16 @@ export const OUTSIDE_PREVIEW_COUNT = 10
 /**
  * 組織図に出ていないセッション。いま出している組織図のカードに無いもののうち、アーカイブ済みとサイドチャット
  * (親のカードに数で出ている)を除いたもの。ほかのグループ・指揮役のいないグループ・グループに入っていないセッションが入る。
- * 並びは、注意の要る順(判断待ち → 実行中 → それ以外)。同じなら最後の活動の新しい順(不明は最後)。
+ * 並びは、注意の要る順(判断待ち → 実行中 → それ以外)。判断待ちの中は整理ページと同じ順(許可待ち → 承認待ち → 判断待ち →
+ * 送信上限 → エラー → 届かなかった送信。⑩)。同じなら最後の活動の新しい順(不明は最後)。待機は「それ以外」に入る。
  */
 export function selectOutsideSessions(
   sessions: DesktopSessionSummary[],
   shownIds: ReadonlySet<string>,
   limit: number = OUTSIDE_PREVIEW_COUNT
 ): { items: DesktopSessionSummary[]; total: number } {
-  const decisionIds = new Set(collectDecisions(sessions).map((d) => d.id))
-  const rank = (s: DesktopSessionSummary) => (decisionIds.has(s.id) ? 0 : s.status === "running" ? 1 : 2)
+  const decisionRanks = new Map(collectDecisions(sessions).map((d) => [d.id, decisionRank(d)]))
+  const rank = (s: DesktopSessionSummary) => decisionRanks.get(s.id) ?? (s.status === "running" ? 10 : 11)
   const outside = sessions
     .filter((s) => !s.isArchived && !s.isSideChat && !shownIds.has(s.id))
     .sort((a, b) => {

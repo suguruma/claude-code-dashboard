@@ -214,9 +214,9 @@ export class OrgRulesService {
     } catch {
       return null
     }
-    if (fileName === MEMORY_INDEX || !names.includes(fileName) || !fileName.toLowerCase().endsWith(".md")) return null
+    // 一覧と同じ関数で選んだファイル名だけを受け付ける(打ち切りの後ろ・拒否リストのものは返さない)
+    if (!listedMemoryFiles(record.memoryDir, names).includes(fileName)) return null
     const file = path.join(record.memoryDir, fileName)
-    if (getPreviewBlockReason(file)) return null
     try {
       const stat = await fs.stat(file)
       if (!stat.isFile() || stat.size > MAX_MEMORY_BYTES) return null
@@ -317,7 +317,7 @@ export class OrgRulesService {
       return emptyMemory("missing")
     }
     const mdNames = names.filter((n) => n.toLowerCase().endsWith(".md"))
-    const fileNames = mdNames.filter((n) => n !== MEMORY_INDEX).sort((a, b) => a.localeCompare(b)).slice(0, MAX_MEMORY_FILES)
+    const fileNames = listedMemoryFiles(dir, names)
 
     let targets: Set<string> | null = null
     if (mdNames.includes(MEMORY_INDEX)) {
@@ -331,7 +331,6 @@ export class OrgRulesService {
     const entries: OrgMemoryEntry[] = []
     for (const fileName of fileNames) {
       const file = path.join(dir, fileName)
-      if (getPreviewBlockReason(file)) continue
       let stat
       try {
         stat = await fs.stat(file)
@@ -347,6 +346,7 @@ export class OrgRulesService {
         updatedAt: stat.mtimeMs,
         staleCount: 0,
         notInIndex: targets !== null && !targets.has(fileName),
+        tooLarge: stat.size > MAX_MEMORY_BYTES,
       }
       if (stat.size <= MAX_MEMORY_BYTES) {
         try {
@@ -383,6 +383,17 @@ export class OrgRulesService {
       missingFromDisk: targets ? [...targets].filter((t) => !present.has(t)).sort() : [],
     }
   }
+}
+
+/**
+ * 記憶の一覧に出すファイル名。一覧(readMemory)と本文(memoryBody)の両方がこれを使う。
+ * MEMORY.md(索引)と拒否リストに当たるものを除き、名前の順に並べて MAX_MEMORY_FILES 件で打ち切る
+ */
+export function listedMemoryFiles(dir: string, names: string[]): string[] {
+  return names
+    .filter((n) => n.toLowerCase().endsWith(".md") && n !== MEMORY_INDEX && !getPreviewBlockReason(path.join(dir, n)))
+    .sort((a, b) => a.localeCompare(b))
+    .slice(0, MAX_MEMORY_FILES)
 }
 
 function emptyMemory(status: OrgMemory["status"]): OrgMemory {

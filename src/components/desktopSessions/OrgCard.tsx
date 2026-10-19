@@ -100,7 +100,7 @@ export function OrgCard({ depth, member, state, summary, highContextRatio, refer
         </div>
 
         <div className="flex min-w-0 flex-wrap items-center gap-1">
-          {summary && <DesktopStatusBadge status={summary.status} reason={summary.statusReason} />}
+          {summary && <DesktopStatusBadge status={summary.status} reason={summary.statusReason} info={summary.needsActionInfo} standby={summary.standbyInfo} />}
           <SendCountBadge messaging={summary?.messaging ?? null} />
           {member.sideChats > 0 && (
             <span

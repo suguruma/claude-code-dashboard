@@ -62,6 +62,7 @@ describe("projectMeta(許可リスト方式の射影、S3)", () => {
         "spawnedFromId",
         "statusCategory",
         "summaryFor",
+        "summaryWordKind",
         "title",
       ].sort()
     )

@@ -25,6 +25,8 @@ function session(id: string, status: DesktopSessionStatus, overrides: Partial<De
     statusReason: "固定の根拠",
     needsAction: false,
     needsActionExcerpt: null,
+    needsActionInfo: null,
+    standbyInfo: null,
     createdAt: null,
     lastActivityAt: null,
     completedTurns: null,

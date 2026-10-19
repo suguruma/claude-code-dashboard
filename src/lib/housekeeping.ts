@@ -1,5 +1,6 @@
 import type { DesktopSessionSummary } from "./desktopSessionTypes"
 import type { FlowEvent } from "./flowTypes"
+import { NEEDS_ACTION_KIND_RANK } from "./needsActionKind"
 import {
   CACHE_TTL_MS,
   type CacheState,
@@ -209,17 +210,25 @@ export function findUnanswered(
 // ---------------------------------------------------------------------------
 // C. オーナーの判断待ち
 
-/** 並びの優先度(小さいほど先) */
-const DECISION_RANK: Record<DecisionReason, number> = { "needs-action": 0, "send-limit": 1, error: 2, undelivered: 3 }
+/** 並びの優先度(小さいほど先)。要対応は種類で分ける(許可 0 → 承認 1 → 判断・種類不明 2。⑩) */
+const DECISION_RANK: Record<Exclude<DecisionReason, "needs-action">, number> = { "send-limit": 3, error: 4, undelivered: 5 }
+
+/** 判断待ちの1行の並びの順(小さいほど先)。ホームの「組織図に出ていないセッション」の並びも、これに合わせる */
+export function decisionRank(item: DecisionItem): number {
+  const first = item.reasons[0]
+  if (first === "needs-action") return NEEDS_ACTION_KIND_RANK[item.needsAction?.kind ?? "unknown"]
+  return DECISION_RANK[first]
+}
 
 /**
  * オーナーの判断・対応を待っているセッション。アーカイブされていないすべてのセッション(グループ外を含む)から集める。
  * 1セッション1行で、理由が複数あれば reasons に優先度の順に並べる。
- * - needs-action: 状態が要対応(blocked)
+ * - needs-action: 状態が要対応(blocked)。待機(standby)は入れない(⑩)
  * - send-limit: 他のセッションへの送信が上限で止まっている
  * - error: 状態がエラー
  * - undelivered: 届かなかった送信がある(送信上限で止まっているものは、send-limit にまとめる)
- * 並びは、最も優先度の高い理由の順。同じなら、最後の活動が古い順(不明は最後)。
+ * 並びは、最も優先度の高い理由の順(要対応は 許可待ち → 承認待ち → 判断待ち・種類不明 → 送信上限 → エラー → 届かなかった送信)。
+ * 同じなら、最後の活動が古い順(不明は最後)。
  */
 export function collectDecisions(sessions: DesktopSessionSummary[]): DecisionItem[] {
   const items: DecisionItem[] = []
@@ -238,12 +247,13 @@ export function collectDecisions(sessions: DesktopSessionSummary[]): DecisionIte
       groupName: s.group?.name ?? null,
       reasons,
       excerpt: reasons.includes("needs-action") ? s.needsActionExcerpt : null,
+      needsAction: reasons.includes("needs-action") ? s.needsActionInfo : null,
       undeliveredCount: reasons.includes("undelivered") ? undelivered : 0,
       lastActivityAt: s.lastActivityAt,
     })
   }
   return items.sort((a, b) => {
-    const rank = DECISION_RANK[a.reasons[0]] - DECISION_RANK[b.reasons[0]]
+    const rank = decisionRank(a) - decisionRank(b)
     if (rank !== 0) return rank
     const ta = a.lastActivityAt ?? Number.POSITIVE_INFINITY
     const tb = b.lastActivityAt ?? Number.POSITIVE_INFINITY

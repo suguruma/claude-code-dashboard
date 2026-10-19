@@ -51,6 +51,8 @@ export interface OrgMemoryEntry {
   staleCount: number
   /** MEMORY.md(索引)に載っていない */
   notInIndex: boolean
+  /** 大きすぎて(256KB 超)本文を開けない。name・description も読まない */
+  tooLarge: boolean
 }
 
 /** 記憶。status は、ok / missing: 記憶のフォルダが無い / unknown: 場所が分からない(会話ログが見つからない) / wsl */

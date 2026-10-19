@@ -22,6 +22,7 @@ function meta(overrides: Partial<DesktopMeta> = {}): DesktopMeta {
     statusCategory: null,
     needsAction: false,
     needsActionExcerpt: null,
+    summaryWordKind: null,
     summaryFor: null,
     lastAssistantUuid: null,
     hasError: false,

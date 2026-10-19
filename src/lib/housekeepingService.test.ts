@@ -75,6 +75,8 @@ const KEYS_ALLOWED = new Set([
   "kind", "groupId", "fromId", "fromTitle", "toId", "toTitle", "summary", "sentAt", "ageMs", "working",
   // 判断待ち
   "excerpt", "undeliveredCount", "lastActivityAt",
+  // 判断待ち: 要対応の種類と手がかりの名前(⑩。文は含まない)
+  "needsAction", "source", "estimated", "buttons",
 ])
 
 function allKeys(value: unknown, into = new Set<string>()): Set<string> {

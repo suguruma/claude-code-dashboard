@@ -1,4 +1,5 @@
 import type { DesktopSessionSummary } from "./desktopSessionTypes"
+import { NEEDS_ACTION_KIND_LABEL } from "./needsActionKind"
 
 /**
  * 要対応のデスクトップ通知(段階2)の「いつ・何を通知するか」を決める純粋なロジック。
@@ -16,7 +17,8 @@ export interface NotificationItem {
 export function buildNotification(session: DesktopSessionSummary): NotificationItem {
   return {
     sessionId: session.id,
-    title: `要対応: ${session.title}`,
+    // 要対応の種類が分かっていれば、種類の名前にする(⑩)
+    title: `${session.needsActionInfo ? NEEDS_ACTION_KIND_LABEL[session.needsActionInfo.kind] : "要対応"}: ${session.title}`,
     // 要約文が無い要対応(質問の回答待ちなど)は、状態の根拠を使う。これは固定の文言で、会話の本文を含まない
     body: session.needsActionExcerpt ?? session.statusReason,
   }

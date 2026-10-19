@@ -2,6 +2,7 @@ import { promises as fs } from "fs"
 import os from "os"
 import path from "path"
 import { isAutodetectDisabled, type DataLocation, type Env } from "./dataLocations"
+import { kindFromWords, type WordKind } from "./needsActionKind"
 import { makeExcerpt } from "./transcriptDigest"
 
 /**
@@ -40,6 +41,10 @@ export interface DesktopMeta {
    * 全文は保持しない。同じ要約の status_detail と、ターンのまとめ(turnWrapUp)の文は取り込まない。
    */
   needsActionExcerpt: string | null
+  /**
+   * 要約の言葉(needs_action、無ければ status_detail)から推定した要対応の種類(⑩)。種類の名前だけを持ち、文は保持しない
+   */
+  summaryWordKind: WordKind | null
   /** ターン後の要約が対応している assistant の uuid */
   summaryFor: string | null
   lastAssistantUuid: string | null
@@ -243,6 +248,10 @@ export function projectMeta(raw: unknown): DesktopMeta | null {
       typeof needsActionText === "string" && needsActionText.trim().length > 0
         ? makeExcerpt(needsActionText, NEEDS_ACTION_EXCERPT_CHARS)
         : null,
+    // status_detail の文は、ここで種類を推定するのに使うだけで、戻り値には残さない(S3・ゲート1の条件3)
+    summaryWordKind:
+      kindFromWords(typeof needsActionText === "string" ? needsActionText : null) ??
+      kindFromWords(typeof summary?.status_detail === "string" ? summary.status_detail : null),
     summaryFor: str(r.postTurnSummaryFor) ?? str(summary?.summarizes_uuid),
     lastAssistantUuid: str(r.lastAssistantUuid),
     hasError: typeof r.error === "string" ? r.error.length > 0 : r.error != null && r.error !== false,

@@ -47,7 +47,7 @@ export function OutsideSessionsList({ sessions, shownIds, failed = false, onSele
         </Link>
       </div>
       <p className="text-xs text-muted-foreground">
-        ほかのグループ・指揮役のいないグループ・グループに入っていないセッションです（アーカイブ済みとサイドチャットは除く）。判断待ち・実行中を先に並べます。
+        ほかのグループ・指揮役のいないグループ・グループに入っていないセッションです（アーカイブ済みとサイドチャットは除く）。対応待ち（許可待ち・承認待ち・判断待ちなど）・実行中を先に並べます。
       </p>
       {items.length === 0 ? (
         <p className="text-xs text-muted-foreground">ありません。すべてのセッションが組織図に出ています。</p>
@@ -62,7 +62,7 @@ export function OutsideSessionsList({ sessions, shownIds, failed = false, onSele
                 data-testid="home-outside-row"
                 data-session-id={s.id}
               >
-                <DesktopStatusBadge status={s.status} reason={s.statusReason} />
+                <DesktopStatusBadge status={s.status} reason={s.statusReason} info={s.needsActionInfo} standby={s.standbyInfo} />
                 <span className="min-w-0 flex-1 truncate font-medium" title={s.title}>
                   {s.title}
                 </span>

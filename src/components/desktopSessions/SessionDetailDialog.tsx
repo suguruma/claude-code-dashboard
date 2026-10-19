@@ -13,6 +13,7 @@ import {
 import { useDesktopSessionDetail } from "@/hooks/useDesktopSessions"
 import { isInstructionProvisional } from "@/lib/desktopInstruction"
 import type { TaskStatus } from "@/lib/desktopSessionTypes"
+import { NEEDS_ACTION_KIND_LABEL, needsActionSourceLabel } from "@/lib/needsActionKind"
 import { cn } from "@/lib/utils"
 import { ContextBar } from "./ContextBar"
 import { InstructionPendingBadge } from "./InstructionPendingBadge"
@@ -63,7 +64,7 @@ export function SessionDetailDialog({ sessionId, highContextRatio, onClose }: Se
           <div className="space-y-4">
             <div className="space-y-1">
               <div className="flex flex-wrap items-center gap-2">
-                <DesktopStatusBadge status={detail.status} />
+                <DesktopStatusBadge status={detail.status} info={detail.needsActionInfo} standby={detail.standbyInfo} />
                 {detail.group && <Badge variant="secondary">{detail.group.name}</Badge>}
                 <SendCountBadge messaging={detail.messaging} />
               </div>
@@ -116,12 +117,19 @@ export function SessionDetailDialog({ sessionId, highContextRatio, onClose }: Se
               <ContextBar context={detail.context} highRatio={highContextRatio} showNote />
             </div>
 
-            {detail.needsActionExcerpt && (
+            {(detail.needsActionExcerpt || detail.needsActionInfo) && (
               <div className="space-y-1">
                 <h3 className="text-sm font-medium">要対応の内容</h3>
-                <p className="text-sm">{detail.needsActionExcerpt}</p>
+                {detail.needsActionExcerpt && <p className="text-sm">{detail.needsActionExcerpt}</p>}
+                {detail.needsActionInfo && (
+                  <p className="text-xs text-muted-foreground" data-testid="detail-needs-action-source">
+                    {NEEDS_ACTION_KIND_LABEL[detail.needsActionInfo.kind]}
+                    {detail.needsActionInfo.estimated ? "（推定）" : ""}・分けた手がかり：
+                    {needsActionSourceLabel(detail.needsActionInfo.source, detail.needsActionInfo.buttons)}
+                  </p>
+                )}
                 <p className="text-[11px] text-muted-foreground">
-                  Desktopが書いた要約の先頭60文字のみです。会話の本文は表示しません。
+                  Desktopが書いた要約（無ければ、最後のターンの wrap_up の質問）の先頭60文字のみです。会話の本文は表示しません。
                 </p>
               </div>
             )}

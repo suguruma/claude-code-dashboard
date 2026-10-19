@@ -1,4 +1,5 @@
-import type { DesktopSessionStatus } from "./desktopSessionTypes"
+import type { DesktopNeedsActionInfo, DesktopSessionStatus, DesktopStandbyInfo } from "./desktopSessionTypes"
+import { classifyNeedsAction, NEEDS_ACTION_KIND_LABEL } from "./needsActionKind"
 import type { DesktopMeta } from "./desktopSessions"
 import { ASK_USER_TOOLS, WRAP_UP_TOOL, type TranscriptDigest } from "./transcriptDigest"
 
@@ -34,7 +35,14 @@ export interface StatusResult {
   reason: string
   /** AskUserQuestion・ExitPlanMode の回答待ち。Desktopの要約文(前のターンのもの)は、この状態には当てはまらない */
   awaitingAnswer?: boolean
+  /** 要対応の種類(⑩)。status が blocked のときだけ付く */
+  needsActionInfo?: DesktopNeedsActionInfo
+  /** 待機の手がかり(⑩)。status が standby のときだけ付く */
+  standbyInfo?: DesktopStandbyInfo
 }
+
+/** 「中断の可能性」に添える一言。ツールの呼び出しのまま止まっているものは、許可の確認で止まっていることがある(⑩ ゲート1の条件2) */
+export const PERMISSION_HINT = "許可の確認が出ていないか、開いて確かめてください"
 
 /**
  * セッションの状態を決める。「実行中」を直接示す項目は無いため、複数の手がかりからの推定になる(検討書 付録A.6)。
@@ -76,10 +84,12 @@ export function inferStatus(input: StatusInput, thresholds: StatusThresholds = D
   if (lastRow?.role === "assistant" && lastRow.stopReason === "tool_use") {
     const asked = lastRow.toolNames.find((name) => ASK_USER_TOOLS.includes(name))
     if (asked) {
+      const c = classifyNeedsAction({ awaitingTool: asked, wrapUp: null, summaryWordKind: null })
       return {
         status: "blocked",
         reason: asked === "ExitPlanMode" ? "プランの承認待ち(ExitPlanMode)" : "ユーザーへの質問の回答待ち(AskUserQuestion)",
         awaitingAnswer: true,
+        needsActionInfo: { kind: c.kind === "standby" ? "unknown" : c.kind, source: c.source, estimated: c.estimated, buttons: [] },
       }
     }
   }
@@ -92,17 +102,39 @@ export function inferStatus(input: StatusInput, thresholds: StatusThresholds = D
     return { status: "running", reason: `会話ログが${formatAgo(sinceWrite)}に更新されている(推定)` }
   }
   if (turnOpen && !summaryCurrent) {
+    // 許可の画面が出るのはツールの呼び出しのあと。入力の処理中(人の入力・ツールの結果のあと)には添えない
+    const hint = lastRow.role === "assistant" ? `。${PERMISSION_HINT}` : ""
     return {
       status: "interrupted",
-      reason: `${lastRow.role === "user" ? "入力の処理中" : "ツールの結果待ち"}のまま、会話が${formatAgo(sinceActivity)}から進んでいない`,
+      reason: `${lastRow.role === "user" ? "入力の処理中" : "ツールの結果待ち"}のまま、会話が${formatAgo(sinceActivity)}から進んでいない${hint}`,
     }
   }
 
   if (errorIsActive(meta, digest)) return { status: "error", reason: "Desktopがエラーを記録している" }
 
   switch (meta?.statusCategory) {
-    case "blocked":
-      return { status: "blocked", reason: "Desktopが「要対応」と記録している" }
+    case "blocked": {
+      // 最後のターンの wrap_up と、要約の言葉から、要対応の種類を決める(⑩)。wrap_up に質問が無ければ待機
+      const wrapUp = digest?.lastWrapUp ?? null
+      const c = classifyNeedsAction({ awaitingTool: null, wrapUp, summaryWordKind: meta.summaryWordKind })
+      if (c.kind === "standby") {
+        return {
+          status: "standby",
+          reason:
+            c.source === "wrap-up-no-ask"
+              ? "Desktopは「要対応」と記録しているが、最後のターンの wrap_up に質問が無い（待つだけ）"
+              : "Desktopは「要対応」と記録しているが、要約の言葉から待機と推定",
+          // 質問の無い wrap_up は確かな手がかり。言葉から決めた待機は推定(誤ると要対応を隠すので、画面に「推定」と出す)
+          standbyInfo: { source: c.source, estimated: c.estimated },
+        }
+      }
+      const buttons = c.source === "wrap-up-action" && wrapUp ? wrapUp.actions.filter((a) => ["commit", "create_pr", "merge"].includes(a)) : []
+      return {
+        status: "blocked",
+        reason: `Desktopが「要対応」と記録している（${NEEDS_ACTION_KIND_LABEL[c.kind]}${c.estimated ? "・推定" : ""}）`,
+        needsActionInfo: { kind: c.kind, source: c.source, estimated: c.estimated, buttons },
+      }
+    }
     case "review_ready":
       return { status: "review_ready", reason: "Desktopが「確認待ち」と記録している" }
     case "completed":

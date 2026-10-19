@@ -7,12 +7,12 @@ import { HousekeepingDecisionList } from "./HousekeepingDecisionList"
 import { HousekeepingUnansweredList } from "./HousekeepingUnansweredList"
 
 const SUMMARY: { key: keyof HousekeepingResponse["counts"]; label: string; href: string }[] = [
-  { key: "decisions", label: "判断待ち", href: "#hk-decisions" },
+  { key: "decisions", label: "あなたの対応待ち", href: "#hk-decisions" },
   { key: "unanswered", label: "返事の来ていない指示", href: "#hk-unanswered" },
   { key: "cleanup", label: "コンテキスト整理の候補", href: "#hk-cleanup" },
 ]
 
-/** 整理ページの本体: 概要(3つの節の件数)と、判断待ち・返事の来ていない指示・コンテキスト整理の候補。読み取り専用 */
+/** 整理ページの本体: 概要(3つの節の件数)と、あなたの対応待ち・返事の来ていない指示・コンテキスト整理の候補。読み取り専用 */
 export function HousekeepingView({ data, onSelect }: { data: HousekeepingResponse; onSelect: (id: string) => void }) {
   return (
     <div className="space-y-8">

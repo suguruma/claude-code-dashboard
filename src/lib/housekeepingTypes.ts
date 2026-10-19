@@ -2,8 +2,10 @@
  * セッションの整理(⑦)のAPI/画面で共有する型と定数。サーバー専用モジュール(fs等)をimportしない。
  *
  * ここに載せる項目が「APIが返してよい項目」の許可リストになる。含めてよいのは、セッションID・タイトル・グループ名・モデル・
- * 時刻・数値・状態・指示の先頭20文字・要対応の先頭60文字だけ。会話の本文・報告の本文・指示の20文字より後ろは、型に存在しないため返せない。
+ * 時刻・数値・状態・指示の先頭20文字・要対応の先頭60文字・要対応の種類と手がかりの名前（⑩）だけ。会話の本文・報告の本文・指示の20文字より後ろは、型に存在しないため返せない。
  */
+
+import type { DesktopNeedsActionInfo } from "./desktopSessionTypes"
 
 /** プロンプトキャッシュ(1時間)の有効な時間。最後の応答からこれだけ空くと、再開時にコンテキスト全体を書き直す */
 export const CACHE_TTL_MS = 60 * 60 * 1000
@@ -117,6 +119,8 @@ export interface DecisionItem {
   reasons: DecisionReason[]
   /** 要対応の内容の先頭60文字(要対応のときだけ) */
   excerpt: string | null
+  /** 要対応の種類と手がかり(⑩。要対応のときだけ) */
+  needsAction: DesktopNeedsActionInfo | null
   /** 届かなかった送信の数(undelivered があるときだけ意味を持つ。無ければ 0) */
   undeliveredCount: number
   lastActivityAt: number | null

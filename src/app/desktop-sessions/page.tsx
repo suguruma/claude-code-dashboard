@@ -28,6 +28,7 @@ const STATUS_OPTIONS: Array<{ value: DesktopSessionFilters["status"]; label: str
   { value: "all", label: "すべての状態" },
   { value: "running", label: "実行中（推定）" },
   { value: "blocked", label: "要対応" },
+  { value: "standby", label: "待機" },
   { value: "review_ready", label: "確認待ち" },
   { value: "completed", label: "完了" },
   { value: "interrupted", label: "中断の可能性" },

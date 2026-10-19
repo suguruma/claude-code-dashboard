@@ -17,8 +17,9 @@ const cardClass =
   "flex min-w-0 flex-col gap-1 rounded-xl border bg-card p-3 text-left transition-colors hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 
 /**
- * ホームの上の件数の帯(⑧)。判断待ち・送信上限で停止・利用上限を並べ、押すとそれぞれのページへ移る。
- * 数え方は、整理ページ(判断待ち)・利用上限のページ(ゲージ)と同じ関数を使う。
+ * ホームの上の件数の帯(⑧)。あなたの対応待ち・送信上限で停止・利用上限を並べ、押すとそれぞれのページへ移る。
+ * 数え方は、整理ページ(あなたの対応待ち)・利用上限のページ(ゲージ)と同じ関数を使う。
+ * 「判断待ち」は要対応の種類の名前(⑩)なので、件数のカードには使わない
  */
 export function HomeSummaryCards({ sessions, usage }: HomeSummaryCardsProps) {
   const decisions = sessions ? countDecisions(sessions) : null
@@ -30,7 +31,7 @@ export function HomeSummaryCards({ sessions, usage }: HomeSummaryCardsProps) {
       <Link href="/desktop-sessions/housekeeping" className={cardClass} data-testid="home-decisions">
         <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <OctagonAlert className="size-3.5" aria-hidden />
-          判断待ち
+          あなたの対応待ち
         </span>
         <span className="text-2xl font-semibold tabular-nums">{decisions === null ? "—" : `${decisions}件`}</span>
         <span className="text-xs text-muted-foreground">全グループ。送信上限で停止を含む（整理ページと同じ数）</span>

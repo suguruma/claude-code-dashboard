@@ -41,6 +41,9 @@ const ORG = "00000000-0000-4000-8000-0000000000b1"
 const MODEL = "claude-opus-5-5"
 const MIN = 60_000
 const LIMIT_TEXT = "Not delivered: synthetic notice. The limit of 10 times has been reached"
+// 要対応の種類（⑩）の確認用の目印。wrap_up の recap・ボタンの文と、要約の status_detail に入れ、どの応答にも出ないことを確かめる
+const WRAP_UP_MARK = "WRAPUP-TEXT-SYNTHETIC-MARK"
+const STATUS_DETAIL_MARK = "STATUS-DETAIL-SYNTHETIC-MARK"
 
 const sid = (n) => `local_00000000-0000-4000-8000-${String(n).padStart(12, "0")}`
 const cli = (n) => `11111111-1111-4111-8111-${String(n).padStart(12, "0")}`
@@ -74,6 +77,15 @@ const S = {
   blockedSummary: 302, // ターン後の要約が「要対応」（内容の先頭60文字が出る）
   errored: 303, // エラーで止まっている
   unreachable: 304, // 宛先の見つからない送信がある
+  // 要対応の種類（⑩）の確認用。どれもグループ外で、コンテキストは小さい（整理の候補にならない）
+  permission: 305, // 要約の言葉「許可」→ 許可待ち（推定）
+  wrapCommit: 306, // wrap_up の質問と commit のボタン → 承認待ち
+  wrapAsk: 307, // wrap_up の質問 → 判断待ち
+  wrapStandby: 308, // wrap_up に質問が無い → 待機（要対応に数えない）
+  wordStandby: 309, // 要約の言葉「届いたら」→ 待機（推定）
+  decideCommit: 310, // 要約に「決めて」と「commit」→ 判断待ち（推定。言葉の優先の順の確認）
+  planApproval: 311, // ExitPlanMode で止まっている → 承認待ち
+  unknownKind: 312, // 要約の言葉からも決められない → 要対応（種類不明）
 }
 
 /**
@@ -103,6 +115,14 @@ const SESSIONS = [
   { n: S.blockedSummary, title: "判断_承認待ちの変更", createdAgo: 470, needsAction: "本番への反映を承認してください（合成のデータ）" },
   { n: S.errored, title: "判断_エラーで停止", createdAgo: 460, error: "合成のエラー" },
   { n: S.unreachable, title: "判断_宛先不明の送信", createdAgo: 450 },
+  { n: S.permission, title: "判断_書き込みの許可", createdAgo: 440, needsAction: "ファイルを書き込む許可をください（合成のデータ）" },
+  { n: S.wrapCommit, title: "判断_コミットの承認", createdAgo: 430, needsAction: "" },
+  { n: S.wrapAsk, title: "判断_案の選択", createdAgo: 420, needsAction: "" },
+  { n: S.wrapStandby, title: "判断_報告の待機", createdAgo: 410, needsAction: "次の連絡が来たら実行します（合成のデータ）" },
+  { n: S.wordStandby, title: "判断_届いたら続ける", createdAgo: 400, needsAction: "担当の報告が届いたら続けます（合成のデータ）" },
+  { n: S.decideCommit, title: "判断_4つの案", createdAgo: 390, needsAction: "4つの案から決めてください。決まったら commit します（合成のデータ）" },
+  { n: S.planApproval, title: "判断_プランの承認", createdAgo: 380 },
+  { n: S.unknownKind, title: "判断_種類の分からない要対応", createdAgo: 370, needsAction: "画面の表示を見てください（合成のデータ）" },
 ]
 
 /**
@@ -222,24 +242,32 @@ export function makeOrgChartSample(outDir, options = {}) {
   // ---- 試験グループ -------------------------------------------------------
   for (const [n, text] of [
     [S.leaderA, "全体の方針を決める"],
-    [S.screen, "待機"],
-    [S.report, "待機"],
-    [S.verify, "待機"],
-    [S.docs, "待機"],
-    [S.helperB, "待機"],
-    [S.deepA, "待機"],
-    [S.subC, "待機"],
+    [S.screen, "次の指示を待つ"],
+    [S.report, "次の指示を待つ"],
+    [S.verify, "次の指示を待つ"],
+    [S.docs, "次の指示を待つ"],
+    [S.helperB, "次の指示を待つ"],
+    [S.deepA, "次の指示を待つ"],
+    [S.subC, "次の指示を待つ"],
     [S.practiceD, "書式の確認をお願いします"],
-    [S.adhoc, "待機"],
-    [S.stray, "待機"],
-    [S.archived, "待機"],
+    [S.adhoc, "次の指示を待つ"],
+    [S.stray, "次の指示を待つ"],
+    [S.archived, "次の指示を待つ"],
     [S.leaderB, "別グループの方針"],
-    [S.research, "待機"],
-    [S.sideB, "待機"],
+    [S.research, "次の指示を待つ"],
+    [S.sideB, "次の指示を待つ"],
     [S.askUser, "方針を相談したい"],
     [S.blockedSummary, "変更を進めてください"],
     [S.errored, "処理を続けてください"],
     [S.unreachable, "別のセッションへ連絡してください"],
+    [S.permission, "設定ファイルを直してください"],
+    [S.wrapCommit, "変更をまとめてください"],
+    [S.wrapAsk, "進め方の案を出してください"],
+    [S.wrapStandby, "担当の報告を待ってください"],
+    [S.wordStandby, "担当の報告を待ってください"],
+    [S.decideCommit, "案を出してください"],
+    [S.planApproval, "計画を立ててください"],
+    [S.unknownKind, "画面を直してください"],
   ]) {
     humanRow(n, 236, text)
   }
@@ -343,6 +371,26 @@ export function makeOrgChartSample(outDir, options = {}) {
     toolResultRow(S.unreachable, 69.98, id, "No agent named synthetic-missing is reachable")
     assistantRow(S.unreachable, 69.9, 55_000)
   }
+
+  // ---- 要対応の種類（⑩）: どれもグループ外。Desktop は要対応（blocked）と分類している ----------------------
+  // wrap_up の呼び出しでターンを終える（呼び出し → 結果の行）。recap・ボタンの文には、応答に出てはいけない目印を入れる
+  const wrapUpTurn = (n, agoMin, input) => {
+    const id = nextId("toolu")
+    assistantRow(n, agoMin, 30_000, { tools: [{ id, name: "mcp__ccd_turn__wrap_up", input: { recap: `合成のまとめ ${WRAP_UP_MARK}`, ...input } }] })
+    toolResultRow(n, agoMin - 0.02, id, "ok")
+  }
+  assistantRow(S.permission, 95, 30_000)
+  wrapUpTurn(S.wrapCommit, 85, {
+    ask: "この変更をコミットしてよいですか（合成のデータ）",
+    actions: [{ label: "コミットする", message: `コミットしてください ${WRAP_UP_MARK}` }, { action: "commit" }],
+    blocked: true,
+  })
+  wrapUpTurn(S.wrapAsk, 80, { ask: "A案とB案のどちらで進めますか（合成のデータ）", blocked: true })
+  wrapUpTurn(S.wrapStandby, 75, { blocked: false })
+  assistantRow(S.wordStandby, 72, 30_000)
+  assistantRow(S.decideCommit, 68, 30_000)
+  assistantRow(S.planApproval, 66, 30_000, { tools: [{ name: "ExitPlanMode", input: { plan: "合成のプラン" } }] })
+  assistantRow(S.unknownKind, 64, 30_000)
 
   // ---- 書き出し -----------------------------------------------------------
   const dataDir = path.join(outDir, "data")
@@ -501,9 +549,10 @@ export function makeOrgChartSample(outDir, options = {}) {
               }
             : {}),
           // ターン後の要約が「要対応」(最後の応答に対応する要約)。内容の先頭60文字が、整理ページに出る
-          ...(s.needsAction
+          ...(s.needsAction !== undefined
             ? {
-                postTurnSummary: { status_category: "blocked", status_detail: "合成の詳細", needs_action: s.needsAction, summarizes_uuid: lastAssistantUuid },
+                // status_detail は分類の言葉の推定にだけ使い、応答には出ない（⑩。目印で確かめる）
+                postTurnSummary: { status_category: "blocked", status_detail: `合成の詳細 ${STATUS_DETAIL_MARK}`, needs_action: s.needsAction, summarizes_uuid: lastAssistantUuid },
                 postTurnSummaryFor: lastAssistantUuid,
                 lastAssistantUuid,
               }
@@ -621,14 +670,43 @@ export function makeOrgChartSample(outDir, options = {}) {
           ["ended-without-report", sid(S.leaderA), sid(S.verify), false],
           ["awaiting-report", sid(S.leaderA), sid(S.screen), true],
         ],
-        // 判断待ち: [セッション, 理由]
+        // 判断待ち: [セッション, 理由]。許可待ち → 承認待ち → 判断待ち（種類不明を含む）→ 送信上限 → エラー → 届かなかった送信（⑩）。
+        // 同じ区分の中は、最後の活動が古い順。待機（wrapStandby・wordStandby）は入らない
         decisions: [
-          [sid(S.askUser), ["needs-action"]],
+          [sid(S.permission), ["needs-action"]],
           [sid(S.blockedSummary), ["needs-action"]],
+          [sid(S.wrapCommit), ["needs-action"]],
+          [sid(S.planApproval), ["needs-action"]],
+          [sid(S.askUser), ["needs-action"]],
+          [sid(S.wrapAsk), ["needs-action"]],
+          [sid(S.decideCommit), ["needs-action"]],
+          [sid(S.unknownKind), ["needs-action"]],
           [sid(S.verify), ["send-limit"]],
           [sid(S.errored), ["error"]],
           [sid(S.unreachable), ["undelivered"]],
         ],
+      },
+      // 要対応の種類（⑩）の期待値: セッション → [種類, 手がかり, 推定か]。standby は待機（要対応ではない）
+      needsAction: {
+        kinds: {
+          [sid(S.permission)]: ["permission", "summary-words", true],
+          [sid(S.blockedSummary)]: ["approval", "summary-words", true],
+          [sid(S.wrapCommit)]: ["approval", "wrap-up-action", false],
+          [sid(S.planApproval)]: ["approval", "plan-tool", false],
+          [sid(S.askUser)]: ["decision", "ask-tool", false],
+          [sid(S.wrapAsk)]: ["decision", "wrap-up-ask", false],
+          [sid(S.decideCommit)]: ["decision", "summary-words", true],
+          [sid(S.unknownKind)]: ["unknown", "none", false],
+        },
+        standby: [sid(S.wrapStandby), sid(S.wordStandby)].sort(),
+        // 要約に要対応の文が無いものは、wrap_up の質問の先頭60文字が出る
+        askExcerpts: {
+          [sid(S.wrapCommit)]: "この変更をコミットしてよいですか（合成のデータ）",
+          [sid(S.wrapAsk)]: "A案とB案のどちらで進めますか（合成のデータ）",
+        },
+        // ホームの「判断待ち」の数（整理ページと同じ）
+        decisionCount: 11,
+        marks: [WRAP_UP_MARK, STATUS_DETAIL_MARK],
       },
       groupB: {
         leader: sid(S.leaderB),

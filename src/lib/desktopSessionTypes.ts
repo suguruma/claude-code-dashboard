@@ -7,11 +7,14 @@
  * 型に存在しないため、どの経路でも返せない。
  */
 
+import type { NeedsActionKind, NeedsActionSource } from "./needsActionKind"
+
 /**
  * 表示する状態。
  * - running: 実行中(会話ログの更新状況からの推定)
  * - interrupted: 中断の可能性(ツール実行待ちのまま更新が止まっている)
  * - blocked: 要対応 / review_ready: 確認待ち / completed: 完了(Desktopがターン後に付ける分類)
+ * - standby: 待機(Desktopは要対応にしたが、手がかりから「次の連絡や条件を待っているだけ」と分かったもの。⑩。要対応には数えない)
  * - waiting: 入力待ち(ターンは終わっているが、ターン後の要約が無い)
  * - error: Desktopがエラーを記録している
  * - unknown: 判断材料が無い
@@ -20,11 +23,28 @@ export type DesktopSessionStatus =
   | "running"
   | "interrupted"
   | "blocked"
+  | "standby"
   | "review_ready"
   | "completed"
   | "waiting"
   | "error"
   | "unknown"
+
+/** 要対応の種類(⑩)。状態が blocked のときだけ付く */
+export interface DesktopNeedsActionInfo {
+  kind: NeedsActionKind
+  source: NeedsActionSource
+  /** 言葉からの推定(画面に「推定」と出す) */
+  estimated: boolean
+  /** wrap_up の承認のボタン(commit・create_pr・merge)の名前。手がかりの表示に使う */
+  buttons: string[]
+}
+
+/** 待機の手がかり(⑩)。状態が standby のときだけ付く。言葉から決めた待機は推定 */
+export interface DesktopStandbyInfo {
+  source: NeedsActionSource
+  estimated: boolean
+}
 
 /** 指示の発信元。人が書いたものか、他のセッション・通知・定期実行・システムかを区別する */
 export type InstructionOrigin = "human" | "peer" | "notification" | "scheduled" | "system"
@@ -106,9 +126,14 @@ export interface DesktopSessionSummary {
   needsAction: boolean
   /**
    * 要対応の内容の先頭60文字(承認済みの表示項目)。Desktopが「要対応」と分類したセッションだけに付く。
-   * 状態の説明(status_detail)・ターンのまとめ(turnWrapUp)の文は返さない。
+   * 要約に要対応の文が無ければ、最後のターンの wrap_up の質問(ask)の先頭60文字(⑩ ゲート1の条件4)。
+   * 状態の説明(status_detail)・ターンのまとめ(turnWrapUp)・wrap_up の recap とボタンの文は返さない。
    */
   needsActionExcerpt: string | null
+  /** 要対応の種類と、決めた手がかり(⑩)。状態が blocked のときだけ付く */
+  needsActionInfo: DesktopNeedsActionInfo | null
+  /** 待機の手がかり(⑩)。状態が standby のときだけ付く */
+  standbyInfo: DesktopStandbyInfo | null
   createdAt: number | null
   lastActivityAt: number | null
   completedTurns: number | null
