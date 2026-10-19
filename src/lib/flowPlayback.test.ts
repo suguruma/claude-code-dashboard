@@ -23,9 +23,12 @@ import {
   type SeenEvents,
   stateAt,
   timelineMarks,
+  WORK_LAP_COLOR_COUNT,
+  workLap,
+  workLapColor,
   workRatio,
 } from "./flowPlayback"
-import { FLOW_WORK_FULL, type FlowEvent, type FlowMember, type FlowResponse, type FlowToolSample } from "./flowTypes"
+import { FLOW_WORK_LAP, type FlowEvent, type FlowMember, type FlowResponse, type FlowToolSample } from "./flowTypes"
 
 const SEC = 1000
 const T0 = Date.UTC(2026, 0, 1, 0, 0, 0)
@@ -273,16 +276,49 @@ describe("見た目の規則", () => {
     expect(formatCtxDelta(1_500_000)).toBe("+1.5M")
   })
 
-  it("作業量は82回で満杯。粒の半径は、作業量0〜82回以上で最小〜最大の線形", () => {
+  it("1周は100回。粒の半径は、作業量0〜100回以上で最小〜最大の線形（バーの1周と同じ回数）", () => {
+    expect(FLOW_WORK_LAP).toBe(100)
     expect(workRatio(0)).toBe(0)
-    expect(workRatio(FLOW_WORK_FULL / 2)).toBe(0.5)
-    expect(workRatio(FLOW_WORK_FULL)).toBe(1)
+    expect(workRatio(50)).toBe(0.5)
+    expect(workRatio(100)).toBe(1)
     expect(workRatio(300)).toBe(1)
     expect(particleRadius(0)).toBe(PARTICLE_MIN_RADIUS)
-    expect(particleRadius(FLOW_WORK_FULL)).toBe(PARTICLE_MAX_RADIUS)
-    expect(particleRadius(FLOW_WORK_FULL * 3)).toBe(PARTICLE_MAX_RADIUS)
-    expect(particleRadius(FLOW_WORK_FULL / 2)).toBeCloseTo((PARTICLE_MIN_RADIUS + PARTICLE_MAX_RADIUS) / 2, 5)
+    expect(particleRadius(100)).toBe(PARTICLE_MAX_RADIUS)
+    expect(particleRadius(300)).toBe(PARTICLE_MAX_RADIUS)
+    expect(particleRadius(50)).toBeCloseTo((PARTICLE_MIN_RADIUS + PARTICLE_MAX_RADIUS) / 2, 5)
     expect(particleRadius(10)).toBeLessThan(particleRadius(40))
+  })
+
+  it("作業量のバーの周と伸びた割合：100回でちょうど1周目が満杯、101回から2周目、200回で2周目が満杯", () => {
+    const cases: [number, number, number][] = [
+      [0, 1, 0],
+      [1, 1, 0.01],
+      [99, 1, 0.99],
+      [100, 1, 1],
+      [101, 2, 0.01],
+      [199, 2, 0.99],
+      [200, 2, 1],
+      [201, 3, 0.01],
+      [300, 3, 1],
+      [1000, 10, 1],
+    ]
+    for (const [tools, lap, ratio] of cases) {
+      const got = workLap(tools)
+      expect(got.lap, `${tools}回の周`).toBe(lap)
+      expect(got.ratio, `${tools}回の割合`).toBeCloseTo(ratio, 10)
+    }
+    expect(workLap(-3)).toEqual({ lap: 1, ratio: 0 })
+    expect(workLap(Number.NaN)).toEqual({ lap: 1, ratio: 0 })
+  })
+
+  it("周の色：4周目までは周の番号、5周目からは3と4を交互（隣の周は、いつも別の色）", () => {
+    expect([1, 2, 3, 4].map(workLapColor)).toEqual([1, 2, 3, 4])
+    expect([5, 6, 7, 8, 9, 10].map(workLapColor)).toEqual([3, 4, 3, 4, 3, 4])
+    for (let lap = 2; lap <= 30; lap++) {
+      expect(workLapColor(lap)).not.toBe(workLapColor(lap - 1))
+      expect(workLapColor(lap)).toBeGreaterThanOrEqual(1)
+      expect(workLapColor(lap)).toBeLessThanOrEqual(WORK_LAP_COLOR_COUNT)
+    }
   })
 
   it("脈動の周期は、直近1分の呼び出しが多いほど短い（0回=1.8秒、30回以上=0.6秒）", () => {

@@ -13,8 +13,8 @@ export const FLOW_DEFAULT_RANGE_MS = 4 * 60 * 60 * 1000
 export const FLOW_MAX_RANGE_MS = 24 * 60 * 60 * 1000
 /** ツール呼び出しをまとめる間隔(同じセッションの5秒ごと) */
 export const FLOW_TOOL_BUCKET_MS = 5_000
-/** 作業量のバーが満杯になるツール呼び出し回数(実データの90%点) */
-export const FLOW_WORK_FULL = 82
+/** 作業量のバーの1周のツール呼び出し回数。100回で満杯になり、超えた分は次の周の色で重ねて伸びる。報告の粒も、この回数で最大 */
+export const FLOW_WORK_LAP = 100
 
 /**
  * 受信を確認できたか。confirmed: 受け手の会話ログに対応する行がある / sender-only: 送り手の送信記録だけがある

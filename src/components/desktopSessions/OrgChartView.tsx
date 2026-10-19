@@ -393,18 +393,21 @@ export function OrgChartView({ sessions, groups, highContextRatio, onSelect, onS
           )}
 
           {/*
-            出来事と見方は、どちらも横幅いっぱいで上下に並べる。横に並べると、項目の多い見方が行の高さを決め、
-            出来事の枠の下が空いていた(出来事の一覧は高さに上限がある)。見方の項目は、枠の幅に合わせて1・2・4列に並べる
+            出来事と見方は、広い幅(lg 以上)では半分ずつ横に並べ、狭い幅では上下に並べる(オーナーの依頼。10/19)。
+            2つの枠は同じ高さにそろえる。出来事の一覧は 16rem を基本にし、見方のほうが高いときだけ、その高さまで伸びる
+            (はみ出す分は中でスクロール)。見方の文は短くして、出来事と同じくらいの高さに収める(詳しい説明は使い方ガイド)。
+            見方の文が長いと、出来事が約500pxまで伸びて長すぎた。一覧の伸び方は grow と basis-0(0px)にする。flex-1(basis 0%)だと、
+            高さの決まらない枠では中身の高さ(全件分)として計算され、一覧が全件の高さまで伸びるため。見方の項目は、枠の幅に合わせて1・2・4列に並べる
           */}
-          <div className="space-y-3">
-            <section className="min-w-0 space-y-1 rounded-xl border bg-card p-3" aria-label="出来事">
+          <div className="grid gap-3 lg:grid-cols-2" data-testid="org-below">
+            <section className="flex min-w-0 flex-col gap-1 rounded-xl border bg-card p-3" aria-label="出来事">
               <h2 className="text-sm font-medium">
                 出来事
                 {chart.counts.instructs + chart.counts.reports + chart.counts.ends > lines.length && (
                   <span className="ml-2 text-xs font-normal text-muted-foreground">新しい{LOG_LIMIT}件を表示</span>
                 )}
               </h2>
-              <ul className="max-h-56 space-y-0 overflow-y-auto text-xs" data-testid="org-log">
+              <ul className="max-h-64 space-y-0 overflow-y-auto text-xs lg:max-h-none lg:min-h-64 lg:grow lg:basis-0" data-testid="org-log">
                 {lines.length === 0 && <li className="py-1 text-muted-foreground">出来事はありません。</li>}
                 {lines.map((line, i) => (
                   <li key={`${line.t}-${i}`} className="flex min-w-0 gap-2 border-b py-1 last:border-b-0" data-kind={line.label}>
@@ -427,28 +430,28 @@ export function OrgChartView({ sessions, groups, highContextRatio, onSelect, onS
               <h2 className="text-sm font-medium">見方</h2>
               <div className="grid gap-x-6 gap-y-1.5 @sm:grid-cols-2 @4xl:grid-cols-4">
                 <Legend color="var(--flow-down)" line="solid">
-                  指示（指揮役から下へ）。線の横に先頭20文字。破線の粒は、受信を確認できていない指示
+                  指示（指揮役から下へ）。線の横に先頭20文字。破線の粒＝受信を確認できていない
                 </Legend>
                 <Legend color="var(--flow-up)" line="solid">
-                  報告（下から指揮役へ）。粒の大きさ＝作業量（ツール呼び出し回数。82回で最大）
+                  報告（下から指揮役へ）。粒が大きいほど作業量が多い（100回で最大）
                 </Legend>
                 <Legend color="var(--muted-foreground)" line="none">
-                  3層目: 子が作った補助のセッション（例: 会話の練習相手）。子のカードの下に字下げして並べ、子から線でつなぐ。子との指示・報告は、同じ色の粒で流れる
+                  3層目: 子が作った補助のセッション。子のカードの下に字下げして並べる
                 </Legend>
                 <Legend color="var(--flow-cross)" line="dotted">
-                  他のグループ・外部（CLI）から指揮役への連絡（点線）
+                  他のグループ・外部（CLI）からの連絡（点線）
                 </Legend>
                 <Legend color="var(--muted-foreground)" line="none">
-                  灰色の「報告なしで終了」＝指示のあと、報告せずにターンが終わった
+                  灰色の「報告なしで終了」＝報告せずにターンが終わった
                 </Legend>
                 <Legend color="var(--flow-work)" line="none">
-                  作業中（直近1分以内にツールを呼んでいる）。脈動が速いほど手数が多い
+                  作業中＝直近1分にツールを呼んだ。脈動が速いほど手数が多い
                 </Legend>
-                <Legend color="var(--primary)" line="none">
-                  作業量のバー＝ツール呼び出しの回数。長さは量で、警告ではない。ツールは Claude が作業で行う操作（ファイルの読み書き・コマンド・検索・送信など）で、スキルとは別物
+                <Legend color="var(--work-lap-1)" line="none">
+                  作業量のバー＝ツール呼び出しの回数。100回で1周し、次の周は濃い色（「2周目」など）。警告ではない
                 </Legend>
                 <Legend color="var(--status-warning)" line="none">
-                  コンテキスト: 80%以上で黄（注意）、90%以上で赤（危険）。圧縮で下がり、増えた分は「+28K」のように示す
+                  コンテキスト: 80%以上で黄、90%以上で赤。増えた分は「+28K」
                 </Legend>
               </div>
             </section>

@@ -1,4 +1,4 @@
-import { FLOW_WORK_FULL, type FlowEvent, type FlowInstruct, type FlowMember, type FlowReceipt, type FlowResponse } from "./flowTypes"
+import { FLOW_WORK_LAP, type FlowEvent, type FlowInstruct, type FlowMember, type FlowReceipt, type FlowResponse } from "./flowTypes"
 import { formatTokens } from "./usageFormat"
 
 /**
@@ -223,12 +223,39 @@ export function formatCtxDelta(delta: number): string | null {
   return delta >= CTX_FLASH_MIN_TOKENS ? `+${formatTokens(delta)}` : null
 }
 
-/** 作業量(ツール呼び出し回数)に対する、バーの割合(0〜1)。82回以上は満杯のまま */
+/** 作業量(ツール呼び出し回数)の、1周目の中での割合(0〜1)。100回以上は1のまま(粒の大きさ・カードの光り方に使う) */
 export function workRatio(tools: number): number {
-  return Math.max(0, Math.min(1, tools / FLOW_WORK_FULL))
+  return Math.max(0, Math.min(1, tools / FLOW_WORK_LAP))
 }
 
-/** 報告の粒の半径。作業量0〜82回以上を、最小〜最大の線形 */
+/** 作業量のバーの周と、その周の中で伸びた割合 */
+export interface WorkLap {
+  /** 何周目か(1から)。0回は1周目 */
+  lap: number
+  /** その周の中で伸びた割合(0〜1)。周の回数ちょうど(100・200回…)は1(その周の色で満杯) */
+  ratio: number
+}
+
+/** 0〜100回は1周目、101〜200回は2周目…。100回でちょうど1周目が満杯、101回から2周目の色が伸び始める */
+export function workLap(tools: number): WorkLap {
+  if (!(tools > 0)) return { lap: 1, ratio: 0 }
+  const lap = Math.ceil(tools / FLOW_WORK_LAP)
+  return { lap, ratio: (tools - (lap - 1) * FLOW_WORK_LAP) / FLOW_WORK_LAP }
+}
+
+/** 周の色の数(globals.css の --work-lap-1〜4。1つの色相の濃淡で、周が進むほど濃い。細いバーでも隣の周と見分けられるよう、段の差を大きくして4段にした) */
+export const WORK_LAP_COLOR_COUNT = 4
+
+/**
+ * 周の色の番号(1〜4)。4周目までは周の番号のまま。5周目からは3と4を交互に使う
+ * (同じ色が続くと、前の周の上に伸びる分が見えなくなるため。何周目かは文字でも出す)
+ */
+export function workLapColor(lap: number): number {
+  if (lap <= WORK_LAP_COLOR_COUNT) return Math.max(1, lap)
+  return lap % 2 === 0 ? WORK_LAP_COLOR_COUNT : WORK_LAP_COLOR_COUNT - 1
+}
+
+/** 報告の粒の半径。作業量0〜100回以上を、最小〜最大の線形 */
 export function particleRadius(tools: number): number {
   return PARTICLE_MIN_RADIUS + (PARTICLE_MAX_RADIUS - PARTICLE_MIN_RADIUS) * workRatio(tools)
 }

@@ -334,12 +334,12 @@ export function makeOrgChartSample(outDir, options = {}) {
   }
   // 6 報告あり（作業5回）＋同じ窓の2通目の報告（組にならない）
   task({ child: S.report, ago: 90, text: "先週の議論を3行にまとめてください", tools: 5, workMin: 5, ctx: ctxReport, perTool: 1_500, outcome: "report", extraReportAgo: 80 })
-  // 7 作業中（報告も終了もまだ。いまもツールを呼んでいる）
+  // 7 作業中（報告も終了もまだ。いまもツールを呼んでいる）。作業量は141回で、バーは2周目（1周100回）。コンテキストの増え方は以前の40回と同じ（約4万）
   {
     const startAgo = 60
     sendRow(S.leaderA, startAgo, 270_000, S.screen, "リリースノートの下書きを作ってください")
     peerRow(S.screen, S.leaderA, startAgo - 5 / 60, "リリースノートの下書きを作ってください", SESSIONS[0].title)
-    ctxScreen = work(S.screen, startAgo - 0.5, 0.3, 40, ctxScreen, 1_000)
+    ctxScreen = work(S.screen, startAgo - 0.5, 0.3, 140, ctxScreen, 286)
     // いまも作業中: 直近（約10秒前）にもツールを呼んでいる
     assistantRow(S.screen, 0.17, ctxScreen + 1_000, { tools: [{ name: "Bash" }] })
   }

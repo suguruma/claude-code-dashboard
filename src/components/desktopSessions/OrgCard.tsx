@@ -3,8 +3,8 @@
 import type { CSSProperties } from "react"
 import { cn } from "@/lib/utils"
 import type { DesktopSessionSummary } from "@/lib/desktopSessionTypes"
-import { formatElapsed, leaderPhaseText, pulseSeconds, workRatio, type CardPhase, type MemberState } from "@/lib/flowPlayback"
-import { FLOW_WORK_FULL, type FlowMember } from "@/lib/flowTypes"
+import { formatElapsed, leaderPhaseText, pulseSeconds, workLap, workLapColor, workRatio, type CardPhase, type MemberState } from "@/lib/flowPlayback"
+import { FLOW_WORK_LAP, type FlowMember } from "@/lib/flowTypes"
 import { ContextBar } from "./ContextBar"
 import { SendCountBadge, SendLimitNotice } from "./Messaging"
 import { DesktopStatusBadge } from "./statusMeta"
@@ -58,7 +58,8 @@ export function OrgCard({ depth, member, state, summary, highContextRatio, refer
     state.ctx !== null && limit
       ? { tokens: state.ctx, limit, ratio: Math.min(1, state.ctx / limit) }
       : null
-  const workPercent = Math.round(workRatio(state.tools) * 100)
+  const lap = workLap(state.tools)
+  const lapPercent = Math.round(lap.ratio * 100)
   const working = state.phase === "working"
   const style = {
     "--org-pulse": `${pulseSeconds(state.callsPerMinute).toFixed(2)}s`,
@@ -126,20 +127,37 @@ export function OrgCard({ depth, member, state, summary, highContextRatio, refer
           <div className="space-y-0.5">
             <div className="flex justify-between gap-1 text-[11px] text-muted-foreground">
               <span>作業量</span>
-              <span className="tabular-nums text-foreground">{state.tools > 0 ? `ツール ${state.tools}回` : "—"}</span>
+              <span className="tabular-nums text-foreground" data-testid="org-work-count">
+                {state.tools > 0 ? `ツール ${state.tools}回` : "—"}
+                {lap.lap >= 2 && <span className="ml-1 text-muted-foreground">{lap.lap}周目</span>}
+              </span>
             </div>
+            {/*
+              100回で1周。超えた分は、前の周の色で満杯にした上に、次の周の色で左から伸びる。
+              色は量を示すだけなので、警告の色(黄・赤・橙)と粒の色(青・緑・紫)を避けた、1つの色相の濃淡(周が進むほど濃い)
+            */}
             <div
               role="meter"
               aria-label="作業量"
               aria-valuemin={0}
-              aria-valuemax={FLOW_WORK_FULL}
-              aria-valuenow={Math.min(state.tools, FLOW_WORK_FULL)}
-              className="h-1.5 w-full overflow-hidden rounded-full bg-muted"
+              aria-valuemax={FLOW_WORK_LAP}
+              aria-valuenow={lapPercent}
+              aria-valuetext={state.tools > 0 ? `ツール ${state.tools}回（${lap.lap}周目。1周${FLOW_WORK_LAP}回）` : "ツール 0回"}
+              className="relative h-1.5 w-full overflow-hidden rounded-full bg-muted"
+              data-lap={lap.lap}
             >
-              {/* 量を示すだけなので中立の色にする(状態の色〈橙=深刻〉を使うと警告に見える) */}
+              {lap.lap >= 2 && (
+                <div
+                  className="absolute inset-0 rounded-full"
+                  style={{ background: `var(--work-lap-${workLapColor(lap.lap - 1)})` }}
+                />
+              )}
               <div
-                className="h-full rounded-full bg-primary"
-                style={{ width: `${state.tools > 0 ? Math.max(4, workPercent) : 0}%` }}
+                className="relative h-full rounded-full"
+                style={{
+                  width: `${state.tools > 0 ? Math.max(4, lapPercent) : 0}%`,
+                  background: `var(--work-lap-${workLapColor(lap.lap)})`,
+                }}
               />
             </div>
           </div>
