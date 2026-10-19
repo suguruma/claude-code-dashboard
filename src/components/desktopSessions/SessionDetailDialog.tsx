@@ -91,7 +91,7 @@ export function SessionDetailDialog({ sessionId, highContextRatio, onClose }: Se
                   ? "解析中"
                   : `${detail.compactionCount}回${detail.lastCompactionAt ? `（直近 ${formatAgo(detail.lastCompactionAt)}）` : ""}`}
               </Field>
-              <Field label="待機中の入力">{detail.queuedInputs}件</Field>
+              <Field label="未処理の入力">{detail.queuedInputs}件</Field>
               <Field label="他のセッションへの送信（人の最後の入力から）">
                 {detail.messaging ? (
                   <span title="人が最後に入力してから、他のセッションへ送った回数（届かなかった送信を含む）">

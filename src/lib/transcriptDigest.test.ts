@@ -190,7 +190,7 @@ describe("コンテキスト・状態の手がかり", () => {
     expect(d.context?.tokens).toBe(200)
   })
 
-  it("圧縮の回数・直近の時刻と、待機中の入力の数を数える", () => {
+  it("圧縮の回数・直近の時刻と、未処理の入力の数を数える", () => {
     const d = digestOf([compactRow(tsAt(1)), compactRow(tsAt(5)), queueRow("enqueue"), queueRow("enqueue"), queueRow("dequeue")])
     expect(d.compactionCount).toBe(2)
     expect(d.lastCompactionAt).toBe(Date.parse(tsAt(5)))

@@ -76,7 +76,7 @@ export function SessionRow({ session: s, highContextRatio, onSelect, parentTitle
                 <Badge
                   variant="outline"
                   className="shrink-0"
-                  title="claude.exe が --resume でこのセッションを開いています。待機中のセッションでもプロセスは残るため、「実行中」とは別の情報です"
+                  title="claude.exe が --resume でこのセッションを開いています。入力待ちのセッションでもプロセスは残るため、「実行中」とは別の情報です"
                 >
                   <SquareTerminal aria-hidden />
                   CLIプロセスあり
@@ -102,7 +102,7 @@ export function SessionRow({ session: s, highContextRatio, onSelect, parentTitle
               {s.permissionMode && <span>権限 {s.permissionMode}</span>}
               {s.completedTurns !== null && <span>{s.completedTurns}ターン</span>}
               <span>最終活動 {formatAgo(s.lastActivityAt)}</span>
-              {s.queuedInputs > 0 && <span>待機中の入力 {s.queuedInputs}件</span>}
+              {s.queuedInputs > 0 && <span>未処理の入力 {s.queuedInputs}件</span>}
             </div>
 
             {s.needsActionExcerpt && (

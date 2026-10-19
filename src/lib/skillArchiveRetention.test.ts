@@ -22,6 +22,11 @@ vi.mock("./fileIO", async (importOriginal) => {
 const cleanupDirs: string[] = []
 /** 90日より十分に古い時刻（2023年） */
 const OLD_TS = 1_700_000_000_000
+/**
+ * 35回続けて退避する2件の上限。フォルダの複製と削除を数百回行うため、全体の実行(ほかのテストと並列)では
+ * 1件で4〜5秒かかり、vitest の既定の5秒を超えて、ときどき落ちていた(単独では1.4秒)。
+ */
+const LOOP_TEST_TIMEOUT_MS = 30_000
 
 async function makeProject(): Promise<ProjectConfig> {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "ccd-skill-archive-retention-test-"))
@@ -78,7 +83,7 @@ describe("アーカイブの退避フォルダ(.ccd-backup.<epoch>)の整理", (
     // ほかのスキル・ほかのモデルの退避フォルダには触れない
     expect(await dirBackups(project, "Opus 5", "other-skill")).toHaveLength(40)
     expect(await dirBackups(project, "Sonnet 5", "my-skill")).toHaveLength(40)
-  })
+  }, LOOP_TEST_TIMEOUT_MS)
 
   it("残るのは新しい順。90日より古い退避は、直近5世代を除いて消える", async () => {
     const project = await makeProject()
@@ -131,7 +136,7 @@ describe("アーカイブの退避フォルダ(.ccd-backup.<epoch>)の整理", (
     expect(await dirBackups(project, "Opus 5", "my-skill", SWITCH_BACKUP_INFIX)).toHaveLength(30)
     expect(await dirBackups(project, "Opus 5", "other-skill", SWITCH_BACKUP_INFIX)).toHaveLength(40)
     await fs.access(path.join(project.path, "skills-archive", "Opus 5", "my-skill", "SKILL.md"))
-  })
+  }, LOOP_TEST_TIMEOUT_MS)
 
   it("切り替え先の自動退避が、整理で消える古さ（31世代目）でも、切り替え自体は成功する（整理は最後に行う）", async () => {
     const project = await makeProject()

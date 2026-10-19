@@ -160,7 +160,7 @@ export interface DesktopSessionSummary {
   messaging: DesktopSessionMessaging | null
   /**
    * claude.exe が `--resume=<セッションID>` でこのセッションを開いているか。「実行中」とは別の情報
-   * (待機中のセッションでもプロセスは残る)。running: プロセスあり / none: 無し / unknown: 取得できていない
+   * (入力待ちのセッションでもプロセスは残る)。running: プロセスあり / none: 無し / unknown: 取得できていない
    * (Windows以外・取得に失敗・初回の取得前)。
    */
   cliProcess: "running" | "none" | "unknown"

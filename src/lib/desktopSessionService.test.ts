@@ -548,7 +548,7 @@ describe("起動中のCLIプロセスの確認(段階2)", () => {
     const b = list.sessions.find((x) => x.title === "セッション2")!
     expect(a.cliProcess).toBe("running")
     expect(b.cliProcess).toBe("none")
-    // プロセスが残っていても、動いているとは限らない(待機中でもプロセスは残る)。状態は従来どおり
+    // プロセスが残っていても、動いているとは限らない(入力待ちでもプロセスは残る)。状態は従来どおり
     expect(a.status).toBe("completed")
     expect((await svc.detail(fakeSessionId(1)))?.cliProcess).toBe("running")
   })
