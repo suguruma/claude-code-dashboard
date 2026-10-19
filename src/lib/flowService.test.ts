@@ -33,6 +33,7 @@ interface SampleModule {
     write: () => Promise<void>
     groups: { a: string; b: string }
     ids: Record<string, string>
+    transcriptPaths: Record<string, string>
     expected: Record<string, Record<string, unknown>>
   }
   appendWorkingHumanInput: (projectsRoot: string, options?: { now?: number }) => Promise<string>
@@ -490,8 +491,8 @@ describe("FlowService: 別グループ・指揮役の判定・範囲", () => {
   it("応答に、報告・指示の本文（20文字より後ろ）・目印の文字列が含まれない（許可リスト）", async () => {
     const { sample, now, flow } = await sampleService()
     // 子の指示と指揮役への報告の本文に、20文字より後ろに目印を足した行を追記する
-    const projectDir = path.join(sample.projectsRoot, "-sample-org-chart")
-    const cliOf = (id: string) => `${id.replace("local_00000000-0000-4000-8000-", "11111111-1111-4111-8111-")}.jsonl`
+    // 指揮役の会話ログは、⑨ の合成データから自分のフォルダにある(記憶が会話ログのフォルダごとのため)
+    const fileOf = (id: string) => sample.transcriptPaths[id]
     const row = (toId: string, fromId: string, text: string) => ({
       type: "user",
       timestamp: new Date(now - 5_000).toISOString(),
@@ -500,9 +501,9 @@ describe("FlowService: 別グループ・指揮役の判定・範囲", () => {
       origin: { kind: "peer", from: fromId, hostInjected: true },
       message: { role: "user", content: text },
     })
-    await fs.appendFile(path.join(projectDir, cliOf(sample.ids.report)), JSON.stringify(row(sample.ids.report, sample.ids.leaderA, `${"あ".repeat(20)}${SENTINEL}`)) + "\n")
-    await fs.appendFile(path.join(projectDir, cliOf(sample.ids.leaderA)), JSON.stringify(row(sample.ids.leaderA, sample.ids.report, `報告の本文です。${SENTINEL}`)) + "\n")
-    await fs.appendFile(path.join(projectDir, cliOf(sample.ids.leaderA)), JSON.stringify(row(sample.ids.leaderA, sample.ids.leaderB, `${"い".repeat(20)}${SENTINEL}`)) + "\n")
+    await fs.appendFile(fileOf(sample.ids.report), JSON.stringify(row(sample.ids.report, sample.ids.leaderA, `${"あ".repeat(20)}${SENTINEL}`)) + "\n")
+    await fs.appendFile(fileOf(sample.ids.leaderA), JSON.stringify(row(sample.ids.leaderA, sample.ids.report, `報告の本文です。${SENTINEL}`)) + "\n")
+    await fs.appendFile(fileOf(sample.ids.leaderA), JSON.stringify(row(sample.ids.leaderA, sample.ids.leaderB, `${"い".repeat(20)}${SENTINEL}`)) + "\n")
     const f = (await flow.build(sample.groups.a)) as FlowResponse
     const json = JSON.stringify(f)
     expect(json).not.toContain(SENTINEL)

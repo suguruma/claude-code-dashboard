@@ -26,7 +26,12 @@
  *   別グループ:   指揮役1・子1。指示1・報告1。子が作ったグループ外のセッション1（3層目に出る）
  *   利用上限の公式値の記録2件（2時間前と2分前。5時間 5%→22%・週 12%→14%。--guard では最後の5時間が92%）
  *   判断待ち（整理ページ用。どのグループにも入っていない）4: 質問の回答待ち・要約が要対応・エラー・宛先不明の送信
+ *   組織のルール（⑨）: グローバルの CLAUDE.md（出力先の global/）、指揮役2人の作業フォルダ（出力先の work/。試験グループの
+ *                 指揮役だけ CLAUDE.md あり）と記憶（会話ログのフォルダの memory）、指揮役でないセッションの記憶（読まれては
+ *                 いけないもの。中身は実行のたびに変わる目印の文字列）、追加のファイル（出力先の extras/）。
+ *                 指揮役2人の会話ログは、それぞれ別のフォルダに置く（記憶は会話ログのフォルダごとのため）
  */
+import { randomUUID } from "node:crypto"
 import { appendFile, mkdir, rm, writeFile, utimes } from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -346,10 +351,88 @@ export function makeOrgChartSample(outDir, options = {}) {
   const sessionsDir = path.join(dataDir, "claude-code-sessions", ACCOUNT, ORG)
   const projectDir = path.join(projectsRoot, "-sample-org-chart")
 
+  // 組織のルール（⑨）。指揮役は、作業フォルダ（出力先の中）と会話ログのフォルダを、それぞれ自分の分だけ持つ
+  const LEADERS = {
+    [S.leaderA]: { work: path.join(outDir, "work", "leader-a"), projectDir: path.join(projectsRoot, "-sample-org-chart-leader-a") },
+    [S.leaderB]: { work: path.join(outDir, "work", "leader-b"), projectDir: path.join(projectsRoot, "-sample-org-chart-leader-b") },
+  }
+  const cwdOf = (n) => LEADERS[n]?.work ?? `C:\\sample\\org-chart\\${n}`
+  const projectDirOf = (n) => LEADERS[n]?.projectDir ?? projectDir
+  const globalClaudeMdPath = path.join(outDir, "global", "CLAUDE.md")
+  const extraLedgerPath = path.join(outDir, "extras", "ledger.md")
+  // 指揮役でないセッションの記憶に入れる目印。公開ファイルに出ないよう、実行のたびに作る
+  const privateMarker = `目印-${randomUUID()}`
+
+  const writeOrgRules = async () => {
+    const memo = (name, description, type, body) =>
+      `---\nname: ${name}\ndescription: ${description}\nmetadata:\n  type: ${type}\n  modified: "${new Date(now - 3 * 3_600_000).toISOString()}"\n---\n\n${body}\n`
+    const files = [
+      [
+        globalClaudeMdPath,
+        [
+          "# 指揮役と担当の決まり（合成のデータ）",
+          "",
+          "## 出力形式",
+          "結論から短く書く。",
+          "",
+          "## セッションの題名",
+          "- 担当のセッションは「NN_<目的>」の形にする（例：「05_…」）。",
+          "- 指揮役は「00_リーダー_<グループ>」にする。",
+          "",
+          "## 組織の運用（全グループ共通）",
+          "- 報告は台帳に書き、メッセージは知らせだけにする。",
+          "- 文書の担当は 04_文書の整備。",
+          "- 表の担当は 06_集計の作成（番号の入れ替えの前の名前）。",
+          "",
+          "<!-- CCD:DISABLED",
+          "## 使わなくなった決まり",
+          "- 毎朝まとめて報告する。",
+          "-->",
+          "",
+        ].join("\n"),
+      ],
+      [
+        path.join(LEADERS[S.leaderA].work, "CLAUDE.md"),
+        ["# 試験グループの決まり（合成のデータ）", "", "## 進め方", "- 集計は 02_集計の作成 に頼む。", "- 検証は 05_検証 に頼む。", ""].join("\n"),
+      ],
+      [
+        path.join(LEADERS[S.leaderA].projectDir, "memory", "MEMORY.md"),
+        ["- [体制](team-structure.md) — 担当の分け方", "- [報告の形](report-format.md) — 報告の書き方", "- [消えた記憶](gone.md) — 索引だけが残っている", ""].join("\n"),
+      ],
+      [
+        path.join(LEADERS[S.leaderA].projectDir, "memory", "team-structure.md"),
+        memo("team-structure", "試験グループの担当の分け方", "project", "画面は 01_画面の修正、文書は 08_文書の整備 が受け持つ。"),
+      ],
+      [
+        path.join(LEADERS[S.leaderA].projectDir, "memory", "report-format.md"),
+        memo("report-format", "報告は結論から3行で書く", "feedback", "報告は結論から3行で書く。"),
+      ],
+      [
+        path.join(LEADERS[S.leaderA].projectDir, "memory", "unindexed-note.md"),
+        memo("unindexed-note", "索引に載せ忘れたメモ", "reference", "合成のメモ。"),
+      ],
+      [path.join(LEADERS[S.leaderB].projectDir, "memory", "MEMORY.md"), "- [調べものの分担](research-split.md) — 分担\n"],
+      [
+        path.join(LEADERS[S.leaderB].projectDir, "memory", "research-split.md"),
+        memo("research-split", "調べものの分担", "project", "調べものは 01_調査 が受け持つ。"),
+      ],
+      // 指揮役でないセッションの記憶（読まれてはいけない）
+      [path.join(projectDir, "memory", "private-note.md"), memo("private-note", privateMarker, "user", privateMarker)],
+      [extraLedgerPath, ["# 台帳（合成のデータ）", "", "## 運用のメモ", "- 確認役は、報告の見出しを見張って検証を始める。", ""].join("\n")],
+    ]
+    for (const [file, content] of files) {
+      await mkdir(path.dirname(file), { recursive: true })
+      await writeFile(file, content, "utf-8")
+    }
+    await mkdir(LEADERS[S.leaderB].work, { recursive: true })
+  }
+
   const write = async () => {
     await rm(outDir, { recursive: true, force: true })
     await mkdir(sessionsDir, { recursive: true })
     await mkdir(projectDir, { recursive: true })
+    for (const leader of Object.values(LEADERS)) await mkdir(leader.projectDir, { recursive: true })
+    await writeOrgRules()
 
     const assignments = Object.fromEntries(SESSIONS.filter((s) => s.group).map((s) => [sid(s.n), s.group]))
     const sections = [
@@ -384,7 +467,7 @@ export function makeOrgChartSample(outDir, options = {}) {
     for (const s of SESSIONS) {
       const list = rows.get(s.n)
       list.sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
-      const file = path.join(projectDir, `${cli(s.n)}.jsonl`)
+      const file = path.join(projectDirOf(s.n), `${cli(s.n)}.jsonl`)
       await writeFile(file, list.map((r) => JSON.stringify(r)).join("\n") + "\n", "utf-8")
       const last = list.length > 0 ? Date.parse(list[list.length - 1].timestamp) : now
       const lastAssistantUuid = [...list].reverse().find((r) => r.type === "assistant")?.uuid
@@ -394,8 +477,8 @@ export function makeOrgChartSample(outDir, options = {}) {
         JSON.stringify({
           sessionId: sid(s.n),
           cliSessionId: cli(s.n),
-          cwd: `C:\\sample\\org-chart\\${s.n}`,
-          originCwd: `C:\\sample\\org-chart\\${s.n}`,
+          cwd: cwdOf(s.n),
+          originCwd: cwdOf(s.n),
           createdAt: now - s.createdAgo * MIN,
           lastActivityAt: last,
           model: MODEL,
@@ -454,15 +537,31 @@ export function makeOrgChartSample(outDir, options = {}) {
     dataDir,
     projectsRoot,
     usagePath,
+    /** 組織のルール（⑨）の設定ファイル config/org-rules.json に書く内容 */
+    orgRulesConfig: { globalClaudeMdPath, extraFiles: [{ label: "台帳（合成のデータ）", path: extraLedgerPath }] },
     write,
     groups: { a: GROUP_A, b: GROUP_B },
     ids: Object.fromEntries(Object.entries(S).map(([k, n]) => [k, sid(n)])),
+    /** セッションID → 会話ログのファイル(指揮役は自分のフォルダ、それ以外は -sample-org-chart) */
+    transcriptPaths: Object.fromEntries(Object.values(S).map((n) => [sid(n), path.join(projectDirOf(n), `${cli(n)}.jsonl`)])),
     /** この合成データでの、出来事の期待値(直近4時間) */
     expected: {
       // セッション一覧の API が返すセッションの数(アーカイブ済み・サイドチャットを含む)。撮影の前の確認(scripts/check-sample-server.mjs)で使う
       sessionCount: Object.keys(S).length,
       // 同じく、セッションの ID の一覧。件数がたまたま同じ別のデータ(本物を含む)を、合成データと見誤らないために照らし合わせる
       sessionIds: Object.values(S).map(sid).sort(),
+      // 組織のルール（⑨）の期待値。privateMarker は、指揮役でないセッションの記憶の中身(どの応答・画面にも出てはいけない)
+      orgRules: {
+        folderCount: 2,
+        globalSectionOrder: ["組織の運用（全グループ共通）", "セッションの題名", "出力形式", "使わなくなった決まり"],
+        // 全体の決まり 06_集計の作成・試験グループの CLAUDE.md 05_検証・記憶 08_文書の整備
+        staleTotal: 3,
+        staleRefs: ["06_集計の作成", "05_検証", "08_文書の整備"],
+        memoryCounts: { [sid(S.leaderA)]: 3, [sid(S.leaderB)]: 1 },
+        notInIndex: ["unindexed-note.md"],
+        missingFromDisk: ["gone.md"],
+        privateMarker,
+      },
       groupA: {
         leader: sid(S.leaderA),
         // 指示・報告の数は、3層目の親子の分を含む（指揮役自身の分は、leaderInstructs・leaderReports）
@@ -588,7 +687,12 @@ async function main() {
   console.log(JSON.stringify({ dataDir: sample.dataDir, projectsRoot: sample.projectsRoot }, null, 2))
   console.log("利用上限のゲージも見るときは、config/usage.json に、次の内容を書いてください:")
   console.log(JSON.stringify({ snapshotsPath: sample.usagePath, projectsRoot: sample.projectsRoot }, null, 2))
-  console.log("期待値（直近4時間）:", JSON.stringify(sample.expected))
+  console.log("組織のルールのページも見るときは、config/org-rules.json に、次の内容を書いてください:")
+  console.log(JSON.stringify(sample.orgRulesConfig, null, 2))
+  // 目印の文字列は画面に出さない(expected.json にだけ書く)
+  const orgRulesShown = { ...sample.expected.orgRules }
+  delete orgRulesShown.privateMarker
+  console.log("期待値（直近4時間）:", JSON.stringify({ ...sample.expected, orgRules: orgRulesShown }))
   console.log("サーバーは、本物のデータを自動で探さないよう、環境変数 CCD_DESKTOP_AUTODETECT=0 を付けて起動してください（PowerShell の例）:")
   console.log("  $env:CCD_DESKTOP_AUTODETECT='0'; $env:CCD_DATA_DIR='<config フォルダの親>'; npx next start -H 127.0.0.1 -p 3961")
   console.log(`撮る前に確かめる: node scripts/check-sample-server.mjs http://127.0.0.1:3961 ${outDir}`)

@@ -18,6 +18,7 @@ import { locateDesktopDataDir } from "./desktopSessions"
 import { assistantRow, fakeCliId, humanRow, makeDesktopFixture, makeMeta, tsAt, writeMeta, writeTranscript, type DesktopFixture } from "./desktopFixtures"
 import { FlowService } from "./flowService"
 import { HousekeepingService } from "./housekeepingService"
+import { OrgRulesService } from "./orgRulesService"
 import { listSessionProjects } from "./sessionMonitor"
 import { UsageService } from "./usageService"
 
@@ -106,6 +107,9 @@ async function plantDecoy(): Promise<void> {
   await writeTranscript(decoyFx, fakeCliId(1), [humanRow("おとりの指示", { ts: tsAt(1) }), assistantRow({ ts: tsAt(2) })])
   await fs.mkdir(path.dirname(defaultSnapshotsPath()), { recursive: true })
   await fs.writeFile(defaultSnapshotsPath(), "", "utf-8")
+  // 組織のルール(⑨)が既定で読むグローバルの CLAUDE.md
+  await fs.mkdir(path.join(decoyHome, ".claude"), { recursive: true })
+  await fs.writeFile(path.join(decoyHome, ".claude", "CLAUDE.md"), `## 組織の運用\n${DECOY_TITLE}\n`, "utf-8")
   await fs.rm(fx.dataDir, { recursive: true, force: true })
 }
 
@@ -199,6 +203,11 @@ describe("自動の探索のスイッチ（⑧-2）", () => {
     const housekeeping = new HousekeepingService(sessions, new FlowService(sessions), { now: () => NOW, usage: async () => usage })
     const hk = await housekeeping.get()
     expect(JSON.stringify(hk)).not.toContain(DECOY_TITLE)
+
+    // 組織のルール(⑨)も、グローバルの CLAUDE.md の既定の場所(ホームの下)を開かない
+    const orgRules = await new OrgRulesService(sessions, { config: async () => ({}), now: () => NOW }).get()
+    expect(orgRules.global.status).toBe("disabled")
+    expect(JSON.stringify(orgRules)).not.toContain(DECOY_TITLE)
 
     expect(underDecoy(seen)).toEqual([])
   })

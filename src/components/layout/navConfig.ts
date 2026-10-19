@@ -13,6 +13,7 @@ import {
   ListTodo,
   Settings as SettingsIcon,
   Sparkles,
+  ScrollText,
   Wand2,
   type LucideIcon,
 } from "lucide-react"
@@ -74,6 +75,15 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: BrushCleaning,
         description:
           "コンテキストが大きい・長く止まっているセッション（再開すると上限をどれだけ使うかの目安つき）、返事の来ていない指示、あなたの判断を待っているセッションを、1画面にまとめます。対処はセッションを開いて行います（読み取り専用）。",
+      },
+      {
+        // ⑨。指揮役の見つけ方が Desktop のグループに頼るので、この群に置く。選んでいるプロジェクトは使わない
+        href: "/org-rules",
+        label: "組織のルール",
+        icon: ScrollText,
+        usesProject: false,
+        description:
+          "全グループ共通の決まり（グローバルの CLAUDE.md）と、グループごとの指揮役の決まり（作業フォルダの CLAUDE.md と記憶）を、1か所で読みます。番号の入れ替えなどで古くなったセッション名に印を付けます（読み取り専用）。",
       },
     ],
   },

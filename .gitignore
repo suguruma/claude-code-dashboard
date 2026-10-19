@@ -49,6 +49,8 @@ next-env.d.ts
 /config/desktop-notify.json
 # dashboard: 利用上限の価格表の上書き・公式値の記録の場所など、利用者ごとの設定
 /config/usage.json
+# dashboard: 組織のルールのページで読む追加のファイルの場所など、利用者ごとの設定（ローカルの絶対パスを含みうる）
+/config/org-rules.json
 
 # dashboard: real ~/.claude data provided for local testing (contains personal session logs)
 /sample-data-user/

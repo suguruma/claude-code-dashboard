@@ -1,0 +1,7 @@
+{
+  "pinnedSections": ["組織の運用", "セッションの題名"],
+  "globalClaudeMdPath": "",
+  "extraFiles": [
+    { "label": "台帳", "path": "C:\\sample\\ledger.md" }
+  ]
+}

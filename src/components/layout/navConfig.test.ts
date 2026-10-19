@@ -25,6 +25,7 @@ describe("サイドバーの項目", () => {
       ["/desktop-sessions", "セッション一覧"],
       ["/desktop-sessions/usage", "利用上限"],
       ["/desktop-sessions/housekeeping", "整理"],
+      ["/org-rules", "組織のルール"],
     ])
     // 各ページの見出しの下に出す説明がある
     expect(group?.items.every((i) => (i.description ?? "").length > 0)).toBe(true)
@@ -36,6 +37,7 @@ describe("サイドバーの項目", () => {
     expect(findNavItem("/desktop-sessions/org")).toBeNull()
     expect(findNavItem("/desktop-sessions/usage")?.label).toBe("利用上限")
     expect(findNavItem("/desktop-sessions/housekeeping")?.label).toBe("整理")
+    expect(findNavItem("/org-rules")?.label).toBe("組織のルール")
     expect(findNavItem("/help")?.label).toBe(HELP_ITEM.label)
     expect(findNavItem("/no-such-page")).toBeNull()
   })
@@ -59,6 +61,7 @@ describe("プロジェクトの切り替えを出すページ(⑧の表)", () =>
     "/desktop-sessions": false,
     "/desktop-sessions/usage": false,
     "/desktop-sessions/housekeeping": false,
+    "/org-rules": false,
     "/project": true,
     "/rules": true,
     "/skills": true,
