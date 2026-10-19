@@ -7,7 +7,7 @@ import type { UsageWindowView } from "./usageTypes"
  * 件数は、ほかのページと同じ関数・同じ基準で数える(整理ページの判断待ち・利用上限のゲージと食い違わないように)。
  */
 
-/** 判断待ちの数。整理ページの「あなたの判断を待っているセッション」と同じ関数で数える(送信上限で停止も含む) */
+/** 判断待ちの数。整理ページの「あなたの対応待ち」と同じ関数で数える(送信上限で停止も含む) */
 export function countDecisions(sessions: DesktopSessionSummary[]): number {
   return collectDecisions(sessions).length
 }

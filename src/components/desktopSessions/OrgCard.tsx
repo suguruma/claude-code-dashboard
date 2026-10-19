@@ -18,7 +18,7 @@ export interface CardFx {
 }
 
 const PHASE_TEXT: Record<CardPhase, string> = {
-  idle: "待機中",
+  idle: "作業なし",
   working: "作業中",
   reported: "報告済み",
   noreport: "報告なしで終了",

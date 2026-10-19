@@ -480,7 +480,7 @@ describe("出来事の一覧の文言", () => {
 
 describe("leaderPhaseText: 指揮役のカードの状態の文言", () => {
   it("配下の作業中の数は「配下で」と付けて、指揮役自身の作業中と区別する", () => {
-    expect(leaderPhaseText(false, 0)).toBe("待機中")
+    expect(leaderPhaseText(false, 0)).toBe("作業なし")
     expect(leaderPhaseText(true, 0)).toBe("作業中")
     expect(leaderPhaseText(false, 3)).toBe("配下で3件が作業中")
     expect(leaderPhaseText(true, 2)).toBe("作業中・配下で2件が作業中")

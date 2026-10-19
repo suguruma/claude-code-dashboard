@@ -73,12 +73,12 @@ export function HousekeepingDecisionList({
     <section aria-labelledby="hk-decisions" className="space-y-3">
       <SectionHeading
         id="hk-decisions"
-        title="あなたの判断を待っているセッション"
+        title="あなたの対応待ち"
         count={data.items.length}
         description="全グループ（グループ外を含む）のうち、要対応（許可待ち・承認待ち・判断待ち）・送信上限で停止中・エラー・届かなかった送信があるセッション。すぐ押せるものから、この順に並べ、同じ区分の中では、最後の活動が古いものを先に出します。待機（次の連絡を待っているだけ）は入れません。"
       />
       {data.items.length === 0 ? (
-        <EmptyNote>判断を待っているセッションはありません。</EmptyNote>
+        <EmptyNote>対応を待っているセッションはありません。</EmptyNote>
       ) : (
         <LimitedList
           items={data.items}

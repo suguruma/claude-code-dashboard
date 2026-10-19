@@ -251,7 +251,7 @@ export function shouldAnimate(prefersReducedMotion: boolean): boolean {
 export function leaderPhaseText(selfWorking: boolean, subordinatesWorking: number): string {
   const subordinates = subordinatesWorking > 0 ? `配下で${subordinatesWorking}件が作業中` : null
   if (selfWorking) return subordinates ? `作業中・${subordinates}` : "作業中"
-  return subordinates ?? "待機中"
+  return subordinates ?? "作業なし"
 }
 
 /** 「最後の出来事から」の経過の表示 */
