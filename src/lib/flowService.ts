@@ -68,7 +68,7 @@ export class FlowService {
   async build(groupId: string, sinceInput?: number | null): Promise<FlowResponse | null> {
     const now = this.now()
     const since = normalizeSince(sinceInput, now)
-    const { group, sources, outsiders } = await this.sessions.groupSources(groupId)
+    const { group, sources, outsiders, sideChatCounts } = await this.sessions.groupSources(groupId)
     if (!group) return null
 
     const prefix = this.sessions.orchestratorPrefix()
@@ -131,6 +131,7 @@ export class FlowService {
         parentId: parentOf.get(id) ?? null,
         contextLimit: this.sessions.contextLimitOf(source.summary.model, seen),
         contextBefore: before,
+        sideChats: sideChatCounts.get(id) ?? 0,
       }
     })
 

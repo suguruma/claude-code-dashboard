@@ -51,6 +51,12 @@ export interface DesktopMeta {
    * 組織図の3層目(親子)の根拠にする。`spawnedFrom` のほかの項目(taskId・title・name など)は取り込まない。
    */
   spawnedFromId: string | null
+  /**
+   * サイドチャット(Desktop の分岐の操作で作られた脇の会話。Desktop はサイドバーに出さない)か。
+   * `spawnedFrom.btw` と `spawnedFrom.userFork` が両方 true のものだけ。`spawnedFrom.sideSession` だけでは判定しない
+   * (start_session で作った作業用の子にも付く)。取り込むのは真偽値だけ。
+   */
+  isSideChat: boolean
 }
 
 export interface DesktopGroup {
@@ -183,6 +189,13 @@ function spawnedFromIdOf(spawnedFrom: unknown): string | null {
   return typeof id === "string" && SESSION_ID_FORM.test(id) ? id : null
 }
 
+/** サイドチャットか: `spawnedFrom.btw` と `spawnedFrom.userFork` が両方 true */
+function isSideChatOf(spawnedFrom: unknown): boolean {
+  if (!spawnedFrom || typeof spawnedFrom !== "object") return false
+  const s = spawnedFrom as Record<string, unknown>
+  return s.btw === true && s.userFork === true
+}
+
 /**
  * 生のメタデータから、表示に必要な項目だけを選んで写す(許可リスト方式、S3)。
  * ここで選ばなかった項目(ツール一覧・システムプロンプトの写し・MCP設定・権限の更新履歴など)は、
@@ -224,6 +237,7 @@ export function projectMeta(raw: unknown): DesktopMeta | null {
     hasError: typeof r.error === "string" ? r.error.length > 0 : r.error != null && r.error !== false,
     errorAt: num(r.errorAt),
     spawnedFromId: spawnedFromIdOf(r.spawnedFrom),
+    isSideChat: isSideChatOf(r.spawnedFrom),
   }
 }
 

@@ -11,8 +11,8 @@
     "start": "next start -H 127.0.0.1",
     "lint": "eslint",
     "test": "vitest run",
-    "electron:dev": "next build && electron .",
-    "dist:win": "next build && electron-builder --win portable --x64",
+    "electron:dev": "next build && node scripts/prepare-standalone.mjs && electron .",
+    "dist:win": "next build && node scripts/prepare-standalone.mjs && electron-builder --win portable --x64",
     "package:sample-data": "node scripts/package-sample-data.mjs"
   },
   "dependencies": {

@@ -52,6 +52,8 @@ export interface MetaOptions {
   noCliSessionId?: boolean
   /** このセッションを作ったセッションのID(`spawnedFrom.sessionId`)。形に合わない値も渡せる(取り込まれないことの確認用) */
   spawnedFromId?: unknown
+  /** サイドチャット(`spawnedFrom.btw` と `spawnedFrom.userFork` が true)にする。spawnedFromId と一緒に使う */
+  sideChat?: boolean
 }
 
 /** Desktop の local_*.json に近い形のメタデータ。返してはいけない項目には SENTINEL を入れる */
@@ -94,8 +96,19 @@ export function makeMeta(o: MetaOptions): Record<string, unknown> {
   if (o.scheduledTaskId) meta.scheduledTaskId = o.scheduledTaskId
   if (o.spawnedFromId !== undefined) {
     // sessionId 以外の項目(返してはいけない)には SENTINEL を入れる(S3)
-    meta.spawnedFrom = { sessionId: o.spawnedFromId, taskId: `task ${SENTINEL}`, title: `title ${SENTINEL}`, name: `name ${SENTINEL}` }
-    meta.sideSession = true
+    // 実物と同じく、sideSession は spawnedFrom の中に置く(作業用の子にもサイドチャットにも付く)
+    const spawnedFrom: Record<string, unknown> = {
+      sessionId: o.spawnedFromId,
+      taskId: `task ${SENTINEL}`,
+      title: `title ${SENTINEL}`,
+      name: `name ${SENTINEL}`,
+      sideSession: true,
+    }
+    if (o.sideChat) {
+      spawnedFrom.btw = true
+      spawnedFrom.userFork = true
+    }
+    meta.spawnedFrom = spawnedFrom
   }
   return meta
 }
@@ -358,6 +371,7 @@ export function makeSessionSummary(id: string, overrides: Partial<DesktopSession
     messaging: null,
     cliProcess: "unknown",
     spawnedFromId: null,
+    isSideChat: false,
     ...overrides,
   }
 }

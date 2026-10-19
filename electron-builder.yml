@@ -14,10 +14,10 @@ extraResources:
     to: standalone/node_modules
   - from: .next/standalone/server.js
     to: standalone/server.js
+  # .next/standalone/.next には、scripts/prepare-standalone.mjs が写した static も入っている
+  # （npm run electron:dev と同じ写し方を使う。public/ を足したときは、standalone/public も同梱する）
   - from: .next/standalone/.next
     to: standalone/.next
-  - from: .next/static
-    to: standalone/.next/static
   - from: config/projects.example.json
     to: seed/config/projects.example.json
 win:

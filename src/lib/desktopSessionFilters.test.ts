@@ -34,6 +34,7 @@ function session(id: string, overrides: Partial<DesktopSessionSummary> = {}): De
     messaging: null,
     cliProcess: "unknown",
     spawnedFromId: null,
+    isSideChat: false,
     ...overrides,
   }
 }

@@ -427,6 +427,9 @@ export function OrgChartView({ sessions, groups, highContextRatio, onSelect }: O
               <Legend color="var(--flow-work)" line="none">
                 作業中（直近1分以内にツールを呼んでいる）。脈動が速いほど手数が多い
               </Legend>
+              <Legend color="var(--primary)" line="none">
+                作業量のバー＝ツール呼び出しの回数。長さは量で、警告ではない。ツールは Claude が作業で行う操作（ファイルの読み書き・コマンド・検索・送信など）で、スキルとは別物
+              </Legend>
               <Legend color="var(--status-warning)" line="none">
                 コンテキスト: 80%以上で黄（注意）、90%以上で赤（危険）。圧縮で下がり、増えた分は「+28K」のように示す
               </Legend>

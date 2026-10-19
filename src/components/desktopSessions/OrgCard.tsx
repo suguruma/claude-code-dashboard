@@ -102,6 +102,15 @@ export function OrgCard({ depth, member, state, summary, highContextRatio, refer
         <div className="flex min-w-0 flex-wrap items-center gap-1">
           {summary && <DesktopStatusBadge status={summary.status} reason={summary.statusReason} />}
           <SendCountBadge messaging={summary?.messaging ?? null} />
+          {member.sideChats > 0 && (
+            <span
+              className="inline-flex shrink-0 items-center rounded-md border px-1.5 py-0.5 text-[11px] text-muted-foreground"
+              title="このセッションから開いたサイドチャット（脇の会話）の数。サイドチャットはカードにしない"
+              data-testid="org-side-chats"
+            >
+              サイドチャット {member.sideChats}
+            </span>
+          )}
         </div>
 
         <p className="flex min-w-0 items-center gap-1.5 text-xs" data-testid="org-phase">
@@ -127,8 +136,9 @@ export function OrgCard({ depth, member, state, summary, highContextRatio, refer
               aria-valuenow={Math.min(state.tools, FLOW_WORK_FULL)}
               className="h-1.5 w-full overflow-hidden rounded-full bg-muted"
             >
+              {/* 量を示すだけなので中立の色にする(状態の色〈橙=深刻〉を使うと警告に見える) */}
               <div
-                className="h-full rounded-full bg-[var(--flow-work)]"
+                className="h-full rounded-full bg-primary"
                 style={{ width: `${state.tools > 0 ? Math.max(4, workPercent) : 0}%` }}
               />
             </div>

@@ -52,6 +52,7 @@ describe("projectMeta(許可リスト方式の射影、S3)", () => {
         "id",
         "isArchived",
         "isRoutine",
+        "isSideChat",
         "lastActivityAt",
         "lastAssistantUuid",
         "model",
@@ -113,6 +114,20 @@ describe("projectMeta(許可リスト方式の射影、S3)", () => {
     }
     expect(projectMeta({ sessionId: "local_x", spawnedFrom: "local_y" })?.spawnedFromId).toBeNull()
     expect(projectMeta({ sessionId: "local_x", spawnedFrom: { taskId: "t" } })?.spawnedFromId).toBeNull()
+  })
+
+  it("サイドチャットは spawnedFrom の btw と userFork が両方 true のものだけ。sideSession だけ(作業用の子)では判定しない", () => {
+    expect(projectMeta(makeMeta({ n: 1, spawnedFromId: fakeSessionId(7), sideChat: true }))?.isSideChat).toBe(true)
+    expect(projectMeta(makeMeta({ n: 2, spawnedFromId: fakeSessionId(7) }))?.isSideChat).toBe(false)
+    expect(projectMeta(makeMeta({ n: 3 }))?.isSideChat).toBe(false)
+    const half = (extra: Record<string, unknown>) =>
+      projectMeta({ sessionId: "local_x", spawnedFrom: { sessionId: "local_y", sideSession: true, ...extra } })?.isSideChat
+    expect(half({ btw: true })).toBe(false)
+    expect(half({ userFork: true })).toBe(false)
+    expect(half({ btw: "true", userFork: true })).toBe(false)
+    expect(half({ btw: true, userFork: true })).toBe(true)
+    // spawnedFrom の外にある同名の項目は見ない
+    expect(projectMeta({ sessionId: "local_x", btw: true, userFork: true })?.isSideChat).toBe(false)
   })
 
   it("定期実行のセッションと、要対応の文が空のセッションを区別する", () => {

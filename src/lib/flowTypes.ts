@@ -102,6 +102,8 @@ export interface FlowMember {
   contextLimit: number | null
   /** 表示範囲の始まりより前の、最後のコンテキスト(トークン)。分からなければ null */
   contextBefore: number | null
+  /** このセッションから作られたサイドチャットの数(アーカイブされていないもの)。サイドチャットはカードにしない */
+  sideChats: number
 }
 
 export interface FlowGroupRef {

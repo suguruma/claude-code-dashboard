@@ -141,6 +141,11 @@ export interface DesktopSessionSummary {
   cliProcess: "running" | "none" | "unknown"
   /** このセッションを作った(spawnした)セッションのID。組織図の3層目(親子)の根拠。分からなければ null */
   spawnedFromId: string | null
+  /**
+   * サイドチャット(Desktop の分岐の操作で作られた脇の会話)か。組織図ではカードにせず、親のカードに数だけ出す。
+   * 一覧では「サイドチャット（親：…）」の印を付ける
+   */
+  isSideChat: boolean
 }
 
 export interface DesktopSessionGroup {

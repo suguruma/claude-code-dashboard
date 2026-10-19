@@ -27,6 +27,7 @@ function meta(overrides: Partial<DesktopMeta> = {}): DesktopMeta {
     hasError: false,
     errorAt: null,
     spawnedFromId: null,
+    isSideChat: false,
     ...overrides,
   }
 }

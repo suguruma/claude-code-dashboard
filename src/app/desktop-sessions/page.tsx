@@ -62,6 +62,10 @@ function DesktopSessionsContent() {
   const [selectedId, setSelectedId] = useSelectedSession()
 
   const sessions = useMemo(() => data?.sessions ?? [], [data])
+  // サイドチャットの印に出す、親のセッションのタイトル
+  const titleById = useMemo(() => new Map(sessions.map((s) => [s.id, s.title] as const)), [sessions])
+  const parentTitleOf = (s: (typeof sessions)[number]) =>
+    s.isSideChat && s.spawnedFromId ? (titleById.get(s.spawnedFromId) ?? null) : null
   const highContextRatio = data?.highContextRatio ?? 0.8
   const filtered = useMemo(
     () => applyFilters(sessions, filters, highContextRatio),
@@ -199,7 +203,7 @@ function DesktopSessionsContent() {
                   </h2>
                   <div className="space-y-2">
                     {bucket.sessions.map((s) => (
-                      <SessionRow key={s.id} session={s} highContextRatio={highContextRatio} onSelect={setSelectedId} />
+                      <SessionRow key={s.id} session={s} highContextRatio={highContextRatio} onSelect={setSelectedId} parentTitle={parentTitleOf(s)} />
                     ))}
                   </div>
                 </section>
@@ -208,7 +212,7 @@ function DesktopSessionsContent() {
           ) : (
             <div className="space-y-2">
               {filtered.map((s) => (
-                <SessionRow key={s.id} session={s} highContextRatio={highContextRatio} onSelect={setSelectedId} />
+                <SessionRow key={s.id} session={s} highContextRatio={highContextRatio} onSelect={setSelectedId} parentTitle={parentTitleOf(s)} />
               ))}
             </div>
           )}

@@ -5,9 +5,10 @@
  *
  * 使い方:
  *   node scripts/make-org-chart-sample.mjs <出力先のフォルダ>
+ *   node scripts/make-org-chart-sample.mjs --guard <出力先のフォルダ>   (利用上限の記録の5時間を92%にする。上限ガードの帯の確認用)
  *   node scripts/make-org-chart-sample.mjs --append-human-input <出力先のフォルダ>   (止まっている子へ、作業中の人の入力を追記)
- * 出力先に data/（Desktopのデータ）と projects/（会話ログ）ができる。表示される設定を、
- * config/desktop-sessions.json に書いて開発サーバーを起動する。
+ * 出力先に data/（Desktopのデータ）・projects/（会話ログ）・usage-snapshots.jsonl（利用上限の公式値の記録）ができる。
+ * 表示される設定を、config/desktop-sessions.json と config/usage.json に書いて開発サーバーを起動する。
  *
  * 作るもの（グループ「試験グループ」と「別グループ」）:
  *   試験グループ: 指揮役1・子4。指示8（うち送信側のみ1）・報告5（うち組にならないもの1）・報告なしで終了2・
@@ -17,7 +18,10 @@
  *                 4層目（3層目が作ったもの。2層目の祖先の下にまとめて出る）1・グループ内の子が作ったもの1・
  *                 やりとりが無くて作業中のもの1。指揮役が作ったグループ外のセッション（2層目に出る）1。
  *                 木に出ないもの: 親が見つからないグループ外のセッション1・アーカイブ済み1
+ *                 サイドチャット（Desktop の分岐の操作で作った脇の会話）1: 画面の修正から開いたもの。カードにはならず、
+ *                 画面の修正のカードに「サイドチャット 1」と出る（同じ親の作業用の子「補助B」はカードになる）
  *   別グループ:   指揮役1・子1。指示1・報告1。子が作ったグループ外のセッション1（3層目に出る）
+ *   利用上限の公式値の記録2件（2時間前と2分前。5時間 5%→22%・週 12%→14%。--guard では最後の5時間が92%）
  *   判断待ち（整理ページ用。どのグループにも入っていない）4: 質問の回答待ち・要約が要対応・エラー・宛先不明の送信
  */
 import { appendFile, mkdir, rm, writeFile, utimes } from "node:fs/promises"
@@ -53,6 +57,7 @@ const S = {
   adhoc: 110, // 指揮役が作った。グループの外（2層目に出る）
   stray: 111, // 親が見つからない。グループの外（出ない）
   archived: 112, // 画面の修正の子。アーカイブ済み（出ない）
+  sideChat: 113, // 画面の修正から開いたサイドチャット（カードにならない）
   leaderB: 201,
   research: 202,
   sideB: 203, // 調査の子。グループの外（別グループの3層目に出る）
@@ -65,6 +70,7 @@ const S = {
 
 /**
  * parent: そのセッションを作ったセッション（Desktopのメタデータの spawnedFrom.sessionId）。archived: アーカイブ済み。
+ * sideChat: サイドチャット（spawnedFrom の btw と userFork が true）。作業用の子は sideSession だけが true。
  * group が無いセッションは、どのグループにも入っていない。
  * 3層目の名前も、作成順（B→A）と名前順（A→B）が食い違うように作ってある。
  */
@@ -81,6 +87,7 @@ const SESSIONS = [
   { n: S.adhoc, title: "補助_臨時の調べもの", createdAgo: 300, parent: S.leaderA },
   { n: S.stray, title: "補助_行き先のない作業", createdAgo: 400, parent: 999 },
   { n: S.archived, title: "補助_片づけ済み", createdAgo: 410, parent: S.screen, archived: true },
+  { n: S.sideChat, title: "脇の質問_用語の確認", createdAgo: 25, parent: S.screen, sideChat: true },
   { n: S.leaderB, title: "00_リーダー_別", group: GROUP_B, createdAgo: 600 },
   { n: S.research, title: "01_調査", group: GROUP_B, createdAgo: 590 },
   { n: S.sideB, title: "補助_別グループの下調べ", createdAgo: 500, parent: S.research },
@@ -90,8 +97,12 @@ const SESSIONS = [
   { n: S.unreachable, title: "判断_宛先不明の送信", createdAgo: 450 },
 ]
 
+/**
+ * options.now: 基準の時刻。options.fiveHourPercent: 利用上限の記録の、最後の5時間の値(既定22。上限ガードの帯の確認では92)
+ */
 export function makeOrgChartSample(outDir, options = {}) {
   const now = options.now ?? Date.now()
+  const fiveHourPercent = options.fiveHourPercent ?? 22
   const rows = new Map(SESSIONS.map((s) => [s.n, []]))
   const at = (agoMin) => new Date(now - agoMin * MIN).toISOString()
   let seq = 0
@@ -299,6 +310,10 @@ export function makeOrgChartSample(outDir, options = {}) {
   // 8 報告あり（作業3回）。受け手のコンテキストは80%を超える
   ctxDocs = task({ child: S.docs, ago: 30, text: "バックアップの件数を照合してください", tools: 3, workMin: 5, ctx: ctxDocs, perTool: 5_000, outcome: "report" })
 
+  // サイドチャット: 画面の修正から開いた脇の会話（最近のやりとりが1回。整理の候補にならない小ささ）
+  humanRow(S.sideChat, 20, "この用語の意味を教えてください")
+  assistantRow(S.sideChat, 19.5, 30_000)
+
   // 3層目で、やりとりが無いもの: 文書の整備の補助のセッションが、人の入力でいまも動いている（指示も報告も無いが、作業中になる）
   work(S.practiceD, 3, 0.2, 6, 80_000, 1_000)
   assistantRow(S.practiceD, 0.1, 87_000, { tools: [{ name: "Bash" }] })
@@ -324,6 +339,7 @@ export function makeOrgChartSample(outDir, options = {}) {
   // ---- 書き出し -----------------------------------------------------------
   const dataDir = path.join(outDir, "data")
   const projectsRoot = path.join(outDir, "projects")
+  const usagePath = path.join(outDir, "usage-snapshots.jsonl")
   const sessionsDir = path.join(dataDir, "claude-code-sessions", ACCOUNT, ORG)
   const projectDir = path.join(projectsRoot, "-sample-org-chart")
 
@@ -385,8 +401,19 @@ export function makeOrgChartSample(outDir, options = {}) {
           title: s.title,
           permissionMode: "acceptEdits",
           completedTurns: 5,
-          // 親(そのセッションを作ったセッション)。実際のDesktopの形式に合わせ、sessionId のほかの項目も付ける(取り込まれない)
-          ...(s.parent ? { spawnedFrom: { sessionId: sid(s.parent), taskId: "synthetic-task", title: "synthetic" }, sideSession: true } : {}),
+          // 親(そのセッションを作ったセッション)。実際のDesktopの形式に合わせ、sessionId のほかの項目も付ける(取り込まれない)。
+          // sideSession は作業用の子にもサイドチャットにも付く。サイドチャットだけ btw と userFork が true
+          ...(s.parent
+            ? {
+                spawnedFrom: {
+                  sessionId: sid(s.parent),
+                  taskId: "synthetic-task",
+                  title: "synthetic",
+                  sideSession: true,
+                  ...(s.sideChat ? { btw: true, userFork: true } : {}),
+                },
+              }
+            : {}),
           // ターン後の要約が「要対応」(最後の応答に対応する要約)。内容の先頭60文字が、整理ページに出る
           ...(s.needsAction
             ? {
@@ -401,11 +428,29 @@ export function makeOrgChartSample(outDir, options = {}) {
         "utf-8"
       )
     }
+
+    // 利用上限の公式値の記録(指揮役の運用が get_usage の値を追記する形)。2時間前と2分前の2件
+    const fiveHourReset = now + 177 * MIN
+    const weeklyReset = now + 4 * 24 * 60 * MIN
+    const snapshot = (agoMin, fiveHour, weekly) =>
+      JSON.stringify({
+        ts: at(agoMin),
+        source: "get_usage",
+        recordedBy: "synthetic-recorder",
+        plan: "Max",
+        windows: [
+          { key: "five_hour", label: "5-hour limit", percentUsed: fiveHour, resetsAt: new Date(fiveHourReset).toISOString() },
+          { key: "weekly_all", label: "Weekly · all models", percentUsed: weekly, resetsAt: new Date(weeklyReset).toISOString() },
+        ],
+        extraUsage: { enabled: false, spent: null },
+      })
+    await writeFile(usagePath, [snapshot(120, 5, 12), snapshot(2, fiveHourPercent, 14)].join("\n") + "\n", "utf-8")
   }
 
   return {
     dataDir,
     projectsRoot,
+    usagePath,
     write,
     groups: { a: GROUP_A, b: GROUP_B },
     ids: Object.fromEntries(Object.entries(S).map(([k, n]) => [k, sid(n)])),
@@ -443,7 +488,9 @@ export function makeOrgChartSample(outDir, options = {}) {
           [sid(S.subC)]: [3, sid(S.verify)],
           [sid(S.practiceD)]: [3, sid(S.docs)],
         },
-        notInTree: [sid(S.stray), sid(S.archived)],
+        notInTree: [sid(S.stray), sid(S.archived), sid(S.sideChat)],
+        // サイドチャット: [親, 数]。カードにはならず、親のカードに数だけ出る
+        sideChats: [[sid(S.screen), 1]],
         subWorking: sid(S.practiceD),
       },
       // 整理ページ（⑦）の期待値（現在時刻を基準にした、この合成データでの結果）。ID の並びは、画面の並び順
@@ -519,17 +566,20 @@ async function main() {
     console.log("作業中の人の入力を、止まっている子（03_検証）の会話ログに追記しました")
     return
   }
-  const out = process.argv[2]
+  const guard = process.argv[2] === "--guard"
+  const out = process.argv[guard ? 3 : 2]
   if (!out) {
-    console.error("使い方: node scripts/make-org-chart-sample.mjs <出力先のフォルダ>")
+    console.error("使い方: node scripts/make-org-chart-sample.mjs [--guard] <出力先のフォルダ>")
     process.exit(1)
   }
   const outDir = path.resolve(out)
-  const sample = makeOrgChartSample(outDir)
+  const sample = makeOrgChartSample(outDir, guard ? { fiveHourPercent: 92 } : {})
   await sample.write()
   console.log(`合成データを作りました: ${outDir}`)
   console.log("config/desktop-sessions.json に、次の内容を書いてください（パスは絶対パス）:")
   console.log(JSON.stringify({ dataDir: sample.dataDir, projectsRoot: sample.projectsRoot }, null, 2))
+  console.log("利用上限のゲージも見るときは、config/usage.json に、次の内容を書いてください:")
+  console.log(JSON.stringify({ snapshotsPath: sample.usagePath, projectsRoot: sample.projectsRoot }, null, 2))
   console.log("期待値（直近4時間）:", JSON.stringify(sample.expected))
 }
 

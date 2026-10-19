@@ -36,9 +36,9 @@ const A = "local_a"
 const B = "local_b"
 
 const members: FlowMember[] = [
-  { id: LEADER, title: "00_リーダー", model: null, isLeader: true, parentId: null, contextLimit: 1000, contextBefore: 100 },
-  { id: A, title: "01_A", model: null, isLeader: false, parentId: LEADER, contextLimit: 1000, contextBefore: 200 },
-  { id: B, title: "02_B", model: null, isLeader: false, parentId: LEADER, contextLimit: 1000, contextBefore: null },
+  { id: LEADER, title: "00_リーダー", model: null, isLeader: true, parentId: null, contextLimit: 1000, contextBefore: 100, sideChats: 0 },
+  { id: A, title: "01_A", model: null, isLeader: false, parentId: LEADER, contextLimit: 1000, contextBefore: 200, sideChats: 0 },
+  { id: B, title: "02_B", model: null, isLeader: false, parentId: LEADER, contextLimit: 1000, contextBefore: null, sideChats: 0 },
 ]
 
 function flow(events: FlowEvent[], tools: Array<[number, number, number, number]> = [], generatedAt = at(1000)): FlowResponse {
@@ -79,8 +79,8 @@ describe("stateAt: 3層目（子が作った補助のセッション）", () => 
   const D = "local_d" // A の3層目（指示のやりとりが無い。人の入力で動く）
   const withSubs: FlowMember[] = [
     ...members,
-    { id: C, title: "補助C", model: null, isLeader: false, parentId: A, contextLimit: 1000, contextBefore: null },
-    { id: D, title: "補助D", model: null, isLeader: false, parentId: A, contextLimit: 1000, contextBefore: null },
+    { id: C, title: "補助C", model: null, isLeader: false, parentId: A, contextLimit: 1000, contextBefore: null, sideChats: 0 },
+    { id: D, title: "補助D", model: null, isLeader: false, parentId: A, contextLimit: 1000, contextBefore: null, sideChats: 0 },
   ]
   const fromA = (sec: number, to: string): FlowEvent => ({ kind: "instruct", t: at(sec), from: A, to, summary: "Aから", receipt: "confirmed", sentAt: null })
   const toA = (sec: number, from: string, instructSec: number, tools: number): FlowEvent => ({
@@ -488,9 +488,9 @@ describe("leaderPhaseText: 指揮役のカードの状態の文言", () => {
 
   it("配下の数は、概要の「作業中」と同じ数（指揮役を除くセッション。3層目を含む）", () => {
     const members: FlowMember[] = [
-      { id: "L", title: "00_リーダー", model: null, isLeader: true, parentId: null, contextLimit: 1000, contextBefore: null },
-      { id: "A", title: "01_A", model: null, isLeader: false, parentId: "L", contextLimit: 1000, contextBefore: null },
-      { id: "C", title: "補助C", model: null, isLeader: false, parentId: "A", contextLimit: 1000, contextBefore: null },
+      { id: "L", title: "00_リーダー", model: null, isLeader: true, parentId: null, contextLimit: 1000, contextBefore: null, sideChats: 0 },
+      { id: "A", title: "01_A", model: null, isLeader: false, parentId: "L", contextLimit: 1000, contextBefore: null, sideChats: 0 },
+      { id: "C", title: "補助C", model: null, isLeader: false, parentId: "A", contextLimit: 1000, contextBefore: null, sideChats: 0 },
     ]
     const timeline = buildTimeline({
       ...flow([], [[50, 0, 100, 1], [50, 1, 100, 1], [55, 2, 100, 1]]),

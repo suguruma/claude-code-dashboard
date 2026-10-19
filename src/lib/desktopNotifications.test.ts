@@ -40,6 +40,7 @@ function session(id: string, status: DesktopSessionStatus, overrides: Partial<De
     messaging: null,
     cliProcess: "unknown",
     spawnedFromId: null,
+    isSideChat: false,
     ...overrides,
   }
 }

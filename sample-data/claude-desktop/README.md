@@ -39,7 +39,14 @@ Get-ChildItem sample-data/claude-desktop/projects -Recurse -Filter *.jsonl |
 node scripts/make-org-chart-sample.mjs <出力先のフォルダ>
 ```
 
-表示された `dataDir` と `projectsRoot` を `config/desktop-sessions.json` に書いて、ダッシュボードを（再）起動します。
+表示された `dataDir` と `projectsRoot` を `config/desktop-sessions.json` に書いて、ダッシュボードを（再）起動します。
+利用上限のゲージも見るときは、表示された `snapshotsPath` と `projectsRoot` を `config/usage.json` に書きます（出力先の `usage-snapshots.jsonl` が、架空の公式値の記録です。5時間 22%・週 14%）。
+上限ガードの帯（「上限ガード中：新しい指示は保留中です」）を見るときは、`--guard` を付けて作ります（最後の5時間が92%になる）。
+
+```bash
+node scripts/make-org-chart-sample.mjs --guard <出力先のフォルダ>
+```
+
 同じ出力先に合成データを作り直したときも、ダッシュボードを再起動してください（会話ログの読み込みは差分読みなので、再起動しないと古い値のまま残ります）。
 既定の接頭辞 `00_` で、グループ「試験グループ」（指揮役1・子4。3層目あり）と「別グループ」（指揮役1・子1。3層目1）が見えます。
 
@@ -56,6 +63,7 @@ node scripts/make-org-chart-sample.mjs <出力先のフォルダ>
 - 「04_文書の整備」の下に「補助D」。指示も報告も無いが、直近のツール呼び出しで「作業中」になる
 - 指揮役が作った、グループの外のセッション「補助_臨時の調べもの」（2層目に出る）
 - 木に出ないもの: 親が見つからないグループ外のセッション、アーカイブ済みのセッション
+- サイドチャット「脇の質問_用語の確認」（「01_画面の修正」から開いた脇の会話。メタデータの `spawnedFrom.btw` と `spawnedFrom.userFork` が true）はカードにならず、「01_画面の修正」のカードに「サイドチャット 1」と出る。同じ親の作業用の子「補助B」（`spawnedFrom.sideSession` だけが true）はカードになる。セッション一覧では「サイドチャット（親：01_画面の修正）」の印が付く
 - 「別グループ」の「01_調査」の下に、グループ外のセッション1件（3層目）
 
 ### 整理ページの確認
@@ -65,7 +73,7 @@ node scripts/make-org-chart-sample.mjs <出力先のフォルダ>
 - 判断待ち5件: 要対応2（回答待ち・要約が要対応〈内容の先頭60文字が出る〉）→ 送信上限で停止中1（03_検証）→ エラー1 → 届かなかった送信1
 - 返事の来ていない指示4件（古い順）: 報告なしで終了2（02_集計の作成・03_検証）、未達の疑い1（04_文書の整備。送り手の記録だけ）、報告待ち1（01_画面の修正。作業中）
 - コンテキスト整理の候補10件: 再開コストの大きい順（03_検証が先頭。コンテキストが大きい＋長く止まっている）。最後は、コンテキストは大きいがキャッシュが有効なもの（04_文書の整備）で、再開コストは出ない
-- 再開コストを「5時間の枠 約x〜y%・週 約x〜y%」で見るには、利用上限の公式値の記録（`config/usage.json` の `snapshotsPath`）が要ります。無ければ、金額（API価格換算）だけが出ます。記録は1行1件のJSONです（形式は `src/lib/usageSnapshots.ts` の先頭の説明）
+- 再開コストを「5時間の枠 約x〜y%・週 約x〜y%」で見るには、利用上限の公式値の記録（`config/usage.json` の `snapshotsPath`。スクリプトが出力先に `usage-snapshots.jsonl` を作る）が要ります。無ければ、金額（API価格換算）だけが出ます。記録は1行1件のJSONです（形式は `src/lib/usageSnapshots.ts` の先頭の説明）
 
 期待値はスクリプトの戻り値（`expected.housekeeping`）にあり、`src/lib/housekeepingService.test.ts` が同じ値を確かめています。
 

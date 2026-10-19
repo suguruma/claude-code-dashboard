@@ -13,9 +13,16 @@ interface SessionRowProps {
   session: DesktopSessionSummary
   highContextRatio: number
   onSelect: (id: string) => void
+  /** サイドチャットのとき、親のセッションのタイトル。親が一覧に無ければ null */
+  parentTitle?: string | null
 }
 
-export function SessionRow({ session: s, highContextRatio, onSelect }: SessionRowProps) {
+/** サイドチャットの印の文言。親が一覧に無いときも印は出す(「補助A_…」のような長いタイトルは、印の幅で切り詰めて表示する) */
+export function sideChatLabel(parentTitle: string | null | undefined): string {
+  return `サイドチャット（親：${parentTitle && parentTitle.length > 0 ? parentTitle : "一覧に無いセッション"}）`
+}
+
+export function SessionRow({ session: s, highContextRatio, onSelect, parentTitle }: SessionRowProps) {
   const instruction = s.latestInstruction
   // 起動直後の暫定の要約のあいだ、人以外の本文は確定した値ではない（全体の解析が終わると人の指示に置き換わりうる）
   const provisional = isInstructionProvisional(s)
@@ -39,6 +46,16 @@ export function SessionRow({ session: s, highContextRatio, onSelect }: SessionRo
               <DesktopStatusBadge status={s.status} reason={s.statusReason} />
               <span className="min-w-0 truncate text-sm font-medium">{s.title}</span>
               {s.pinned && <Pin className="size-3.5 shrink-0 text-muted-foreground" aria-label="ピン留め" />}
+              {s.isSideChat && (
+                <Badge
+                  variant="outline"
+                  className="min-w-0 max-w-[20rem]"
+                  title={`${sideChatLabel(parentTitle)}。Claude Desktop の分岐の操作で作られた脇の会話で、Desktop のサイドバーには出ません`}
+                  data-testid="side-chat-badge"
+                >
+                  <span className="truncate">{sideChatLabel(parentTitle)}</span>
+                </Badge>
+              )}
               {s.group && (
                 <Badge variant="secondary" className="shrink-0">
                   {s.group.name}

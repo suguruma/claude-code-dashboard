@@ -20,14 +20,16 @@ import {
 import { eventKey, selectUnseen, type SeenEvents } from "./flowPlayback"
 import { FLOW_SINCE_TOLERANCE_MS, FlowService, normalizeSince, parseFlowParams } from "./flowService"
 import { FLOW_DEFAULT_RANGE_MS, FLOW_MAX_RANGE_MS, type FlowEvent, type FlowResponse } from "./flowTypes"
+import { readSnapshots } from "./usageSnapshots"
 
 interface SampleModule {
   makeOrgChartSample: (
     outDir: string,
-    options?: { now?: number }
+    options?: { now?: number; fiveHourPercent?: number }
   ) => {
     dataDir: string
     projectsRoot: string
+    usagePath: string
     write: () => Promise<void>
     groups: { a: string; b: string }
     ids: Record<string, string>
@@ -299,6 +301,23 @@ describe("FlowService: 3層目（子が作った補助のセッション）", ()
     expect(JSON.stringify(f)).not.toContain(sample.ids.stray)
   })
 
+  it("サイドチャットはカードにせず、親のカードに数だけ出す。同じ親の作業用の子（sideSession だけ）はカードになる", async () => {
+    const { sample, flow, sessions } = await sampleService()
+    const f = (await flow.build(sample.groups.a)) as FlowResponse
+    const ids = new Set(f.members.map((m) => m.id))
+    expect(ids.has(sample.ids.sideChat)).toBe(false)
+    expect(ids.has(sample.ids.helperB)).toBe(true) // 作業用の子（画面の修正が作った）
+    const counts = Object.fromEntries(f.members.filter((m) => m.sideChats > 0).map((m) => [m.id, m.sideChats]))
+    expect(counts).toEqual(Object.fromEntries(sample.expected.groupA.sideChats as Array<[string, number]>))
+    // サイドチャットの出来事も流れない
+    expect(JSON.stringify(f.events)).not.toContain(sample.ids.sideChat)
+    // 一覧には、サイドチャットの印つきで出る（作業用の子には付かない）
+    const list = await sessions.list()
+    const byId = new Map(list.sessions.map((s) => [s.id, s] as const))
+    expect(byId.get(sample.ids.sideChat)).toMatchObject({ isSideChat: true, spawnedFromId: sample.ids.screen })
+    expect(byId.get(sample.ids.helperB)?.isSideChat).toBe(false)
+  })
+
   it("3層目の親子の間の指示・報告は、2層目と同じ規則（受信確認・組・作業量）で出る。3層目から指揮役への連絡は、他グループ扱いにならない", async () => {
     const { sample, flow } = await sampleService()
     const f = (await flow.build(sample.groups.a)) as FlowResponse
@@ -390,6 +409,28 @@ describe("FlowService: 3層目（子が作った補助のセッション）", ()
       [fakeSessionId(3), fakeSessionId(2)],
     ])
     expect(JSON.stringify(f)).not.toContain(SENTINEL)
+  })
+})
+
+describe("合成データの利用上限の記録", () => {
+  it("公式値の記録を2件作る。最後の5時間は既定で22%、上限ガードの確認用には92%にできる", async () => {
+    const mod = (await import(/* @vite-ignore */ pathToFileURL(path.join(process.cwd(), "scripts", "make-org-chart-sample.mjs")).href)) as SampleModule
+    const now = Date.now()
+    for (const [options, expected] of [
+      [{ now }, 22],
+      [{ now, fiveHourPercent: 92 }, 92],
+    ] as const) {
+      const sample = mod.makeOrgChartSample(path.join(await tmpDir(), "sample"), options)
+      await sample.write()
+      const result = await readSnapshots(sample.usagePath)
+      expect(result.found).toBe(true)
+      expect(result.snapshots).toHaveLength(2)
+      const last = result.snapshots[result.snapshots.length - 1]
+      expect(last.plan).toBe("Max")
+      expect(last.windows.find((w) => w.key === "five_hour")?.percentUsed).toBe(expected)
+      expect(last.windows.find((w) => w.key === "weekly_all")?.percentUsed).toBe(14)
+      expect(last.ts).toBeLessThanOrEqual(now)
+    }
   })
 })
 
