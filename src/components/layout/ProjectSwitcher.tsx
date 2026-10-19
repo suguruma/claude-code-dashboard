@@ -77,17 +77,18 @@ export function ProjectSwitcher() {
   }
 
   return (
-    <div className="flex items-center gap-2">
+    // 幅は上のバー(@container)に合わせる。2段目に回ったときは選択欄が残りの幅を使い、1段のときは 180px
+    <div className="flex min-w-0 flex-1 items-center gap-2 @2xl:flex-none">
       <FolderGit2 className="size-4 text-muted-foreground shrink-0" />
       {isLoading || !selectedProjectId ? (
-        <div className="h-7 w-[180px] rounded-md border border-input bg-transparent" />
+        <div className="h-7 min-w-0 flex-1 rounded-md border border-input bg-transparent @2xl:w-[180px] @2xl:flex-none" />
       ) : (
         <Select
           value={selectedProjectId}
           onValueChange={(id) => id && selectProject(id)}
           disabled={projects.length === 0}
         >
-          <SelectTrigger size="sm" className="w-[180px]">
+          <SelectTrigger size="sm" className="min-w-0 flex-1 @2xl:w-[180px] @2xl:flex-none">
             <SelectValue placeholder="プロジェクトを選択">
               {(value: string) => projects.find((p) => p.id === value)?.name ?? value}
             </SelectValue>
@@ -106,9 +107,10 @@ export function ProjectSwitcher() {
         <Tooltip>
           <TooltipTrigger
             render={
-              <Badge variant="destructive" className="gap-1">
+              <Badge variant="destructive" className="shrink-0 gap-1" aria-label="グローバル設定">
                 <ShieldAlert className="size-3" />
-                グローバル設定
+                {/* 狭いときはアイコンだけにする(意味はツールチップと aria-label で伝える) */}
+                <span className="hidden @md:inline">グローバル設定</span>
               </Badge>
             }
           />

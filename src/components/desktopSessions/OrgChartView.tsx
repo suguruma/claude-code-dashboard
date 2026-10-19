@@ -74,10 +74,15 @@ interface OrgChartViewProps {
   groups: DesktopSessionGroup[]
   highContextRatio: number
   onSelect: (id: string) => void
+  /**
+   * いまの組織図にカードとして出ているセッションのID(ライブのデータで決める)。組織図のデータがまだ無い・取れないときは null。
+   * failed は、組織図のデータを取れなかったとき true。ホームの「組織図に出ていないセッション」に使う(⑧)
+   */
+  onShownChange?: (memberIds: string[] | null, failed: boolean) => void
 }
 
 /** 組織図の表示(グループ別の指揮役と子のカード、指示・報告の信号、ライブと振り返り) */
-export function OrgChartView({ sessions, groups, highContextRatio, onSelect }: OrgChartViewProps) {
+export function OrgChartView({ sessions, groups, highContextRatio, onSelect, onShownChange }: OrgChartViewProps) {
   const [storedGroup, setStoredGroup] = usePersistedState<string>(GROUP_STORAGE_KEY, "")
   const [storedRange, setStoredRange] = usePersistedState<number>(RANGE_STORAGE_KEY, 4)
   const [storedOrder, setStoredOrder] = usePersistedState<string>(ORDER_STORAGE_KEY, "name")
@@ -88,6 +93,13 @@ export function OrgChartView({ sessions, groups, highContextRatio, onSelect }: O
   const rangeMs = rangeHours * HOUR_MS
 
   const { data: liveFlow, error } = useFlow(groupId, rangeMs)
+  // カードとして出ているセッションを知らせる。グループが無ければ空、別のグループのデータが残っている間は「まだ分からない」
+  const shownKey = groupId === null ? "" : liveFlow && liveFlow.group.id === groupId ? liveFlow.members.map((m) => m.id).join(",") : null
+  const shownFailed = shownKey === null && error !== undefined && error !== null
+  useEffect(() => {
+    if (!onShownChange) return
+    onShownChange(shownKey === null ? null : shownKey === "" ? [] : shownKey.split(","), shownFailed)
+  }, [shownKey, shownFailed, onShownChange])
   const reducedMotion = usePrefersReducedMotion()
   const animate = shouldAnimate(reducedMotion)
   const now = useNow(1_000)

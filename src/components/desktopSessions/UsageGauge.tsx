@@ -10,6 +10,7 @@ import {
   usageLevel,
   type UsageLevel,
 } from "@/lib/usageFormat"
+import { USAGE_KIND_LABEL, usageValueKind } from "@/lib/homeDashboard"
 import type { UsageWindowView } from "@/lib/usageTypes"
 
 const LEVEL_COLOR: Record<UsageLevel, string> = {
@@ -20,14 +21,14 @@ const LEVEL_COLOR: Record<UsageLevel, string> = {
 }
 
 // 文字の色(AA)。ゲージの塗りは LEVEL_COLOR のまま
-const LEVEL_TEXT_COLOR: Record<UsageLevel, string> = {
+export const LEVEL_TEXT_COLOR: Record<UsageLevel, string> = {
   ok: "var(--primary)",
   warning: "var(--status-warning-text)",
   serious: "var(--status-serious-text)",
   critical: "var(--status-critical-text)",
 }
 
-const LEVEL_LABEL: Record<UsageLevel, string | null> = {
+export const LEVEL_LABEL: Record<UsageLevel, string | null> = {
   ok: null,
   warning: "注意（80%以上）",
   serious: "警戒（90%以上）",
@@ -68,7 +69,8 @@ export function UsageGauge({ window: w, now }: { window: UsageWindowView; now: n
           {display === null ? "—" : `${formatPercent(display)}%`}
         </span>
         <span className="text-xs text-muted-foreground">
-          {estimated ? `推定（${formatPercent(estimated.low)}〜${formatPercent(estimated.high)}%）` : display === null ? "公式値なし" : "公式値"}
+          {/* 種類の決め方は、ホームの件数の帯と共通(usageValueKind) */}
+          {estimated ? `推定（${formatPercent(estimated.low)}〜${formatPercent(estimated.high)}%）` : USAGE_KIND_LABEL[usageValueKind(w)]}
         </span>
       </div>
 

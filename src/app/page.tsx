@@ -1,147 +1,73 @@
 "use client"
 
+import { Suspense, useCallback, useState } from "react"
 import Link from "next/link"
-import { ArrowRight, ListChecks, Sparkles, Activity, Wand2 } from "lucide-react"
-import { useProjects } from "@/hooks/useProjects"
-import { useRules } from "@/hooks/useRules"
-import { useSkills } from "@/hooks/useSkills"
-import { useExecutionLogs } from "@/hooks/useExecutionLogs"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { ArrowRight } from "lucide-react"
+import { DesktopDataNotices } from "@/components/desktopSessions/DesktopDataNotices"
+import { DesktopSessionsFrame } from "@/components/desktopSessions/DesktopSessionsFrame"
+import { OrgChartView } from "@/components/desktopSessions/OrgChartView"
+import { SessionDetailDialog } from "@/components/desktopSessions/SessionDetailDialog"
+import { HomeSummaryCards } from "@/components/home/HomeSummaryCards"
+import { OutsideSessionsList } from "@/components/home/OutsideSessionsList"
+import { useDesktopSessions } from "@/hooks/useDesktopSessions"
+import { useSelectedSession } from "@/hooks/useSelectedSession"
+import { useUsage } from "@/hooks/useUsage"
 
+/**
+ * ホーム(⑧)。上に件数の帯(判断待ち・送信上限で停止・利用上限)、その下に組織図、いちばん下に組織図に出ていないセッション。
+ * 件数の帯は一覧と利用上限の値だけで出し、組織図の出来事の読み込みを待たない。
+ * 選んでいるプロジェクトは使わない(上のバーにプロジェクトの切り替えは出さない)。
+ */
 export default function HomePage() {
-  const { selectedProject, isLoading: projectsLoading } = useProjects()
-  const { rules } = useRules(selectedProject?.id ?? null)
-  const { skills } = useSkills(selectedProject?.id ?? null)
-  const { logs } = useExecutionLogs(selectedProject?.id ?? null)
+  // useSearchParams を使うため、静的生成時のためにSuspenseで包む
+  return (
+    <Suspense fallback={<p className="text-sm text-muted-foreground">読み込み中...</p>}>
+      <DesktopSessionsFrame>
+        <HomeContent />
+      </DesktopSessionsFrame>
+    </Suspense>
+  )
+}
 
-  const enabledCount = rules.filter((r) => r.enabled).length
-  const latestLog = logs[0]
-
-  if (projectsLoading) {
-    return <p className="text-sm text-muted-foreground">読み込み中...</p>
-  }
-
-  if (!selectedProject) {
-    return (
-      <Alert>
-        <AlertTitle>プロジェクトが未登録です</AlertTitle>
-        <AlertDescription>
-          画面右上の「+」から、CLAUDE.md（と任意で skills/ ・ execution_log.json）を配置している
-          Claude Code プロジェクトのルートパスを登録してください。
-        </AlertDescription>
-      </Alert>
-    )
-  }
+function HomeContent() {
+  const { data, error, isLoading } = useDesktopSessions()
+  const { data: usage } = useUsage()
+  const [selectedId, setSelectedId] = useSelectedSession()
+  const [shown, setShown] = useState<{ ids: string[] | null; failed: boolean }>({ ids: null, failed: false })
+  const onShownChange = useCallback((ids: string[] | null, failed: boolean) => setShown({ ids, failed }), [])
+  const highContextRatio = data?.highContextRatio ?? 0.8
+  const available = data !== null && data.source !== "none"
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-xl font-semibold">{selectedProject.name}</h1>
-        <p className="text-sm text-muted-foreground mt-1">{selectedProject.path}</p>
-      </div>
+    <div className="space-y-6">
+      <HomeSummaryCards sessions={available ? data.sessions : null} usage={usage} />
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>有効ルール数</CardDescription>
-            <CardTitle className="text-2xl">
-              {enabledCount}
-              <span className="text-sm font-normal text-muted-foreground"> / {rules.length}</span>
-            </CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>登録スキル数</CardDescription>
-            <CardTitle className="text-2xl">{skills.length}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>記録済みタスク数</CardDescription>
-            <CardTitle className="text-2xl">{logs.length}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>直近の 1-Shot 達成度</CardDescription>
-            <CardTitle className="text-2xl">
-              {latestLog ? `${latestLog.one_shot_score}点` : "—"}
-            </CardTitle>
-          </CardHeader>
-        </Card>
-      </div>
+      <DesktopDataNotices data={data} error={error} isLoading={isLoading} />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Link href="/rules">
-          <Card className="h-full transition-colors hover:border-primary">
-            <CardHeader>
-              <ListChecks className="size-5 text-primary" />
-              <CardTitle className="text-base">ルール管理</CardTitle>
-              <CardDescription>
-                CLAUDE.md（## 見出し単位）の表示・トグル・編集
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <span className="inline-flex items-center gap-1 text-sm text-primary">
-                開く <ArrowRight className="size-3.5" />
-              </span>
-            </CardContent>
-          </Card>
-        </Link>
+      {data && data.source === "none" && (
+        <p className="text-sm">
+          Claude Desktop を使っていないときは、Claude Code の設定を{" "}
+          <Link href="/project" className="inline-flex items-center gap-1 text-primary hover:underline">
+            プロジェクトの概要 <ArrowRight className="size-3.5" aria-hidden />
+          </Link>{" "}
+          から見られます。
+        </p>
+      )}
 
-        <Link href="/skills">
-          <Card className="h-full transition-colors hover:border-primary">
-            <CardHeader>
-              <Sparkles className="size-5 text-primary" />
-              <CardTitle className="text-base">スキル管理</CardTitle>
-              <CardDescription>
-                .claude/skills/*/SKILL.md の一覧・追加・編集
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <span className="inline-flex items-center gap-1 text-sm text-primary">
-                開く <ArrowRight className="size-3.5" />
-              </span>
-            </CardContent>
-          </Card>
-        </Link>
+      {available && (
+        <>
+          <OrgChartView
+            sessions={data.sessions}
+            groups={data.groups}
+            highContextRatio={highContextRatio}
+            onSelect={setSelectedId}
+            onShownChange={onShownChange}
+          />
+          <OutsideSessionsList sessions={data.sessions} shownIds={shown.ids} failed={shown.failed} onSelect={setSelectedId} />
+        </>
+      )}
 
-        <Link href="/trace">
-          <Card className="h-full transition-colors hover:border-primary">
-            <CardHeader>
-              <Activity className="size-5 text-primary" />
-              <CardTitle className="text-base">実行ログ可視化</CardTitle>
-              <CardDescription>
-                エージェント議論・合意度・介入ポイントの振り返り
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <span className="inline-flex items-center gap-1 text-sm text-primary">
-                開く <ArrowRight className="size-3.5" />
-              </span>
-            </CardContent>
-          </Card>
-        </Link>
-
-        <Link href="/refactor">
-          <Card className="h-full transition-colors hover:border-primary">
-            <CardHeader>
-              <Wand2 className="size-5 text-primary" />
-              <CardTitle className="text-base">ルール整理</CardTitle>
-              <CardDescription>
-                rule-optimizerスキルによるルールの矛盾・重複整理
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <span className="inline-flex items-center gap-1 text-sm text-primary">
-                開く <ArrowRight className="size-3.5" />
-              </span>
-            </CardContent>
-          </Card>
-        </Link>
-      </div>
+      <SessionDetailDialog sessionId={selectedId} highContextRatio={highContextRatio} onClose={() => setSelectedId(null)} />
     </div>
   )
 }

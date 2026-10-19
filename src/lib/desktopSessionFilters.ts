@@ -11,7 +11,7 @@ export interface DesktopSessionFilters {
   /** "all" | 作業フォルダ名 */
   folder: string
   includeArchived: boolean
-  /** list: 一覧 / group: グループ別。組織図は別ページ(/desktop-sessions/org) */
+  /** list: 一覧 / group: グループ別。組織図はホーム(/) */
   view: "list" | "group"
 }
 

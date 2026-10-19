@@ -7,7 +7,7 @@ import { UsageGuardBand } from "@/components/desktopSessions/UsageGuardBand"
 import { useUsage } from "@/hooks/useUsage"
 
 /**
- * Claude Desktop の各ページ(セッション一覧・組織図・利用上限)に共通の枠。
+ * ホームと Claude Desktop の各ページ(セッション一覧・利用上限・整理)に共通の枠。
  * 見出しと説明はサイドバーの項目(navConfig)から取り、上限ガードの帯を全ページの先頭に1つだけ出す。
  */
 export function DesktopSessionsFrame({ children }: { children: ReactNode }) {
