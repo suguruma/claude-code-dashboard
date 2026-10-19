@@ -392,7 +392,11 @@ export function OrgChartView({ sessions, groups, highContextRatio, onSelect, onS
             </p>
           )}
 
-          <div className="grid gap-3 lg:grid-cols-[2fr_1fr]">
+          {/*
+            出来事と見方は、どちらも横幅いっぱいで上下に並べる。横に並べると、項目の多い見方が行の高さを決め、
+            出来事の枠の下が空いていた(出来事の一覧は高さに上限がある)。見方の項目は、枠の幅に合わせて1・2・4列に並べる
+          */}
+          <div className="space-y-3">
             <section className="min-w-0 space-y-1 rounded-xl border bg-card p-3" aria-label="出来事">
               <h2 className="text-sm font-medium">
                 出来事
@@ -419,32 +423,34 @@ export function OrgChartView({ sessions, groups, highContextRatio, onSelect, onS
               </ul>
             </section>
 
-            <section className="space-y-1.5 rounded-xl border bg-card p-3 text-xs" aria-label="見方" data-testid="org-legend">
+            <section className="@container min-w-0 space-y-1.5 rounded-xl border bg-card p-3 text-xs" aria-label="見方" data-testid="org-legend">
               <h2 className="text-sm font-medium">見方</h2>
-              <Legend color="var(--flow-down)" line="solid">
-                指示（指揮役から下へ）。線の横に先頭20文字。破線の粒は、受信を確認できていない指示
-              </Legend>
-              <Legend color="var(--flow-up)" line="solid">
-                報告（下から指揮役へ）。粒の大きさ＝作業量（ツール呼び出し回数。82回で最大）
-              </Legend>
-              <Legend color="var(--muted-foreground)" line="none">
-                3層目: 子が作った補助のセッション（例: 会話の練習相手）。子のカードの下に字下げして並べ、子から線でつなぐ。子との指示・報告は、同じ色の粒で流れる
-              </Legend>
-              <Legend color="var(--flow-cross)" line="dotted">
-                他のグループ・外部（CLI）から指揮役への連絡（点線）
-              </Legend>
-              <Legend color="var(--muted-foreground)" line="none">
-                灰色の「報告なしで終了」＝指示のあと、報告せずにターンが終わった
-              </Legend>
-              <Legend color="var(--flow-work)" line="none">
-                作業中（直近1分以内にツールを呼んでいる）。脈動が速いほど手数が多い
-              </Legend>
-              <Legend color="var(--primary)" line="none">
-                作業量のバー＝ツール呼び出しの回数。長さは量で、警告ではない。ツールは Claude が作業で行う操作（ファイルの読み書き・コマンド・検索・送信など）で、スキルとは別物
-              </Legend>
-              <Legend color="var(--status-warning)" line="none">
-                コンテキスト: 80%以上で黄（注意）、90%以上で赤（危険）。圧縮で下がり、増えた分は「+28K」のように示す
-              </Legend>
+              <div className="grid gap-x-6 gap-y-1.5 @sm:grid-cols-2 @4xl:grid-cols-4">
+                <Legend color="var(--flow-down)" line="solid">
+                  指示（指揮役から下へ）。線の横に先頭20文字。破線の粒は、受信を確認できていない指示
+                </Legend>
+                <Legend color="var(--flow-up)" line="solid">
+                  報告（下から指揮役へ）。粒の大きさ＝作業量（ツール呼び出し回数。82回で最大）
+                </Legend>
+                <Legend color="var(--muted-foreground)" line="none">
+                  3層目: 子が作った補助のセッション（例: 会話の練習相手）。子のカードの下に字下げして並べ、子から線でつなぐ。子との指示・報告は、同じ色の粒で流れる
+                </Legend>
+                <Legend color="var(--flow-cross)" line="dotted">
+                  他のグループ・外部（CLI）から指揮役への連絡（点線）
+                </Legend>
+                <Legend color="var(--muted-foreground)" line="none">
+                  灰色の「報告なしで終了」＝指示のあと、報告せずにターンが終わった
+                </Legend>
+                <Legend color="var(--flow-work)" line="none">
+                  作業中（直近1分以内にツールを呼んでいる）。脈動が速いほど手数が多い
+                </Legend>
+                <Legend color="var(--primary)" line="none">
+                  作業量のバー＝ツール呼び出しの回数。長さは量で、警告ではない。ツールは Claude が作業で行う操作（ファイルの読み書き・コマンド・検索・送信など）で、スキルとは別物
+                </Legend>
+                <Legend color="var(--status-warning)" line="none">
+                  コンテキスト: 80%以上で黄（注意）、90%以上で赤（危険）。圧縮で下がり、増えた分は「+28K」のように示す
+                </Legend>
+              </div>
             </section>
           </div>
         </>
