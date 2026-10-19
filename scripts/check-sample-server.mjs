@@ -3,7 +3,8 @@
  *
  * 使い方:
  *   node scripts/check-sample-server.mjs <サーバーのURL> <合成データの出力先のフォルダ>
- *   例: node scripts/check-sample-server.mjs http://127.0.0.1:3961 C:/sample/data/sample
+ *   例(PowerShell): node scripts/check-sample-server.mjs http://127.0.0.1:3961 "$env:TEMP\ccd-sample\data\sample"
+ *   (合成データは %TEMP% の下に置く。C:\ の直下に一時フォルダを作らない)
  *
  * セッション一覧の API(`/api/desktop-sessions`)を1回だけ呼び、次の3つを満たすときだけ終了コード0で終わる。
  *   - データの場所の出どころが、設定ファイルか環境変数での明示(explicit-config・explicit-env)であること

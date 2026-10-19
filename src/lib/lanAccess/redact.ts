@@ -43,9 +43,19 @@ function decodeSafe(s: string): string {
   }
 }
 
+/**
+ * Windows の長いパスの前置き(`\\?\C:\…`・`\\.\C:\…`・`\\?\UNC\server\…`)を外す。外さないと、ホームのフォルダそのもの
+ * (`\\?\C:\Users\<名前>`)を見分けられず、ユーザー名が最後の名前として出てしまう
+ */
+function stripLongPathPrefix(p: string): string {
+  const m = /^[\\/]{2}[?.][\\/](UNC[\\/])?/i.exec(p)
+  if (!m) return p
+  return (m[1] ? "\\\\" : "") + p.slice(m[0].length)
+}
+
 /** パスを、最後の名前にする。ホームのフォルダそのものは `~`、ドライブだけは空 */
 export function lastSegment(p: string): string {
-  const plain = decodeSafe(p.replace(/^file:\/\/\/?/i, ""))
+  const plain = stripLongPathPrefix(decodeSafe(p.replace(/^file:\/\/\/?/i, "")))
   if (HOME_DIR.test(plain)) return "~"
   const parts = plain.split(/[\\/]+/).filter(Boolean)
   const last = parts[parts.length - 1] ?? ""

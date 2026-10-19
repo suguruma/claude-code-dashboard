@@ -51,6 +51,16 @@ describe("スマホへ返す応答のパスを隠す（すき間）", () => {
     expect(redactForLan({ toString: "x", constructor: "y" })).toEqual({ toString: "x", constructor: "y" })
   })
 
+  it("Windows の長いパスの前置き(\\\\?\\・\\\\.\\・\\\\?\\UNC\\)があっても、ホームのフォルダそのものは ~ にし、名前を出さない", () => {
+    expect(redactForLan({ cwd: "\\\\?\\C:\\Users\\someone", folderName: "someone" })).toEqual({ cwd: "~", folderName: "~" })
+    expect(redactForLan({ cwd: "\\\\.\\C:\\Users\\someone\\" }).cwd).toBe("~")
+    expect(redactForLan({ cwd: "//?/C:/Users/someone" }).cwd).toBe("~")
+    expect(redactForLan({ cwd: "\\\\?\\C:\\Users\\someone\\work", folderName: "work" })).toEqual({ cwd: "work", folderName: "work" })
+    expect(redactForLan({ cwd: "\\\\?\\UNC\\server\\share\\proj" }).cwd).toBe("proj")
+    expect(redactForLan("作業場所: \\\\?\\C:\\Users\\someone です")).toBe("作業場所: ~ です")
+    expect(lastSegment("\\\\?\\C:\\")).toBe("")
+  })
+
   it("macOS の外付けの場所(/Volumes/<名前>/…)も隠す", () => {
     expect(redactForLan("開く: /Volumes/someone-disk/work/a.txt")).toBe("開く: a.txt")
     expect(redactForLan({ cwd: "/Volumes/someone-disk/work" }).cwd).toBe("work")
