@@ -1,9 +1,10 @@
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import type { DesktopSessionListResponse } from "@/lib/desktopSessionTypes"
+import { dataLocationText } from "@/lib/dataLocationText"
+import type { DataLocation, DesktopSessionListResponse } from "@/lib/desktopSessionTypes"
 
 /**
- * セッション一覧のデータを読むときの案内(読み込みエラー・データなし・縮退表示のお知らせ・読み込み中)。
- * セッション一覧と組織図の両方で同じ文言を出す。
+ * セッション一覧のデータを読むときの案内(読み込みエラー・データなし・縮退表示のお知らせ・読み込み中)と、
+ * 読んでいるデータの場所の出どころ(⑧-2)。セッション一覧とホームの両方で同じ文言を出す。
  */
 export function DesktopDataNotices({
   data,
@@ -41,7 +42,27 @@ export function DesktopDataNotices({
         </Alert>
       ))}
 
+      {data?.dataLocation && <DataLocationLine location={data.dataLocation} />}
+
       {isLoading && !data && <p className="text-sm text-muted-foreground">読み込み中...</p>}
     </>
+  )
+}
+
+/** 読んでいるデータの場所の出どころを1行で出す。フォルダのパスは、開いたときだけ出す(画像にパスが写らないように) */
+function DataLocationLine({ location }: { location: DataLocation }) {
+  const text = dataLocationText(location)
+  if (!location.path) {
+    return (
+      <p className="text-xs text-muted-foreground" data-testid="data-location">
+        {text}
+      </p>
+    )
+  }
+  return (
+    <details className="text-xs text-muted-foreground" data-testid="data-location">
+      <summary className="cursor-pointer">{text}</summary>
+      <code className="mt-1 block font-mono break-all">{location.path}</code>
+    </details>
   )
 }

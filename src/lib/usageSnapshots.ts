@@ -1,6 +1,4 @@
 import { promises as fs } from "fs"
-import os from "os"
-import path from "path"
 import type { UsageWindowKey } from "./usageTypes"
 
 /**
@@ -33,9 +31,7 @@ const KEYS: UsageWindowKey[] = ["five_hour", "weekly_all", "weekly_model"]
 /** 末尾からこのバイト数だけ読む。記録は追記され続けるため、古い分は読まない */
 const MAX_READ_BYTES = 1024 * 1024
 
-export function defaultSnapshotsPath(): string {
-  return path.join(os.homedir(), ".claude-dashboard", "usage-snapshots.jsonl")
-}
+export { defaultSnapshotsPath } from "./dataLocations"
 
 function asTime(value: unknown): number | null {
   if (typeof value !== "string") return null

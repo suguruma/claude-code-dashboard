@@ -1,7 +1,7 @@
 import { createReadStream, promises as fs, type Dirent } from "fs"
-import os from "os"
 import path from "path"
 import readline from "readline"
+import { defaultClaudeProjectsRoot, resolveProjectsRoot } from "./dataLocations"
 import { FileIOError } from "./fileIO"
 import {
   CompactionEvent,
@@ -20,7 +20,15 @@ import { NotFoundError } from "./errors"
  * ここに存在するため、専用のルートとして扱う）。
  */
 export function getClaudeProjectsRoot(): string {
-  return path.join(os.homedir(), ".claude", "projects")
+  return defaultClaudeProjectsRoot()
+}
+
+/**
+ * セッション監視が読む会話ログのルート。環境変数 `CLAUDE_DESKTOP_PROJECTS_ROOT` があればそれを使う(Desktop のセッション一覧・利用上限と共通)。
+ * 自動の探索を止めていて(`CCD_DESKTOP_AUTODETECT=0`)、明示も無いときは null(セッション監視は空になる)
+ */
+function sessionProjectsRoot(): string | null {
+  return resolveProjectsRoot(null)
 }
 
 interface RawUsage {
@@ -335,7 +343,8 @@ async function parseSessionFile(filePath: string): Promise<SessionMetrics> {
 }
 
 export async function listSessionProjects(): Promise<SessionProjectSummary[]> {
-  const root = getClaudeProjectsRoot()
+  const root = sessionProjectsRoot()
+  if (!root) return []
   let dirents: Dirent[]
   try {
     dirents = await fs.readdir(root, { withFileTypes: true })
@@ -375,7 +384,9 @@ export async function listSessionProjects(): Promise<SessionProjectSummary[]> {
 }
 
 export async function listSessions(dirName: string): Promise<SessionSummary[]> {
-  const dirPath = path.join(getClaudeProjectsRoot(), dirName)
+  const root = sessionProjectsRoot()
+  if (!root) return []
+  const dirPath = path.join(root, dirName)
   let files: string[]
   try {
     files = (await fs.readdir(dirPath)).filter((f) => f.endsWith(".jsonl"))
@@ -396,7 +407,9 @@ export async function listSessions(dirName: string): Promise<SessionSummary[]> {
 }
 
 export async function getSessionMetrics(dirName: string, sessionId: string): Promise<SessionMetrics> {
-  const filePath = path.join(getClaudeProjectsRoot(), dirName, `${sessionId}.jsonl`)
+  const root = sessionProjectsRoot()
+  if (!root) throw new NotFoundError("セッションが見つかりません")
+  const filePath = path.join(root, dirName, `${sessionId}.jsonl`)
   try {
     await fs.access(filePath)
   } catch {

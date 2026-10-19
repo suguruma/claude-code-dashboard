@@ -107,10 +107,10 @@ export function ProjectSwitcher() {
         <Tooltip>
           <TooltipTrigger
             render={
-              <Badge variant="destructive" className="shrink-0 gap-1" aria-label="グローバル設定">
-                <ShieldAlert className="size-3" />
-                {/* 狭いときはアイコンだけにする(意味はツールチップと aria-label で伝える) */}
-                <span className="hidden @md:inline">グローバル設定</span>
+              <Badge variant="destructive" className="shrink-0 gap-1">
+                <ShieldAlert className="size-3" aria-hidden />
+                {/* 狭いときはアイコンだけにする。文字は画面外に残し、スクリーンリーダーには名前を伝える(⑧-2) */}
+                <span className="sr-only @md:not-sr-only">グローバル設定</span>
               </Badge>
             }
           />

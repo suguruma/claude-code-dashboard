@@ -166,10 +166,23 @@ export interface DesktopSessionCounts {
 
 export type DesktopSessionSource = "desktop" | "transcript-only" | "none"
 
+/**
+ * データの場所の出どころ(⑧-2)。explicit-config: 設定ファイル / explicit-env: 環境変数 / auto: 自動で決めた /
+ * disabled: 自動の探索を止めていて(`CCD_DESKTOP_AUTODETECT=0`)、明示も無い(場所は null)
+ */
+export type DataLocationOrigin = "explicit-config" | "explicit-env" | "auto" | "disabled"
+
+export interface DataLocation {
+  path: string | null
+  origin: DataLocationOrigin
+}
+
 export interface DesktopSessionListResponse {
   generatedAt: number
   /** desktop: Desktopのメタデータから作成 / transcript-only: 会話ログだけの縮退表示 / none: データなし */
   source: DesktopSessionSource
+  /** Desktop のデータフォルダの場所と出どころ(⑧-2。画面のお知らせに出す。場所は開いたときだけ表示する) */
+  dataLocation: DataLocation
   warnings: string[]
   counts: DesktopSessionCounts
   groups: DesktopSessionGroup[]

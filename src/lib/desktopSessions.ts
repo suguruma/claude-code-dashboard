@@ -1,6 +1,7 @@
 import { promises as fs } from "fs"
 import os from "os"
 import path from "path"
+import { isAutodetectDisabled, type DataLocation, type Env } from "./dataLocations"
 import { makeExcerpt } from "./transcriptDigest"
 
 /**
@@ -111,14 +112,19 @@ async function listCandidateDataDirs(): Promise<string[]> {
 }
 
 /**
- * Desktop のデータフォルダ(`claude-code-sessions` を含むフォルダ)を探す。
- * 明示指定(設定・環境変数)があればそれを使い、無ければ候補のうち最も新しく更新されたものを選ぶ。
+ * Desktop のデータフォルダ(`claude-code-sessions` を含むフォルダ)を探し、その出どころも返す。
+ * 明示指定(設定ファイル → 環境変数 `CLAUDE_DESKTOP_DATA_DIR`)があればそれを使い、無ければ候補のうち最も新しく更新されたものを選ぶ。
+ * 自動の探索を止めているとき(`CCD_DESKTOP_AUTODETECT=0`)は、明示が無ければ候補を1つも開かずに null を返す。
  */
-export async function resolveDesktopDataDir(explicit?: string | null): Promise<string | null> {
-  const override = explicit?.trim() || process.env.CLAUDE_DESKTOP_DATA_DIR?.trim()
+export async function locateDesktopDataDir(explicit?: string | null, env: Env = process.env): Promise<DataLocation> {
+  const fromConfig = explicit?.trim()
+  const fromEnv = env.CLAUDE_DESKTOP_DATA_DIR?.trim()
+  const override = fromConfig || fromEnv
   if (override) {
-    return (await isDir(path.join(override, SESSIONS_DIR_NAME))) ? override : null
+    const origin = fromConfig ? "explicit-config" : "explicit-env"
+    return { path: (await isDir(path.join(override, SESSIONS_DIR_NAME))) ? override : null, origin }
   }
+  if (isAutodetectDisabled(env)) return { path: null, origin: "disabled" }
 
   let best: { dir: string; mtimeMs: number } | null = null
   for (const dir of await listCandidateDataDirs()) {
@@ -129,7 +135,12 @@ export async function resolveDesktopDataDir(explicit?: string | null): Promise<s
       // このフォルダにはセッションが無い
     }
   }
-  return best?.dir ?? null
+  return { path: best?.dir ?? null, origin: "auto" }
+}
+
+/** Desktop のデータフォルダ(場所だけ)。出どころも要るときは locateDesktopDataDir */
+export async function resolveDesktopDataDir(explicit?: string | null): Promise<string | null> {
+  return (await locateDesktopDataDir(explicit)).path
 }
 
 // ---------------------------------------------------------------------------

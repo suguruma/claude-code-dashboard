@@ -1,5 +1,5 @@
 import type { NotificationItem } from "./desktopNotifications"
-import { formatPercent, formatRemaining } from "./usageFormat"
+import { formatPercent, formatRemaining, shownPercent } from "./usageFormat"
 import type { UsageResponse, UsageWindowView } from "./usageTypes"
 
 /**
@@ -7,7 +7,7 @@ import type { UsageResponse, UsageWindowView } from "./usageTypes"
  * (desktopNotifications.ts の NotificationItem・showDesktopNotification)に載せる。
  *
  * 80%と95%を超えたとき、窓の枠ごとに、しきい値ごとに1回だけ通知する。
- * - 判定する%は、画面のゲージと同じ(推定があれば推定、無ければ公式値)
+ * - 判定する%は、画面のゲージと同じ(推定があれば推定、無ければ公式値)。画面と同じ丸めた値で判定する(「95%」と出ているのに95%の通知が来ない、を無くす。⑧-2)
  * - 最初の取得は基準を取るだけで通知しない(起動直後に、すでに超えていたものをまとめて通知しない)
  * - 枠が切り替わったら(resetsAtが変わったら)、新しい枠として数え直す
  * - 一度通知したしきい値は、推定が下がっても再通知しない。上のしきい値を超えたときだけ通知する
@@ -59,7 +59,7 @@ export function createUsageNotifyTracker(): UsageNotifyTracker {
       for (const w of response.windows) {
         const key = instanceKey(w)
         if (key === null || w.displayPercent === null) continue
-        current.set(key, { w, crossed: highestCrossed(w.displayPercent) })
+        current.set(key, { w, crossed: highestCrossed(shownPercent(w.displayPercent)) })
       }
       if (known === null) {
         known = new Map([...current].map(([key, v]) => [key, v.crossed]))

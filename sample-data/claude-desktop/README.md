@@ -39,7 +39,7 @@ Get-ChildItem sample-data/claude-desktop/projects -Recurse -Filter *.jsonl |
 node scripts/make-org-chart-sample.mjs <出力先のフォルダ>
 ```
 
-表示された `dataDir` と `projectsRoot` を `config/desktop-sessions.json` に書いて、ダッシュボードを（再）起動します。
+表示された `dataDir` と `projectsRoot` を `config/desktop-sessions.json` に書いて、ダッシュボードを（再）起動します。この PC の本物の Claude Desktop のデータを読まないよう、起動のときに環境変数 `CCD_DESKTOP_AUTODETECT=0` を付けてください（設定ファイルで指定した場所だけを読みます）。撮る・確かめる前には `node scripts/check-sample-server.mjs <サーバーのURL> <出力先のフォルダ>` で、合成データだけを読んでいることを確かめられます。
 利用上限のゲージも見るときは、表示された `snapshotsPath` と `projectsRoot` を `config/usage.json` に書きます（出力先の `usage-snapshots.jsonl` が、架空の公式値の記録です。5時間 22%・週 14%）。
 上限ガードの帯（「上限ガード中：新しい指示は保留中です」）を見るときは、`--guard` を付けて作ります（最後の5時間が92%になる）。
 

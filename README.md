@@ -73,6 +73,8 @@ npm run dev
 
 `config/projects.json` は個人環境の絶対パスを含むため `.gitignore` 対象。テンプレートは `config/projects.example.json` を参照。
 
+Claude Desktop のデータフォルダ・会話ログのルート（`~/.claude/projects`）・利用上限の記録（`~/.claude-dashboard`）は、既定では自動で探す。場所は `config/desktop-sessions.json`（`dataDir`・`projectsRoot`）・`config/usage.json`（`snapshotsPath`）か、環境変数 `CLAUDE_DESKTOP_DATA_DIR`・`CLAUDE_DESKTOP_PROJECTS_ROOT`（セッション監視も使う）で指定できる。環境変数 `CCD_DESKTOP_AUTODETECT=0` を付けて起動すると、自動の探索を止め、指定した場所だけを読む（合成データで撮る・確かめるとき用。配布 exe は使わない）。ホームとセッション一覧には、読んでいるデータの出どころ（設定ファイル・環境変数・自動・止めている）を1行で出す。
+
 ## Windows向け配布用exeのビルド
 
 Electron + electron-builder で、インストール不要のポータブルexe（1ファイル）にパッケージできる。

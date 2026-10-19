@@ -102,7 +102,8 @@ interface TranscriptFile {
 }
 
 export interface UsageLedgerOptions {
-  projectsRoot: string
+  /** 会話ログのルート。null なら会話ログは無いものとして扱う(自動の探索を止めていて、明示も無いとき) */
+  projectsRoot: string | null
   /** この期間より古い応答は保持しない。既定は15日(週の枠+較正に使う直近7日分の枠) */
   horizonMs?: number
   now?: () => number
@@ -191,7 +192,7 @@ export class UsageLedger {
   private async doRefresh(): Promise<void> {
     const now = this.now()
     if (!this.discovery || now - this.discovery.at >= DISCOVERY_TTL_MS) {
-      this.discovery = { at: now, files: await listTranscriptFiles(this.opts.projectsRoot) }
+      this.discovery = { at: now, files: this.opts.projectsRoot ? await listTranscriptFiles(this.opts.projectsRoot) : [] }
     }
     const cutoff = now - this.horizonMs
     for (const file of this.discovery.files) {

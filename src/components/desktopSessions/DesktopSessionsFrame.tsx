@@ -25,7 +25,7 @@ export function DesktopSessionsFrame({ children }: { children: ReactNode }) {
       )}
 
       {/* 最新の公式値が80%以上のときの上限ガードの帯(表示のみ) */}
-      <UsageGuardBand guard={usage?.guard} />
+      <UsageGuardBand guard={usage?.guard} windows={usage?.windows} />
 
       {children}
     </div>

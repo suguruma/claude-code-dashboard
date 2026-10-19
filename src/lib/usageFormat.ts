@@ -3,7 +3,7 @@
  * 時刻の計算はUTCのms(epoch)で行い、画面には日本時間で出す。
  */
 
-import type { UsageCalibration } from "./usageTypes"
+import type { UsageCalibration, UsageGuard, UsageWindowView } from "./usageTypes"
 
 export type UsageLevel = "ok" | "warning" | "serious" | "critical"
 
@@ -64,6 +64,29 @@ export function formatTokens(tokens: number): string {
 /** %の表示。10未満は小数1桁、それ以上は整数 */
 export function formatPercent(value: number): string {
   return value < 10 ? value.toFixed(1) : String(Math.round(value))
+}
+
+/** 画面に出す丸めた値(formatPercent と同じ丸め)。色・通知の判定はこの値で行い、表示と食い違わないようにする(⑧-2) */
+export function shownPercent(value: number): number {
+  return Number(formatPercent(value))
+}
+
+/** 表示する丸めた値で決める色の段階(94.6 は「95%」と出すので赤)。ゲージ・ホームのカードで共通 */
+export function displayUsageLevel(percent: number | null): UsageLevel {
+  return usageLevel(percent === null ? null : shownPercent(percent))
+}
+
+/**
+ * 上限ガードの帯に添える、表示用の値(⑧-2)。帯は最新の公式値、ゲージ・カードは推定を含む表示用の値なので、同じ画面で%が違うことがある。
+ * 根拠の窓の表示用の値が推定で、丸めた値が公式値と違うときだけ「ゲージ・カードは推定 n%」を返す(同じなら null)
+ */
+export function guardEstimateNote(guard: UsageGuard | null | undefined, windows: UsageWindowView[] | undefined): string | null {
+  if (!guard || guard.percent === null || guard.windowLabel === null || !windows) return null
+  const w = windows.find((x) => x.label === guard.windowLabel)
+  if (!w || w.displayPercent === null || w.estimate.kind !== "estimate") return null
+  const shown = formatPercent(w.displayPercent)
+  if (shown === formatPercent(guard.percent)) return null
+  return `ゲージ・カードは推定 ${shown}%`
 }
 
 /**

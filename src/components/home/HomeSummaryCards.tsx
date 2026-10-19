@@ -3,7 +3,7 @@ import { Gauge, OctagonAlert, Send } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { DesktopSessionSummary } from "@/lib/desktopSessionTypes"
 import { USAGE_KIND_LABEL, countDecisions, countSendLimitStopped, pickHomeWindows, usageValueKind } from "@/lib/homeDashboard"
-import { formatPercent, usageLevel } from "@/lib/usageFormat"
+import { displayUsageLevel, formatPercent } from "@/lib/usageFormat"
 import type { UsageResponse, UsageWindowView } from "@/lib/usageTypes"
 import { LEVEL_LABEL, LEVEL_TEXT_COLOR } from "@/components/desktopSessions/UsageGauge"
 
@@ -73,7 +73,7 @@ export function HomeSummaryCards({ sessions, usage }: HomeSummaryCardsProps) {
 
 function UsageValue({ label, window: w }: { label: string; window: UsageWindowView | null }) {
   const display = w?.displayPercent ?? null
-  const level = usageLevel(display)
+  const level = displayUsageLevel(display)
   const levelLabel = LEVEL_LABEL[level]
   return (
     <span className="inline-flex items-baseline gap-1" data-testid={`home-usage-${label === "5時間" ? "five-hour" : "weekly"}`}>

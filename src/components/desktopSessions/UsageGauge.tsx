@@ -7,7 +7,7 @@ import {
   formatPercent,
   formatRemaining,
   formatTokens,
-  usageLevel,
+  displayUsageLevel,
   type UsageLevel,
 } from "@/lib/usageFormat"
 import { USAGE_KIND_LABEL, usageValueKind } from "@/lib/homeDashboard"
@@ -46,7 +46,7 @@ export function UsageGauge({ window: w, now }: { window: UsageWindowView; now: n
   const official = w.official?.percentUsed ?? null
   const estimated = w.estimate.kind === "estimate" ? w.estimate : null
   const display = w.displayPercent
-  const level = usageLevel(display)
+  const level = displayUsageLevel(display)
   const color = LEVEL_COLOR[level]
   const textColor = LEVEL_TEXT_COLOR[level]
   const solid = official !== null ? clamp(official) : 0

@@ -392,7 +392,9 @@ describe("縮退表示(Desktopのメタデータが無い場合)", () => {
     const list = await svc.list()
     expect(list.source).toBe("none")
     expect(list.sessions).toEqual([])
-    expect(list.warnings).toHaveLength(1)
+    // データが無いことは、画面の「セッションが見つかりません」の枠で1回だけ出す(⑧-2。warnings には同じ文を入れない)
+    expect(list.warnings).toEqual([])
+    expect(list.dataLocation.origin).toBe("explicit-config")
   })
 
   it("30日より古い会話ログは縮退表示に含めない", async () => {

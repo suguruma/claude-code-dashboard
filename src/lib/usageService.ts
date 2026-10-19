@@ -1,12 +1,12 @@
 import { promises as fs } from "fs"
 import path from "path"
 import { getAppDataRoot } from "./fileIO"
-import { getClaudeProjectsRoot } from "./sessionMonitor"
+import { defaultSnapshotsPath, locateData, resolveProjectsRoot } from "./dataLocations"
 import { getDesktopSessionService } from "./desktopSessionService"
 import { FIVE_HOUR_MS, USAGE_NOTE, WEEK_MS, buildContributions, buildUsage, type SessionIdentity } from "./usageEstimate"
 import { UsageLedger } from "./usageLedger"
 import { PriceBook, parsePriceOverrides, type PriceResolution } from "./usagePricing"
-import { defaultSnapshotsPath, readSnapshots, type SnapshotReadResult } from "./usageSnapshots"
+import { readSnapshots, type SnapshotReadResult } from "./usageSnapshots"
 import type { UsagePrice, UsageResponse } from "./usageTypes"
 
 /**
@@ -36,7 +36,8 @@ export class UsageService {
     this.opts = options
     this.prices = new PriceBook(options.prices ?? {})
     this.ledger = new UsageLedger({
-      projectsRoot: options.projectsRoot ?? getClaudeProjectsRoot(),
+      // 自動の探索を止めていて、明示も無いときは null(会話ログからの集計はしない)
+      projectsRoot: resolveProjectsRoot(options.projectsRoot),
       now: options.now,
     })
   }
@@ -46,7 +47,12 @@ export class UsageService {
   }
 
   private async snapshots(): Promise<SnapshotReadResult> {
-    const file = this.opts.snapshotsPath ?? defaultSnapshotsPath()
+    // 自動の探索を止めていて、設定ファイルの snapshotsPath も無いときは、公式値の記録は無いものとして扱う
+    const file = locateData(this.opts.snapshotsPath, null, defaultSnapshotsPath).path
+    if (!file) {
+      this.snapshotCache = null
+      return { found: false, snapshots: [] }
+    }
     let stat
     try {
       stat = await fs.stat(file)

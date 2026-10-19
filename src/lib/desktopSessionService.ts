@@ -21,7 +21,7 @@ import {
   indexTranscripts,
   mapLimit,
   readSidebarPrefs,
-  resolveDesktopDataDir,
+  locateDesktopDataDir,
   type DesktopMeta,
   type SidebarPrefs,
   type TranscriptRef,
@@ -29,7 +29,7 @@ import {
 import { CliProcessWatcher, type CliProcessSource } from "./cliProcesses"
 import { DEFAULT_HOUSEKEEPING_THRESHOLDS, type HousekeepingThresholds } from "./housekeepingTypes"
 import type { SessionIdentity } from "./usageEstimate"
-import { getClaudeProjectsRoot } from "./sessionMonitor"
+import { resolveProjectsRoot, type DataLocation } from "./dataLocations"
 import {
   INSTRUCTION_EXCERPT_CHARS,
   advanceDigest,
@@ -121,7 +121,7 @@ export class DesktopSessionService {
   private readonly pending = new Set<Promise<void>>()
   private scanChain: Promise<void> = Promise.resolve()
 
-  private dataDirCache: { at: number; dir: string | null } | null = null
+  private dataDirCache: { at: number; location: DataLocation } | null = null
   private transcriptIndex: { at: number; map: Map<string, TranscriptRef> } | null = null
   private prefsCache: { mtimeMs: number; size: number; prefs: SidebarPrefs } | null = null
   private lastPrefs: SidebarPrefs | null = null
@@ -144,12 +144,17 @@ export class DesktopSessionService {
     }
   }
 
-  private async getDataDir(): Promise<string | null> {
+  /** Desktop のデータフォルダと、その出どころ(設定ファイル・環境変数・自動・止めている) */
+  private async getDataLocation(): Promise<DataLocation> {
     const now = this.now()
-    if (this.dataDirCache && now - this.dataDirCache.at < DATA_DIR_TTL_MS) return this.dataDirCache.dir
-    const dir = await resolveDesktopDataDir(this.opts.dataDir)
-    this.dataDirCache = { at: now, dir }
-    return dir
+    if (this.dataDirCache && now - this.dataDirCache.at < DATA_DIR_TTL_MS) return this.dataDirCache.location
+    const location = await locateDesktopDataDir(this.opts.dataDir)
+    this.dataDirCache = { at: now, location }
+    return location
+  }
+
+  private async getDataDir(): Promise<string | null> {
+    return (await this.getDataLocation()).path
   }
 
   private async getTranscripts(): Promise<Map<string, TranscriptRef>> {
@@ -157,7 +162,9 @@ export class DesktopSessionService {
     if (this.transcriptIndex && now - this.transcriptIndex.at < TRANSCRIPT_INDEX_TTL_MS) {
       return this.transcriptIndex.map
     }
-    const map = await indexTranscripts(this.opts.projectsRoot ?? getClaudeProjectsRoot())
+    // 自動の探索を止めていて、会話ログのルートの明示も無いときは、会話ログは無いものとして扱う
+    const root = resolveProjectsRoot(this.opts.projectsRoot)
+    const map = root ? await indexTranscripts(root) : new Map<string, TranscriptRef>()
     this.transcriptIndex = { at: now, map }
     return map
   }
@@ -262,7 +269,8 @@ export class DesktopSessionService {
     const now = this.now()
     const warnings: string[] = []
     const highContextRatio = this.opts.highContextRatio ?? 0.8
-    const dataDir = await this.getDataDir()
+    const dataLocation = await this.getDataLocation()
+    const dataDir = dataLocation.path
     // 手元の結果を即座に受け取るだけで、プロセスの確認(約1秒)の完了は待たない
     this.cliIds = this.opts.cliProcesses?.peek() ?? null
 
@@ -318,9 +326,8 @@ export class DesktopSessionService {
           const res = await this.digestFor(ref)
           built.push(this.build(null, ref, res.digest, res.mtimeMs, null, now))
         })
-      } else {
-        warnings.unshift("Claude Desktopのデータフォルダも、会話ログ(~/.claude/projects)も見つかりませんでした。")
       }
+      // データが何も無い(source: none)ときの案内は、画面の「セッションが見つかりません」の枠で1回だけ出す(⑧-2。ここで warnings に同じ文を入れると2回出る)
     }
 
     this.built = new Map(built.map((b) => [b.summary.id, b]))
@@ -343,6 +350,7 @@ export class DesktopSessionService {
     return {
       generatedAt: now,
       source,
+      dataLocation,
       warnings,
       counts: this.countSessions(sessions, highContextRatio),
       groups: this.collectGroups(sessions, prefs),

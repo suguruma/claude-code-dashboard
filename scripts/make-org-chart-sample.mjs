@@ -9,6 +9,9 @@
  *   node scripts/make-org-chart-sample.mjs --append-human-input <出力先のフォルダ>   (止まっている子へ、作業中の人の入力を追記)
  * 出力先に data/（Desktopのデータ）・projects/（会話ログ）・usage-snapshots.jsonl（利用上限の公式値の記録）ができる。
  * 表示される設定を、config/desktop-sessions.json と config/usage.json に書いて開発サーバーを起動する。
+ * 期待値は出力先の expected.json にも書く(撮影の前の確認 scripts/check-sample-server.mjs が読む)。
+ * 撮影・確認のサーバーは、環境変数 CCD_DESKTOP_AUTODETECT=0 を付けて起動する(設定ファイルが無くても、この PC の本物の
+ * Claude Desktop のデータ・会話ログ・利用上限の記録を自動で探さない)。
  *
  * 作るもの（グループ「試験グループ」と「別グループ」）:
  *   試験グループ: 指揮役1・子4。指示8（うち送信側のみ1）・報告5（うち組にならないもの1）・報告なしで終了2・
@@ -456,6 +459,8 @@ export function makeOrgChartSample(outDir, options = {}) {
     ids: Object.fromEntries(Object.entries(S).map(([k, n]) => [k, sid(n)])),
     /** この合成データでの、出来事の期待値(直近4時間) */
     expected: {
+      // セッション一覧の API が返すセッションの数(アーカイブ済み・サイドチャットを含む)。撮影の前の確認(scripts/check-sample-server.mjs)で使う
+      sessionCount: Object.keys(S).length,
       groupA: {
         leader: sid(S.leaderA),
         // 指示・報告の数は、3層目の親子の分を含む（指揮役自身の分は、leaderInstructs・leaderReports）
@@ -575,12 +580,16 @@ async function main() {
   const outDir = path.resolve(out)
   const sample = makeOrgChartSample(outDir, guard ? { fiveHourPercent: 92 } : {})
   await sample.write()
+  await writeFile(path.join(outDir, "expected.json"), JSON.stringify(sample.expected, null, 2) + "\n", "utf-8")
   console.log(`合成データを作りました: ${outDir}`)
   console.log("config/desktop-sessions.json に、次の内容を書いてください（パスは絶対パス）:")
   console.log(JSON.stringify({ dataDir: sample.dataDir, projectsRoot: sample.projectsRoot }, null, 2))
   console.log("利用上限のゲージも見るときは、config/usage.json に、次の内容を書いてください:")
   console.log(JSON.stringify({ snapshotsPath: sample.usagePath, projectsRoot: sample.projectsRoot }, null, 2))
   console.log("期待値（直近4時間）:", JSON.stringify(sample.expected))
+  console.log("サーバーは、本物のデータを自動で探さないよう、環境変数 CCD_DESKTOP_AUTODETECT=0 を付けて起動してください（PowerShell の例）:")
+  console.log("  $env:CCD_DESKTOP_AUTODETECT='0'; $env:CCD_DATA_DIR='<config フォルダの親>'; npx next start -H 127.0.0.1 -p 3961")
+  console.log(`撮る前に確かめる: node scripts/check-sample-server.mjs http://127.0.0.1:3961 ${outDir}`)
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
