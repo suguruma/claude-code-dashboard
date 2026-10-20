@@ -3,6 +3,7 @@ import { ArrowRight } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import type { DesktopSessionSummary } from "@/lib/desktopSessionTypes"
 import { selectOutsideSessions } from "@/lib/homeDashboard"
+import { sessionClueLabel } from "@/lib/needsActionKind"
 import { SendCountBadge } from "@/components/desktopSessions/Messaging"
 import { DesktopStatusBadge } from "@/components/desktopSessions/statusMeta"
 
@@ -53,33 +54,42 @@ export function OutsideSessionsList({ sessions, shownIds, failed = false, onSele
         <p className="text-xs text-muted-foreground">ありません。すべてのセッションが組織図に出ています。</p>
       ) : (
         <ul className="divide-y rounded-xl border bg-card">
-          {items.map((s) => (
-            <li key={s.id}>
-              <button
-                type="button"
-                onClick={() => onSelect(s.id)}
-                className="flex w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-left text-sm hover:bg-muted"
-                data-testid="home-outside-row"
-                data-session-id={s.id}
-              >
-                <DesktopStatusBadge status={s.status} reason={s.statusReason} info={s.needsActionInfo} standby={s.standbyInfo} />
-                <span className="min-w-0 flex-1 truncate font-medium" title={s.title}>
-                  {s.title}
-                </span>
-                {s.group ? (
-                  <Badge variant="secondary" className="shrink-0">
-                    {s.group.name}
-                  </Badge>
-                ) : (
-                  <span className="shrink-0 text-xs text-muted-foreground">グループなし</span>
-                )}
-                <SendCountBadge messaging={s.messaging} />
-                <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                  コンテキスト {s.context ? `${Math.round(s.context.ratio * 100)}%` : "—"}
-                </span>
-              </button>
-            </li>
-          ))}
+          {items.map((s) => {
+            // 要対応・待機を分けた手がかり(整理ページ・詳細と同じ文言)
+            const clue = sessionClueLabel(s)
+            return (
+              <li key={s.id}>
+                <button
+                  type="button"
+                  onClick={() => onSelect(s.id)}
+                  className="flex w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-left text-sm hover:bg-muted"
+                  data-testid="home-outside-row"
+                  data-session-id={s.id}
+                >
+                  <DesktopStatusBadge status={s.status} reason={s.statusReason} info={s.needsActionInfo} standby={s.standbyInfo} />
+                  <span className="min-w-0 flex-1 truncate font-medium" title={s.title}>
+                    {s.title}
+                  </span>
+                  {s.group ? (
+                    <Badge variant="secondary" className="shrink-0">
+                      {s.group.name}
+                    </Badge>
+                  ) : (
+                    <span className="shrink-0 text-xs text-muted-foreground">グループなし</span>
+                  )}
+                  <SendCountBadge messaging={s.messaging} />
+                  <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                    コンテキスト {s.context ? `${Math.round(s.context.ratio * 100)}%` : "—"}
+                  </span>
+                  {clue && (
+                    <span className="basis-full text-xs text-muted-foreground" data-testid="home-outside-clue">
+                      分けた手がかり：{clue}
+                    </span>
+                  )}
+                </button>
+              </li>
+            )
+          })}
         </ul>
       )}
       {total > items.length && (

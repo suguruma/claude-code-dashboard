@@ -144,6 +144,20 @@ export function needsActionSourceLabel(source: NeedsActionSource, actions: strin
   }
 }
 
+/**
+ * 一覧とホームの行に出す「分けた手がかり」。要対応(種類つき)と待機のときだけ返し、ほかの状態は null。
+ * 状態と食い違う情報(要対応でないのに残った needsActionInfo など)は出さない
+ */
+export function sessionClueLabel(s: {
+  status: string
+  needsActionInfo: { source: NeedsActionSource; buttons: string[] } | null
+  standbyInfo: { source: NeedsActionSource } | null
+}): string | null {
+  if (s.status === "blocked" && s.needsActionInfo) return needsActionSourceLabel(s.needsActionInfo.source, s.needsActionInfo.buttons)
+  if (s.status === "standby" && s.standbyInfo) return needsActionSourceLabel(s.standbyInfo.source)
+  return null
+}
+
 /** 並びの順(すぐ押せるものを上に)。小さいほど上 */
 export const NEEDS_ACTION_KIND_RANK: Record<NeedsActionKind, number> = {
   permission: 0,

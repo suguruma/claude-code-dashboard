@@ -10,7 +10,7 @@ import { inferStatus, PERMISSION_HINT } from "./desktopSessionStatus"
 import type { DesktopMeta } from "./desktopSessions"
 import { FlowService } from "./flowService"
 import { HousekeepingService } from "./housekeepingService"
-import { classifyNeedsAction, kindFromWords, needsActionSourceLabel, type WrapUpDigest } from "./needsActionKind"
+import { classifyNeedsAction, kindFromWords, needsActionSourceLabel, sessionClueLabel, type WrapUpDigest } from "./needsActionKind"
 import { createDigest, wrapUpDigestOf } from "./transcriptDigest"
 import { statusMetaOf } from "@/components/desktopSessions/statusMeta"
 
@@ -74,6 +74,17 @@ describe("分け方の表（classifyNeedsAction）", () => {
   it("手がかりの名前", () => {
     expect(needsActionSourceLabel("wrap-up-action", ["commit", "verify"])).toBe("wrap_up のボタン（commit）")
     expect(needsActionSourceLabel("summary-words")).toBe("要約の言葉から推定")
+  })
+
+  it("一覧とホームの行の手がかり（sessionClueLabel）は、要対応と待機のときだけ。状態と食い違う情報は出さない", () => {
+    const blocked = { source: "wrap-up-action" as const, buttons: ["commit", "create_pr"] }
+    expect(sessionClueLabel({ status: "blocked", needsActionInfo: blocked, standbyInfo: null })).toBe("wrap_up のボタン（commit・create_pr）")
+    expect(sessionClueLabel({ status: "blocked", needsActionInfo: { source: "summary-words", buttons: [] }, standbyInfo: null })).toBe("要約の言葉から推定")
+    expect(sessionClueLabel({ status: "standby", needsActionInfo: null, standbyInfo: { source: "wrap-up-no-ask" } })).toBe("wrap_up に質問が無い（待つだけ）")
+    // 種類の分からない要対応(needsActionInfo が無い)・ほかの状態は出さない
+    expect(sessionClueLabel({ status: "blocked", needsActionInfo: null, standbyInfo: null })).toBeNull()
+    expect(sessionClueLabel({ status: "running", needsActionInfo: blocked, standbyInfo: null })).toBeNull()
+    expect(sessionClueLabel({ status: "completed", needsActionInfo: null, standbyInfo: { source: "summary-words" } })).toBeNull()
   })
 })
 

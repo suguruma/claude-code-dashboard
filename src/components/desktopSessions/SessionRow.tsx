@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { isInstructionProvisional } from "@/lib/desktopInstruction"
 import type { DesktopSessionSummary } from "@/lib/desktopSessionTypes"
-import { NEEDS_ACTION_KIND_LABEL } from "@/lib/needsActionKind"
+import { NEEDS_ACTION_KIND_LABEL, sessionClueLabel } from "@/lib/needsActionKind"
 import { ContextBar } from "./ContextBar"
 import { InstructionPendingBadge } from "./InstructionPendingBadge"
 import { SendCountBadge, SendLimitNotice } from "./Messaging"
@@ -30,6 +30,8 @@ export function SessionRow({ session: s, highContextRatio, onSelect, parentTitle
   // 要対応の内容の行の見出し。種類が分かっていれば、種類の名前とアイコンにする(⑩)
   const needsLabel = s.needsActionInfo ? NEEDS_ACTION_KIND_LABEL[s.needsActionInfo.kind] : "要対応"
   const NeedsIcon = s.needsActionInfo ? NEEDS_ACTION_ICON[s.needsActionInfo.kind] : OctagonAlert
+  // 要対応・待機を分けた手がかり(整理ページ・詳細と同じ文言)
+  const clue = sessionClueLabel(s)
   // 人の指示を表示している間に、他セッション・通知からの入力が届いていたら、その旨を添える
   const newerOtherInput =
     instruction?.origin === "human" && s.latestInputOrigin !== null && s.latestInputOrigin !== "human"
@@ -112,6 +114,11 @@ export function SessionRow({ session: s, highContextRatio, onSelect, parentTitle
                 <span className="min-w-0 truncate" title={s.needsActionExcerpt}>
                   {s.needsActionExcerpt}
                 </span>
+              </p>
+            )}
+            {clue && (
+              <p className="text-xs text-muted-foreground" data-testid="row-needs-action-source">
+                分けた手がかり：{clue}
               </p>
             )}
 
