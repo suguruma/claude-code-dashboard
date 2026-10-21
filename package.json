@@ -1,6 +1,6 @@
 {
   "name": "claude-code-dashboard",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Claude Code の CLAUDE.md・スキル・実行ログ等をローカルで可視化・編集するダッシュボード",
   "author": "Claude Code Dashboard Contributors",
   "private": true,
