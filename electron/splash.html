@@ -56,6 +56,40 @@
         text-overflow: ellipsis;
         white-space: nowrap;
       }
+      .slow {
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        color: #e4e4e7;
+      }
+      .slow.shown {
+        display: flex;
+      }
+      .slow .buttons {
+        display: flex;
+        gap: 8px;
+        -webkit-app-region: no-drag;
+      }
+      .slow button {
+        min-width: 72px;
+        padding: 6px 14px;
+        border-radius: 6px;
+        border: 1px solid #52525b;
+        background: #27272a;
+        color: #f4f4f5;
+        font: inherit;
+        cursor: pointer;
+      }
+      .slow button.primary {
+        background: #4f46e5;
+        border-color: #6366f1;
+      }
+      .slow button:focus-visible {
+        outline: 2px solid #a5b4fc;
+        outline-offset: 2px;
+      }
     </style>
   </head>
   <body>
@@ -66,19 +100,51 @@
       <span class="label" id="label"></span>
       <span id="eta"></span>
     </div>
+    <div class="slow" id="slow" role="alert">
+      <span id="slowText">まだ準備中です</span>
+      <div class="buttons">
+        <button type="button" class="primary" id="waitButton">待つ</button>
+        <button type="button" id="quitButton">やめる</button>
+      </div>
+    </div>
     <script>
       const bar = document.getElementById("bar")
       const percentEl = document.getElementById("percent")
       const labelEl = document.getElementById("label")
       const etaEl = document.getElementById("eta")
+      const slowEl = document.getElementById("slow")
+      const slowTextEl = document.getElementById("slowText")
+      let slowShown = false
 
-      window.splashAPI?.onProgress(({ percent, label, etaSeconds }) => {
+      // 目安の時間を超えたら、終了せずに「まだ準備中です」と出し、待つ・やめるを選んでもらう(遅い PC のため)
+      window.splashAPI?.onSlow(({ elapsedSeconds }) => {
+        slowShown = true
+        slowTextEl.textContent = `まだ準備中です（${elapsedSeconds}秒）`
+        slowEl.classList.add("shown")
+        document.getElementById("waitButton").focus()
+      })
+      document.getElementById("waitButton").addEventListener("click", () => {
+        slowShown = false
+        slowEl.classList.remove("shown")
+        window.splashAPI?.choose("wait")
+      })
+      document.getElementById("quitButton").addEventListener("click", () => {
+        window.splashAPI?.choose("quit")
+      })
+
+      window.splashAPI?.onProgress(({ percent, label, etaSeconds, elapsedSeconds }) => {
         const p = Math.max(0, Math.min(100, percent))
         bar.style.width = p + "%"
         percentEl.textContent = Math.round(p) + "%"
         if (label) labelEl.textContent = label
+        // 目安を過ぎたら「まもなく」とは言わず、経過した時間を出す
         etaEl.textContent =
-          etaSeconds != null && etaSeconds > 1 ? `残り約${etaSeconds}秒` : etaSeconds != null ? "まもなく起動します" : ""
+          etaSeconds != null && etaSeconds > 1
+            ? `残り約${etaSeconds}秒`
+            : elapsedSeconds != null
+              ? `準備中（${elapsedSeconds}秒）`
+              : ""
+        if (slowShown && elapsedSeconds != null) slowTextEl.textContent = `まだ準備中です（${elapsedSeconds}秒）`
       })
     </script>
   </body>

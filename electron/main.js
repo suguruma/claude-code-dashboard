@@ -2,11 +2,11 @@ const { app, BrowserWindow, Notification, dialog, ipcMain, shell } = require("el
 const { spawn } = require("child_process")
 const path = require("path")
 const fs = require("fs")
-const http = require("http")
 const { PREFERRED_PORT, pickPort } = require("./port")
 const { isAllowedExternalUrl } = require("./externalUrl")
 const { appOriginOf, isTrustedIpcEvent, navigationDecision } = require("./origin")
 const { createNoticeSlot, portFallbackNotice } = require("./startupNotice")
+const { buildStartupStats, createStageClock, waitBudgetMs, waitForServer } = require("./startup")
 
 const isDev = !app.isPackaged
 
@@ -16,6 +16,8 @@ if (process.platform === "win32") app.setAppUserModelId("com.claudecodedashboard
 let serverProcess = null
 let mainWindow = null
 let splashWindow = null
+/** 起動をやめた・サーバーが終わったときの理由。立ち上がりの待ちを止めるのに使う */
+let stopStartupReason = null
 /** この起動で決まったアプリのオリジン(http://127.0.0.1:<ポート>)。ポートが決まるまでは null で、そのあいだは何も許可しない */
 let appOrigin = null
 /** 優先ポートが使えなかったときの、画面上部の帯の情報。画面が最初に読み取ったときに渡して消す */
@@ -64,42 +66,29 @@ function seedUserData(userDataDir, resourcesRoot) {
   }
 }
 
-function waitForServer(port, timeoutMs = 20000) {
-  const deadline = Date.now() + timeoutMs
-  return new Promise((resolve, reject) => {
-    function attempt() {
-      const req = http.get({ host: "127.0.0.1", port, path: "/", timeout: 1000 }, (res) => {
-        res.resume()
-        resolve()
-      })
-      req.on("error", () => {
-        if (Date.now() > deadline) reject(new Error("サーバー起動待機がタイムアウトしました"))
-        else setTimeout(attempt, 300)
-      })
-      req.on("timeout", () => req.destroy())
-    }
-    attempt()
-  })
-}
-
 function getStartupStatsPath(userDataDir) {
   return path.join(userDataDir, "startup-stats.json")
 }
 
-/** 前回の起動所要時間（ms）。記録が無い初回起動時はDEFAULT_STARTUP_ESTIMATE_MSを使う */
-function readLastStartupDurationMs(userDataDir) {
+/** 前回の起動の記録（startup-stats.json）。ファイルが無い（初回起動）・壊れている場合は空 */
+function readStartupStats(userDataDir) {
   try {
     const data = JSON.parse(fs.readFileSync(getStartupStatsPath(userDataDir), "utf-8"))
-    if (typeof data.lastDurationMs === "number" && data.lastDurationMs > 0) return data.lastDurationMs
+    return data && typeof data === "object" ? data : {}
   } catch {
-    // ファイルが無い（初回起動）・壊れている場合は既定値にフォールバック
+    return {}
   }
-  return DEFAULT_STARTUP_ESTIMATE_MS
 }
 
-function saveStartupDurationMs(userDataDir, durationMs) {
+/** 前回の起動所要時間（ms）。記録が無い初回起動時はDEFAULT_STARTUP_ESTIMATE_MSを使う */
+function lastStartupDurationMs(stats) {
+  return typeof stats.lastDurationMs === "number" && stats.lastDurationMs > 0 ? stats.lastDurationMs : DEFAULT_STARTUP_ESTIMATE_MS
+}
+
+/** 起動の時間・段階ごとの時間・結果を残す（electron/startup.js の buildStartupStats。時間と結果だけで、パスは書かない） */
+function saveStartupStats(userDataDir, stats) {
   try {
-    fs.writeFileSync(getStartupStatsPath(userDataDir), JSON.stringify({ lastDurationMs: durationMs }))
+    fs.writeFileSync(getStartupStatsPath(userDataDir), JSON.stringify(stats))
   } catch {
     // 次回の残り時間目安の精度が落ちるだけで起動自体には影響しないため、失敗しても無視する
   }
@@ -115,7 +104,7 @@ function saveStartupDurationMs(userDataDir, durationMs) {
 function createSplashWindow() {
   const win = new BrowserWindow({
     width: 360,
-    height: 180,
+    height: 220,
     frame: false,
     resizable: false,
     alwaysOnTop: true,
@@ -132,7 +121,7 @@ function createSplashWindow() {
 }
 
 /** マイルストーン到達でジャンプし、その間は経過時間ベースで次のマイルストーン手前まで補間する */
-function createProgressReporter(win, expectedTotalMs) {
+function createProgressReporter(win, expectedTotalMs, clock) {
   const startedAt = Date.now()
   let current = 0
   let ceiling = PROGRESS_MILESTONES[0].percent - 1
@@ -145,6 +134,7 @@ function createProgressReporter(win, expectedTotalMs) {
       percent: Math.max(0, Math.min(percent, 100)),
       label: label ?? null,
       etaSeconds,
+      elapsedSeconds: Math.round(elapsedMs / 1000),
     })
   }
 
@@ -155,6 +145,7 @@ function createProgressReporter(win, expectedTotalMs) {
 
   return {
     reach(stage) {
+      clock?.mark(stage)
       const idx = PROGRESS_MILESTONES.findIndex((m) => m.stage === stage)
       if (idx === -1) return
       current = PROGRESS_MILESTONES[idx].percent
@@ -209,6 +200,14 @@ async function startServer(progress) {
     // ターミナルでの可視性（isDev時のデバッグ用途）はprocess.stdout/stderrへの手動転送で維持する。
     stdio: ["ignore", "pipe", "pipe"],
   })
+  progress?.reach("spawn")
+  // サーバーが途中で終わったら（起動の失敗）、立ち上がりの待ちをすぐ止める。遅いだけなら待ち続ける
+  serverProcess.on("error", (err) => {
+    stopStartupReason ??= `サーバーを起動できませんでした（${err.message}）`
+  })
+  serverProcess.on("exit", (code, signal) => {
+    stopStartupReason ??= `サーバーが終了しました（終了コード ${code ?? signal}）`
+  })
 
   let nextReadyDetected = false
   serverProcess.stdout.on("data", (chunk) => {
@@ -221,7 +220,8 @@ async function startServer(progress) {
   })
   serverProcess.stderr.on("data", (chunk) => process.stderr.write(chunk.toString()))
 
-  await waitForServer(port)
+  // 軽い入り口(/api/health)で確かめる。締め切りは置かず、遅いときは createWindow の見張りが利用者に聞く
+  await waitForServer(port, { stopReason: () => stopStartupReason })
   progress?.reach("http-ok")
   return port
 }
@@ -315,6 +315,13 @@ ipcMain.handle("startup:notice", (event) => {
   return startupNotice.take()
 })
 
+/** 「まだ準備中です」で利用者が選んだもの（待つ・やめる）を受け取る。スプラッシュの窓からのものだけ */
+let onSplashChoice = null
+ipcMain.on("splash:choice", (event, choice) => {
+  if (!splashWindow || splashWindow.isDestroyed() || event.sender !== splashWindow.webContents) return
+  if (choice === "wait" || choice === "quit") onSplashChoice?.(choice)
+})
+
 /** 許可リスト（electron/externalUrl.js）にあるURLだけを、既定のアプリ・ブラウザで開く。開けたかを返す */
 async function openAllowedExternal(url) {
   if (!isAllowedExternalUrl(url)) return false
@@ -364,12 +371,52 @@ function guardNavigation(contents) {
 app.on("web-contents-created", (_event, contents) => guardNavigation(contents))
 
 async function createWindow() {
-  const startedAt = Date.now()
   const userDataDir = app.getPath("userData")
-  const expectedTotalMs = readLastStartupDurationMs(userDataDir)
+  const previousStats = readStartupStats(userDataDir)
+  const expectedTotalMs = lastStartupDurationMs(previousStats)
+  const clock = createStageClock()
+  const budgetMs = waitBudgetMs(previousStats.lastDurationMs)
+  let waitPrompts = 0
+  let finished = false
+  const record = (outcome) =>
+    saveStartupStats(
+      userDataDir,
+      buildStartupStats({
+        previous: previousStats,
+        outcome,
+        totalMs: clock.elapsed(),
+        stages: clock.snapshot(),
+        waitPrompts,
+        recordedAt: new Date().toISOString(),
+      })
+    )
 
   splashWindow = createSplashWindow()
-  const progress = createProgressReporter(splashWindow, expectedTotalMs)
+  const progress = createProgressReporter(splashWindow, expectedTotalMs, clock)
+
+  // 見張り：目安（前回の3倍、最低60秒）を超えても終了せず、「まだ準備中です」と出して、待つ・やめるを聞く
+  let watchdog = null
+  const armWatchdog = () => {
+    watchdog = setTimeout(() => {
+      if (finished || !splashWindow || splashWindow.isDestroyed()) return
+      waitPrompts += 1
+      splashWindow.webContents.send("splash:slow", { elapsedSeconds: Math.round(clock.elapsed() / 1000) })
+    }, budgetMs)
+  }
+  onSplashChoice = (choice) => {
+    if (finished) return
+    if (choice === "wait") {
+      armWatchdog()
+      return
+    }
+    finished = true
+    stopStartupReason ??= "起動をやめました"
+    clearTimeout(watchdog)
+    progress.stop()
+    record("quit")
+    app.quit()
+  }
+  armWatchdog()
 
   try {
     const port = await startServer(progress)
@@ -388,16 +435,23 @@ async function createWindow() {
       mainWindow = null
     })
     mainWindow.once("ready-to-show", () => {
+      if (finished) return
+      finished = true
+      clearTimeout(watchdog)
       progress.reach("page-loaded")
       progress.stop()
       if (splashWindow && !splashWindow.isDestroyed()) splashWindow.close()
       splashWindow = null
       mainWindow.show()
-      saveStartupDurationMs(userDataDir, Date.now() - startedAt)
+      record("ok")
     })
     await mainWindow.loadURL(`http://127.0.0.1:${port}`)
   } catch (err) {
+    if (finished) return // 利用者が「やめる」を選んだ
+    finished = true
+    clearTimeout(watchdog)
     progress.stop()
+    record("error")
     if (splashWindow && !splashWindow.isDestroyed()) splashWindow.close()
     splashWindow = null
     dialog.showErrorBox(
