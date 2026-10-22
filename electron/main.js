@@ -144,6 +144,10 @@ function createProgressReporter(win, expectedTotalMs, clock) {
   }, 150)
 
   return {
+    /** スプラッシュが出てからの秒（「まだ準備中です」の画面の秒と、進み具合の秒を同じ基準にする） */
+    elapsedSeconds() {
+      return Math.round((Date.now() - startedAt) / 1000)
+    },
     reach(stage) {
       clock?.mark(stage)
       const idx = PROGRESS_MILESTONES.findIndex((m) => m.stage === stage)
@@ -391,18 +395,21 @@ async function createWindow() {
       })
     )
 
-  splashWindow = createSplashWindow()
-  const progress = createProgressReporter(splashWindow, expectedTotalMs, clock)
-
-  // 見張り：目安（前回の3倍、最低60秒）を超えても終了せず、「まだ準備中です」と出して、待つ・やめるを聞く
+  // 見張り：目安（前回の3倍、最低60秒）を超えても終了せず、「まだ準備中です」と出して、待つ・やめるを聞く。
+  // 目安は段階の時計と同じ所から数える（スプラッシュを作る前に時間がかかる PC でも、目安の時刻に聞くため）
   let watchdog = null
+  let progress = null
   const armWatchdog = () => {
     watchdog = setTimeout(() => {
       if (finished || !splashWindow || splashWindow.isDestroyed()) return
       waitPrompts += 1
-      splashWindow.webContents.send("splash:slow", { elapsedSeconds: Math.round(clock.elapsed() / 1000) })
+      splashWindow.webContents.send("splash:slow", { elapsedSeconds: progress?.elapsedSeconds() ?? 0 })
     }, budgetMs)
   }
+  armWatchdog()
+
+  splashWindow = createSplashWindow()
+  progress = createProgressReporter(splashWindow, expectedTotalMs, clock)
   onSplashChoice = (choice) => {
     if (finished) return
     if (choice === "wait") {
@@ -416,7 +423,6 @@ async function createWindow() {
     record("quit")
     app.quit()
   }
-  armWatchdog()
 
   try {
     const port = await startServer(progress)

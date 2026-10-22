@@ -300,3 +300,52 @@
   }
 }
 
+
+/* 押した直後の「移動中…」(⑫ ST-4)。100ミリ秒より速く移れたときは見せない */
+.link-pending-hint {
+  animation: link-pending-in 0s linear 100ms both;
+}
+@keyframes link-pending-in {
+  from {
+    visibility: hidden;
+  }
+  to {
+    visibility: visible;
+  }
+}
+
+/* 読み込み中の「動いている印」(⑫ ST-6)。進み具合ではない。動きを減らす設定では止める */
+.loading-flow {
+  position: relative;
+  overflow: hidden;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: var(--muted);
+}
+.loading-flow::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 22%;
+  border-radius: inherit;
+  background: var(--muted-foreground);
+  /* left を動かすと毎フレーム配置の計算が走り、遅い PC ではハイドレーションと取り合うため、transform だけで動かす */
+  animation: loading-flow 1.6s ease-in-out infinite;
+}
+@keyframes loading-flow {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    /* 枠の幅(自分の幅の 100/22 倍)の右端まで */
+    transform: translateX(455%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .loading-flow::after {
+    animation: none;
+    transform: translateX(177%);
+  }
+}

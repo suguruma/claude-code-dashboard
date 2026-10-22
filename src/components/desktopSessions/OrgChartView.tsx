@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { useFlow } from "@/hooks/useFlow"
 import { usePersistedState } from "@/hooks/useLocalStorage"
+import { recordTime, useStartupTimes } from "@/hooks/useStartupTimes"
 import { visibleGroups } from "@/lib/desktopSessionFilters"
 import type { DesktopSessionGroup, DesktopSessionSummary } from "@/lib/desktopSessionTypes"
 import {
@@ -25,12 +26,18 @@ import { arrangeTree } from "@/lib/flowTree"
 import { FLOW_DEFAULT_RANGE_MS, type FlowResponse } from "@/lib/flowTypes"
 import { cn } from "@/lib/utils"
 import { formatJstTime } from "@/lib/usageFormat"
+import { failureReason, orgFrameHeight, rememberOrgHeight, sectionPhase, type SectionPhase } from "@/lib/homeStartup"
+import { OrgLoadingFrame } from "@/components/home/HomeLoading"
 import { OrgChartCanvas, type FxInput, type FxItem, type OrgNode } from "./OrgChartCanvas"
 import { OrgReplayControls } from "./OrgReplayControls"
 
 const GROUP_STORAGE_KEY = "ccd:org-chart:group"
 const RANGE_STORAGE_KEY = "ccd:org-chart:range"
 const ORDER_STORAGE_KEY = "ccd:org-chart:order"
+/** 組織図の高さ(グループ・範囲ごと。数だけ)。読み込み中の枠を前回と同じ高さにする(⑫ ST-6) */
+const HEIGHT_STORAGE_KEY = "ccd:org-chart:heights"
+/** 高さを覚え直すのは、前と比べてこれ以上変わったときだけ(px) */
+const HEIGHT_REMEMBER_STEP = 8
 const HOUR_MS = 60 * 60 * 1000
 const RANGES = [1, 4, 24] as const
 const LOG_LIMIT = 50
@@ -39,6 +46,17 @@ const STAGGER_MS = 250
 const COMMIT_MS = 100
 
 const REDUCED_QUERY = "(prefers-reduced-motion: reduce)"
+
+/**
+ * 組織図の読み込み中の枠の高さ(一覧が来る前のホームで使う)。グループはまだ分からないので、前回選んだグループ・範囲の高さを使う
+ */
+export function useOrgFrameHeightBeforeList(): number {
+  const [storedGroup] = usePersistedState<string>(GROUP_STORAGE_KEY, "")
+  const [storedRange] = usePersistedState<number>(RANGE_STORAGE_KEY, 4)
+  const [savedHeights] = usePersistedState<Record<string, number>>(HEIGHT_STORAGE_KEY, {})
+  const rangeHours = (RANGES as readonly number[]).includes(storedRange) ? storedRange : FLOW_DEFAULT_RANGE_MS / HOUR_MS
+  return orgFrameHeight(savedHeights, storedGroup || null, rangeHours)
+}
 
 /** 動きを減らす設定 */
 function usePrefersReducedMotion(): boolean {
@@ -79,10 +97,12 @@ interface OrgChartViewProps {
    * failed は、組織図のデータを取れなかったとき true。ホームの「組織図に出ていないセッション」に使う(⑧)
    */
   onShownChange?: (memberIds: string[] | null, failed: boolean) => void
+  /** 組織図の欄の状態(⑫ ST-9 の印に使う) */
+  onPhaseChange?: (phase: SectionPhase) => void
 }
 
 /** 組織図の表示(グループ別の指揮役と子のカード、指示・報告の信号、ライブと振り返り) */
-export function OrgChartView({ sessions, groups, highContextRatio, onSelect, onShownChange }: OrgChartViewProps) {
+export function OrgChartView({ sessions, groups, highContextRatio, onSelect, onShownChange, onPhaseChange }: OrgChartViewProps) {
   const [storedGroup, setStoredGroup] = usePersistedState<string>(GROUP_STORAGE_KEY, "")
   const [storedRange, setStoredRange] = usePersistedState<number>(RANGE_STORAGE_KEY, 4)
   const [storedOrder, setStoredOrder] = usePersistedState<string>(ORDER_STORAGE_KEY, "name")
@@ -92,7 +112,7 @@ export function OrgChartView({ sessions, groups, highContextRatio, onSelect, onS
   const rangeHours = (RANGES as readonly number[]).includes(storedRange) ? storedRange : FLOW_DEFAULT_RANGE_MS / HOUR_MS
   const rangeMs = rangeHours * HOUR_MS
 
-  const { data: liveFlow, error } = useFlow(groupId, rangeMs)
+  const { data: liveFlow, error, retry: retryFlow } = useFlow(groupId, rangeMs)
   // カードとして出ているセッションを知らせる。グループが無ければ空、別のグループのデータが残っている間は「まだ分からない」
   const shownKey = groupId === null ? "" : liveFlow && liveFlow.group.id === groupId ? liveFlow.members.map((m) => m.id).join(",") : null
   const shownFailed = shownKey === null && error !== undefined && error !== null
@@ -103,6 +123,31 @@ export function OrgChartView({ sessions, groups, highContextRatio, onSelect, onS
   const reducedMotion = usePrefersReducedMotion()
   const animate = shouldAnimate(reducedMotion)
   const now = useNow(1_000)
+
+  // ---- 読み込みの状態(⑫ ST-8)。時間で打ち切らず、30秒たったら案内を出す。数え始めは、グループ・範囲を変えたとき・出し直したとき
+  const loadTimeKey = `home:org:${groupId}|${rangeMs}`
+  const times = useStartupTimes()
+  useEffect(() => {
+    recordTime(loadTimeKey, true)
+  }, [loadTimeKey])
+  const phase = sectionPhase({
+    hasData: liveFlow !== null,
+    failed: Boolean(error) && liveFlow === null,
+    startedAt: times[loadTimeKey] ?? now,
+    now,
+  })
+  useEffect(() => {
+    onPhaseChange?.(phase)
+  }, [phase, onPhaseChange])
+  const retry = useCallback(() => {
+    recordTime(loadTimeKey, true)
+    return retryFlow()
+  }, [retryFlow, loadTimeKey])
+
+  // ---- 組織図の高さを覚える(読み込み中の枠を前回と同じ高さにする)
+  const [savedHeights, setSavedHeights] = usePersistedState<Record<string, number>>(HEIGHT_STORAGE_KEY, {})
+  const frameHeight = orgFrameHeight(savedHeights, groupId, rangeHours)
+  const bodyRef = useRef<HTMLDivElement | null>(null)
 
   const [mode, setMode] = useState<"live" | "replay">("live")
   /** 振り返りで見ているデータ。開いた時点のものに固定する(更新で範囲がずれないように) */
@@ -241,6 +286,16 @@ export function OrgChartView({ sessions, groups, highContextRatio, onSelect, onS
     [timeline]
   )
 
+  // 組織図が出たら、その高さ(4つの数字から下の枠まで)を覚える。次に開いたときの読み込み中の枠に使う
+  const hasBody = Boolean(flow && chart)
+  useEffect(() => {
+    const el = bodyRef.current
+    if (!hasBody || !el || !groupId || mode !== "live") return
+    const height = el.getBoundingClientRect().height
+    if (height <= 0 || Math.abs(height - frameHeight) < HEIGHT_REMEMBER_STEP) return
+    setSavedHeights(rememberOrgHeight(savedHeights, groupId, rangeHours, height))
+  }, [hasBody, groupId, rangeHours, mode, frameHeight, savedHeights, setSavedHeights, nodes.length])
+
   if (options.length === 0) {
     return (
       <Alert>
@@ -315,16 +370,18 @@ export function OrgChartView({ sessions, groups, highContextRatio, onSelect, onS
         </div>
       </div>
 
-      {error && !liveFlow && (
-        <Alert variant="destructive">
-          <AlertTitle>組織図のデータを取得できません</AlertTitle>
-          <AlertDescription>{error.message}</AlertDescription>
-        </Alert>
+      {/* 読み込み中・時間がかかる・失敗は、読み込み後と同じ並びの枠の中に出す(⑫ ST-6・ST-8) */}
+      {!flow && (
+        <OrgLoadingFrame
+          height={frameHeight}
+          state={phase === "failed" ? "failed" : phase === "slow" ? "slow" : "loading"}
+          reason={phase === "failed" ? failureReason(error) : undefined}
+          onRetry={retry}
+        />
       )}
-      {!flow && !error && <p className="text-sm text-muted-foreground">読み込み中...</p>}
 
       {flow && chart && (
-        <>
+        <div ref={bodyRef} className="space-y-3" data-testid="org-body">
           <section aria-label="概要" className="grid grid-cols-2 gap-2 sm:grid-cols-4" data-testid="org-summary">
             {[
               ["org-stat-instruct", chart.counts.instructs, "指示（本）"],
@@ -456,7 +513,7 @@ export function OrgChartView({ sessions, groups, highContextRatio, onSelect, onS
               </div>
             </section>
           </div>
-        </>
+        </div>
       )}
     </div>
   )

@@ -147,4 +147,9 @@ export interface UsageResponse {
   unregisteredModels: string[]
   /** 画面に常時出す注記(推定の前提・時刻の誤差) */
   note: string
+  /**
+   * "official" は、公式値の記録だけを読んだ軽い答え(推定・ペース・セッション別の消費はまだ空)。
+   * ホームが推定より先に公式値を出すために使う(⑫ ST-7)。省略は、推定を含むふつうの答え
+   */
+  phase?: "official"
 }

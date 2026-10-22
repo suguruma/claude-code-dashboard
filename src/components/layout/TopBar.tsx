@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation"
 import { Menu } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { HomeStageMarks } from "@/components/home/HomeStageMarks"
 import { ProjectSwitcher } from "./ProjectSwitcher"
 import { ThemeToggle } from "./ThemeToggle"
 import { findNavItem, showsProjectSwitcher } from "./navConfig"
@@ -36,6 +37,8 @@ export function TopBar({ onMenuClick }: TopBarProps) {
           </>
         )}
       </div>
+      {/* ホームの段階の印(⑫ ST-9)。ホームで1.5秒以上待ったときだけ出る */}
+      {pathname === "/" && <HomeStageMarks />}
       {/* プロジェクトの切り替えは、選んでいるプロジェクトを使うページだけに出す(ホーム・Claude Desktop には出さない) */}
       {showsProjectSwitcher(pathname) && (
         <div className="order-last flex w-full min-w-0 @2xl:order-none @2xl:w-auto">

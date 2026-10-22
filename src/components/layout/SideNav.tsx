@@ -1,13 +1,13 @@
 "use client"
 
 import { useEffect } from "react"
-import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { usePersistedState } from "@/hooks/useLocalStorage"
+import { HoverPrefetchLink, LinkPendingHint } from "./HoverPrefetchLink"
 import { HELP_ITEM, NAV_GROUPS, type NavItem } from "./navConfig"
 
 interface SideNavProps {
@@ -44,12 +44,12 @@ export function SideNav({ mobileOpen, onMobileClose }: SideNavProps) {
         )}
       >
         <div className={cn("flex items-center gap-2 px-3 py-4", iconOnly && "justify-center px-0")}>
-          <Link href="/" className="flex min-w-0 items-center gap-2 font-semibold tracking-tight">
+          <HoverPrefetchLink href="/" className="flex min-w-0 items-center gap-2 font-semibold tracking-tight">
             <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-sidebar-primary text-xs font-bold text-sidebar-primary-foreground">
               CC
             </span>
             {!iconOnly && <span className="truncate text-sm">Claude Code Dashboard</span>}
-          </Link>
+          </HoverPrefetchLink>
         </div>
 
         <nav className="flex-1 space-y-4 overflow-y-auto px-2 pb-4">
@@ -117,7 +117,8 @@ function NavRow({
       {!iconOnly && <span className="truncate">{item.label}</span>}
     </span>
   ) : (
-    <Link
+    // 先読みは、ポインタ・フォーカスが来たリンクだけ(⑫ ST-4)。押した直後は「移動中…」
+    <HoverPrefetchLink
       href={item.href}
       className={cn(
         "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
@@ -127,7 +128,8 @@ function NavRow({
     >
       <Icon className="size-4 shrink-0" />
       {!iconOnly && <span className="truncate">{item.label}</span>}
-    </Link>
+      {!iconOnly && <LinkPendingHint />}
+    </HoverPrefetchLink>
   )
 
   if (!iconOnly && !item.disabled) {

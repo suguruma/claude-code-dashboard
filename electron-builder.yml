@@ -26,3 +26,7 @@ win:
       arch:
         - x64
 artifactName: "${productName}-${version}-portable.exe"
+portable:
+  # 展開中（起動のたびに約25〜30秒。アプリのコードがまだ動いていない間）に出す画像（⑫ ST-14 (a)）。BMP だけ。
+  # 効き目は exe で確かめる（出なければ、この portable の項目を外す）。文は README・使い方ガイドの案内と同じ
+  splashImage: electron/portable-splash.bmp

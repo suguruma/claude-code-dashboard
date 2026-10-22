@@ -107,6 +107,42 @@ export class UsageService {
       note: USAGE_NOTE,
     }
   }
+
+  /**
+   * 公式値の記録だけを読んだ軽い答え(⑫ ST-7)。会話記録の台帳は読まない(推定・ペース・セッション別の消費は空)。
+   * 窓の%は公式値そのもので、推定の印は付けない(画面は「公式値」と出し、推定は後から来るふつうの答えで出す)
+   */
+  async getOfficial(): Promise<UsageResponse> {
+    const now = this.now()
+    const snapshotResult = await this.snapshots()
+    const { snapshots } = snapshotResult
+    const built = buildUsage({ now, snapshots, rows: [], prices: this.prices })
+    const noRows = buildContributions([], now, now, this.prices, () => null)
+    const latest = snapshots[snapshots.length - 1] ?? null
+    return {
+      generatedAt: now,
+      snapshots: {
+        found: snapshotResult.found,
+        count: snapshots.length,
+        lastRecordedAt: latest?.ts ?? null,
+        plan: latest?.plan ?? null,
+      },
+      extraUsage: latest?.extraUsage ?? null,
+      windows: built.windows.map((w) => ({
+        ...w,
+        estimate: { kind: "none", reason: "no-calibration" },
+        displayPercent: w.official?.percentUsed ?? null,
+        calibration: null,
+        pace: null,
+      })),
+      guard: built.guard,
+      contributions: { fiveHour: noRows, week: noRows },
+      accuracy: built.accuracy,
+      unregisteredModels: [],
+      note: USAGE_NOTE,
+      phase: "official",
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
