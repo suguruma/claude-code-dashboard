@@ -466,6 +466,23 @@ describe("早めの取得（静的な HTML のスクリプト）", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
+  it("[ST-7] 500 の早めの答えを渡しただけでは「処理されない拒否」にならない。取得が待てば、失敗はそのまま届く", async () => {
+    const unhandled: unknown[] = []
+    const onUnhandled = (reason: unknown) => unhandled.push(reason)
+    process.on("unhandledRejection", onUnhandled)
+    try {
+      vi.stubGlobal("window", {
+        __ccdEarly: { at: Date.now(), requests: { "/api/usage": earlyRequest({ ok: false, status: 500, body: { error: "重い" }, at: Date.now() }) } },
+      })
+      adoptEarlyRequests()
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      expect(unhandled).toEqual([])
+      await expect(fetchLatest("/api/usage", "/api/usage")).rejects.toMatchObject({ status: 500 })
+    } finally {
+      process.off("unhandledRejection", onUnhandled)
+    }
+  })
+
   it("[ST-8] 初回の読み込み中に［もう一度読み込む］を押すと、早めの要求も止め、画面の側の同じ API への要求は1本になる", async () => {
     const live = new Set<string>()
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {

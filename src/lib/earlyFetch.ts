@@ -82,10 +82,10 @@ export function adoptEarlyRequests(): void {
   for (const url of EARLY_FETCH_URLS) {
     const request = takeEarly(url)
     if (!request) continue
-    adoptStarted(url, {
-      promise: request.promise.then((result) => resolveEarly(result)),
-      abort: () => request.controller?.abort(),
-    })
+    const promise = request.promise.then((result) => resolveEarly(result))
+    // 受け手(最初の取得)が await するまでの間に失敗しても、「処理されない拒否」にしない。受け手が await したときの拒否は、そのまま届く
+    promise.catch(() => {})
+    adoptStarted(url, { promise, abort: () => request.controller?.abort() })
   }
 }
 
