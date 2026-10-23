@@ -20,8 +20,6 @@ interface RetryNoticeProps {
   /** 案内の文(「〜に時間がかかっています（30秒以上）。このまま待てます。」など) */
   text: string
   onRetry: () => Promise<unknown>
-  /** 文とボタンの並べ方。line は横に1行、block は縦に積む */
-  layout?: "line" | "block"
   className?: string
 }
 
@@ -30,7 +28,7 @@ interface RetryNoticeProps {
  * (画面の側の要求は1本だけ)。失敗が続いたら「もう一度失敗しました（〇回目）」。
  * role="status" に入れるのは、この案内の文だけ(秒ごとに変わる文は入れない)
  */
-export function RetryNotice({ phase, text, onRetry, layout = "line", className }: RetryNoticeProps) {
+export function RetryNotice({ phase, text, onRetry, className }: RetryNoticeProps) {
   const [retrying, setRetrying] = useState(false)
   const [failures, setFailures] = useState(0)
   const phaseRef = useRef(phase)
@@ -52,18 +50,15 @@ export function RetryNotice({ phase, text, onRetry, layout = "line", className }
   const message = phase === "failed" && failures > 0 ? `！ もう一度失敗しました（${failures + 1}回目）。${text.replace(/^！\s*/, "")}` : text
   return (
     <div
-      className={cn(
-        "flex gap-3 text-sm",
-        layout === "line" ? "flex-wrap items-center" : "flex-col items-center text-center",
-        className
-      )}
+      className={cn("flex flex-wrap items-center gap-3 text-sm", className)}
       data-testid="retry-notice"
       data-phase={phase}
     >
       <span role="status" style={phase === "failed" ? { color: "var(--status-critical-text)" } : undefined} className={phase === "failed" ? undefined : "text-muted-foreground"}>
         {message}
       </span>
-      <Button type="button" variant="outline" size="sm" disabled={retrying} onClick={retry}>
+      {/* 新しく足す文は14px 以上(要件メモ 4-2)。size="sm" は 0.8rem になるので、既定の大きさ(text-sm)を使う */}
+      <Button type="button" variant="outline" disabled={retrying} onClick={retry}>
         {retrying ? "もう一度読み込んでいます" : "もう一度読み込む"}
       </Button>
     </div>
@@ -105,9 +100,26 @@ export function OrgLoadingFrame({ height, state, reason, onRetry }: OrgLoadingFr
         style={state === "failed" ? { borderColor: "var(--status-critical)" } : undefined}
       >
         {busy && <div className="loading-flow" aria-hidden />}
-        {state === "loading" && (
+        {/* 案内と［もう一度読み込む］は、枠のいちばん上(読み込み中の文と同じ高さ)に出す。枠は前回の組織図の高さなので、
+            縦の真ん中に置くと、1280×900 の窓では画面の外になる(⑫ 確認 中1) */}
+        {state === "loading" && <p className="text-sm text-muted-foreground">組織図を読み込んでいます。ここに組織図が出ます。</p>}
+        {state === "slow" && onRetry && (
+          <RetryNotice
+            phase="slow"
+            text="時間がかかっています（30秒以上）。このまま待てます。PC が混んでいるかもしれません。"
+            onRetry={onRetry}
+          />
+        )}
+        {state === "failed" && onRetry && (
+          <RetryNotice
+            phase="failed"
+            text={`！ 組織図を読み込めませんでした（${reason ?? "サーバーがエラーを返しました"}）。件数と利用上限は使えます。`}
+            onRetry={onRetry}
+          />
+        )}
+        {state === "blocked" && <p className="text-sm text-muted-foreground">セッションの一覧を読み込めないため、組織図を出せません。</p>}
+        {busy && (
           <>
-            <p className="text-sm text-muted-foreground">組織図を読み込んでいます。ここに組織図が出ます。</p>
             <div className="flex justify-center" aria-hidden>
               <Skeleton className="h-28 w-48 border border-dashed" />
             </div>
@@ -117,31 +129,6 @@ export function OrgLoadingFrame({ height, state, reason, onRetry }: OrgLoadingFr
               <Skeleton className="h-28 w-48 border border-dashed" />
             </div>
           </>
-        )}
-        {state === "slow" && onRetry && (
-          <div className="grid flex-1 place-items-center">
-            <RetryNotice
-              phase="slow"
-              layout="block"
-              text="時間がかかっています（30秒以上）。このまま待てます。PC が混んでいるかもしれません。"
-              onRetry={onRetry}
-            />
-          </div>
-        )}
-        {state === "failed" && onRetry && (
-          <div className="grid flex-1 place-items-center">
-            <RetryNotice
-              phase="failed"
-              layout="block"
-              text={`！ 組織図を読み込めませんでした（${reason ?? "サーバーがエラーを返しました"}）。件数と利用上限は使えます。`}
-              onRetry={onRetry}
-            />
-          </div>
-        )}
-        {state === "blocked" && (
-          <div className="grid flex-1 place-items-center">
-            <p className="text-sm text-muted-foreground">セッションの一覧を読み込めないため、組織図を出せません。</p>
-          </div>
         )}
       </div>
     </div>

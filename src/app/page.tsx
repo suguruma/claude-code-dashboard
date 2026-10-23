@@ -13,7 +13,7 @@ import { OutsideSessionsList } from "@/components/home/OutsideSessionsList"
 import { useDesktopSessions } from "@/hooks/useDesktopSessions"
 import { publishHomeStages } from "@/hooks/useHomeStages"
 import { clearTimes, recordTime, useNowAt, useStartupTimes } from "@/hooks/useStartupTimes"
-import { earlyFetchScript, takeEarlyStart } from "@/lib/earlyFetch"
+import { adoptEarlyRequests, earlyFetchScript, takeEarlyStart } from "@/lib/earlyFetch"
 import { useSelectSession, useSelectedSessionId } from "@/hooks/useSelectedSession"
 import { useUsage, useUsageOfficial } from "@/hooks/useUsage"
 import {
@@ -37,6 +37,11 @@ import {
  * そのため、`?session=` を読む部分(詳細のダイアログ)だけを Suspense に入れる(useSearchParams は、いちばん近い Suspense までを
  * 画面の側での描画に回すため。Next 16.2 の use-search-params.md の「Prerendering」)。
  */
+
+// ホームの HTML のスクリプトが始めた早めの要求を、最初の取得より前に取得へ渡す(⑫ ST-7。このモジュールが読み込まれたとき1回だけ。
+// 画面の内での移動でホームを開いたときは、スクリプトが動いていないので何もしない)
+if (typeof window !== "undefined") adoptEarlyRequests()
+
 export default function HomePage() {
   const { data, error, retry: retryList } = useDesktopSessions()
   const { data: fullUsage, error: usageError, retry: retryUsageRequest } = useUsage()

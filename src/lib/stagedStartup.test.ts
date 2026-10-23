@@ -19,8 +19,16 @@ import {
   sectionPhase,
   type StageMark,
 } from "./homeStartup"
-import { abortInflight, fetchLatest, hasInflight } from "./latestFetch"
-import { EARLY_FETCH_MAX_AGE_MS, EARLY_FETCH_URLS, earlyFetchScript, takeEarly, takeEarlyStart } from "./earlyFetch"
+import { abortInflight, fetchLatest, hasInflight, hasStarted } from "./latestFetch"
+import {
+  EARLY_FETCH_MAX_AGE_MS,
+  EARLY_FETCH_URLS,
+  adoptEarlyRequests,
+  earlyFetchScript,
+  resolveEarly,
+  takeEarly,
+  takeEarlyStart,
+} from "./earlyFetch"
 import { FlowService, flowShareKey } from "./flowService"
 import type { DesktopSessionService } from "./desktopSessionService"
 import { UsageService } from "./usageService"
@@ -328,6 +336,22 @@ describe("ホームの部品", () => {
     expect(status).toContain("30秒以上")
     expect(status.replace("30秒以上", "")).not.toMatch(/\d+秒/)
   })
+
+  it("[ST-8] 組織図の枠の案内と［もう一度読み込む］は、枠のいちばん上(灰色のカードより前)に出る。ボタンの文字は14px", async () => {
+    const { OrgLoadingFrame } = await import("@/components/home/HomeLoading")
+    for (const state of ["slow", "failed"] as const) {
+      const html = renderToStaticMarkup(createElement(OrgLoadingFrame, { height: 1594, state, onRetry: async () => {} }))
+      const notice = html.indexOf('data-testid="retry-notice"')
+      expect(notice).toBeGreaterThan(0)
+      // 灰色のカード(点線の枠)より前。枠の縦の真ん中(place-items-center)には置かない
+      const firstCard = html.indexOf("border-dashed")
+      if (firstCard >= 0) expect(notice).toBeLessThan(firstCard)
+      expect(html).not.toContain("place-items-center")
+      const button = /<button[^>]*>/.exec(html.slice(notice))?.[0] ?? ""
+      expect(button).not.toContain("text-[0.8rem]")
+      expect(button).toContain("text-sm")
+    }
+  })
 })
 
 describe("起動の見張り（exe）", () => {
@@ -366,21 +390,44 @@ describe("早めの取得（静的な HTML のスクリプト）", () => {
     vi.unstubAllGlobals()
   })
 
-  it("[ST-7] スクリプトは同じオリジンの決まった API だけを取り、外のファイルを読まない", () => {
+  /** スクリプトと同じ形の早めの要求。controller を止めると、つながらなかった答え({ ok: false })で終わる */
+  function earlyRequest(result?: Record<string, unknown>) {
+    const controller = new AbortController()
+    let finish: (value: Record<string, unknown>) => void = () => {}
+    const promise = new Promise<Record<string, unknown>>((resolve) => {
+      finish = resolve
+      controller.signal.addEventListener("abort", () => resolve({ ok: false }))
+    })
+    if (result) finish(result)
+    return { controller, promise, finish }
+  }
+
+  it("[ST-7] スクリプトは同じオリジンの決まった API だけを取り、外のファイルを読まない。要求は止められる(AbortController)", () => {
     const script = earlyFetchScript()
     for (const url of EARLY_FETCH_URLS) expect(script).toContain(JSON.stringify(url).slice(1, -1))
     expect(script).not.toMatch(/https?:|\/\/[a-z]/i)
     expect(script).not.toMatch(/<\/?script/i)
+    expect(script).toContain("new AbortController()")
+    expect(script).toContain("signal:c.signal")
+    // 答えが届いた時刻を記録する(古さは届いてから数える)
+    expect(script).toContain("at:Date.now()")
   })
 
-  it("[ST-7] 早めの答えは1回だけ使う。古い(15秒より前)ときと、無いときは使わない", () => {
-    const at = 1_000_000
-    const answer = Promise.resolve({ ok: true, status: 200, body: { n: 1 } })
-    vi.stubGlobal("window", { __ccdEarly: { at, requests: { "/api/desktop-sessions": answer, "/api/usage": answer } } })
-    expect(takeEarly("/api/desktop-sessions", at + 1_000)).toBe(answer)
-    expect(takeEarly("/api/desktop-sessions", at + 1_000)).toBeNull()
-    expect(takeEarly("/api/usage", at + EARLY_FETCH_MAX_AGE_MS + 1)).toBeNull()
-    expect(takeEarly("/api/flow", at)).toBeNull()
+  it("[ST-7] 早めの要求は1回だけ取り出せる。無いときは null", () => {
+    const request = earlyRequest({ ok: true, status: 200, body: { n: 1 } })
+    vi.stubGlobal("window", { __ccdEarly: { at: 1, requests: { "/api/desktop-sessions": request } } })
+    expect(takeEarly("/api/desktop-sessions")).toBe(request)
+    expect(takeEarly("/api/desktop-sessions")).toBeNull()
+    expect(takeEarly("/api/flow")).toBeNull()
+  })
+
+  it("[ST-7] 古さは答えが届いた時刻から見る。サーバーの失敗はそのまま使い、つながらなかったときだけ取り直す", () => {
+    const now = 5_000_000
+    // スクリプトは60秒前に動いたが、答えは1秒前に届いた(ハイドレーションが遅い PC)：使う
+    expect(resolveEarly({ ok: true, status: 200, body: { n: 1 }, at: now - 1_000 }, now)).toEqual({ n: 1 })
+    expect(resolveEarly({ ok: true, status: 200, body: { n: 1 }, at: now - EARLY_FETCH_MAX_AGE_MS - 1 }, now)).toBeUndefined()
+    expect(() => resolveEarly({ ok: false, status: 500, body: { error: "失敗" }, at: now }, now)).toThrow(ApiRequestError)
+    expect(resolveEarly({ ok: false }, now)).toBeUndefined()
   })
 
   it("[ST-9] 最初に読んだホームの始まりは、HTML を読んだ時刻(1回だけ)。画面の内での移動・古いときは使わない", () => {
@@ -394,21 +441,59 @@ describe("早めの取得（静的な HTML のスクリプト）", () => {
     expect(takeEarlyStart(at)).toBeNull()
   })
 
-  it("[ST-7] 最初の取得は早めの答えを使い、失敗の答えのときは取り直す", async () => {
+  it("[ST-7] ホームが渡した早めの答えを、最初の取得が1回だけ使う。サーバーの失敗は取り直さずに失敗にする", async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ from: "fetch" }), { status: 200 }))
     vi.stubGlobal("fetch", fetchMock)
     vi.stubGlobal("window", {
       __ccdEarly: {
         at: Date.now(),
         requests: {
-          "/api/desktop-sessions": Promise.resolve({ ok: true, status: 200, body: { from: "early" } }),
-          "/api/usage": Promise.resolve({ ok: false, status: 500 }),
+          "/api/desktop-sessions": earlyRequest({ ok: true, status: 200, body: { from: "early" }, at: Date.now() }),
+          "/api/usage": earlyRequest({ ok: false, status: 500, body: { error: "重い" }, at: Date.now() }),
+          "/api/usage?phase=official": earlyRequest({ ok: false }),
         },
       },
     })
-    await expect(fetchLatest("early-list", "/api/desktop-sessions")).resolves.toEqual({ from: "early" })
+    adoptEarlyRequests()
+    await expect(fetchLatest("/api/desktop-sessions", "/api/desktop-sessions")).resolves.toEqual({ from: "early" })
+    await expect(fetchLatest("/api/usage", "/api/usage")).rejects.toMatchObject({ status: 500 })
     expect(fetchMock).not.toHaveBeenCalled()
-    await expect(fetchLatest("early-usage", "/api/usage")).resolves.toEqual({ from: "fetch" })
+    // つながらなかった早めの要求だけは、取り直す
+    await expect(fetchLatest("/api/usage?phase=official", "/api/usage?phase=official")).resolves.toEqual({ from: "fetch" })
     expect(fetchMock).toHaveBeenCalledTimes(1)
+    // 2回目からは、ふつうに取る
+    await expect(fetchLatest("/api/desktop-sessions", "/api/desktop-sessions")).resolves.toEqual({ from: "fetch" })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it("[ST-8] 初回の読み込み中に［もう一度読み込む］を押すと、早めの要求も止め、画面の側の同じ API への要求は1本になる", async () => {
+    const live = new Set<string>()
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      live.add(url)
+      init?.signal?.addEventListener("abort", () => live.delete(url))
+      return new Response(JSON.stringify({ from: "retry" }), { status: 200 })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    const early = earlyRequest()
+    vi.stubGlobal("window", { __ccdEarly: { at: Date.now(), requests: { "/api/desktop-sessions": early } } })
+    adoptEarlyRequests()
+    const first = fetchLatest("/api/desktop-sessions", "/api/desktop-sessions")
+    await Promise.resolve()
+    expect(hasInflight("/api/desktop-sessions")).toBe(true)
+    abortInflight("/api/desktop-sessions")
+    expect(early.controller.signal.aborted).toBe(true)
+    const second = fetchLatest("/api/desktop-sessions", "/api/desktop-sessions")
+    await expect(second).resolves.toEqual({ from: "retry" })
+    // 止めた最初の取得も、出し直した答えを受け取る(SWR に失敗として渡さない)
+    await expect(first).resolves.toEqual({ from: "retry" })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(hasStarted("/api/desktop-sessions")).toBe(false)
+  })
+
+  it("[ST-7] 取得(latestFetch)は早めの取得のことを知らない(早めの要求を渡すのはホームのページだけ)", async () => {
+    const latest = await fs.readFile(path.join(process.cwd(), "src", "lib", "latestFetch.ts"), "utf-8")
+    expect(latest).not.toMatch(/earlyFetch|__ccdEarly/)
+    const callers = await fs.readFile(path.join(process.cwd(), "src", "app", "page.tsx"), "utf-8")
+    expect(callers).toContain("adoptEarlyRequests()")
   })
 })
