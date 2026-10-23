@@ -26,6 +26,17 @@ export function normalizeSince(since: number | null | undefined, now: number): n
   return age > FLOW_MAX_RANGE_MS ? now - FLOW_MAX_RANGE_MS : since
 }
 
+/**
+ * 走っている計算を共有するときの、範囲の丸め(ms)。画面は毎回 `since = いま − 範囲` を送るので、
+ * since そのものではなく、範囲(いま − since)をこの単位で丸めて比べる(⑫ ST-8)
+ */
+export const FLOW_SHARE_RANGE_STEP_MS = 60_000
+
+/** 計算を共有するキー(グループ・範囲)。since は含めない */
+export function flowShareKey(groupId: string, since: number, now: number): string {
+  return `${groupId}|${Math.round((now - since) / FLOW_SHARE_RANGE_STEP_MS)}`
+}
+
 /** グループIDは一覧のキーとして引くだけで、パスには使わない。念のため形式も絞る */
 const SAFE_GROUP_ID = /^[A-Za-z0-9_-]{1,100}$/
 
@@ -55,6 +66,8 @@ export interface FlowServiceOptions {
 export class FlowService {
   private readonly now: () => number
   readonly reader: FlowSignalReader
+  /** 走っている計算(キーは グループ・範囲)。［もう一度読み込む］で要求が重なっても、重い計算は1回だけにする */
+  private readonly running = new Map<string, Promise<FlowResponse | null>>()
 
   constructor(
     private readonly sessions: DesktopSessionService,
@@ -64,10 +77,24 @@ export class FlowService {
     this.reader = options.reader ?? new FlowSignalReader()
   }
 
-  /** グループが無ければ null */
-  async build(groupId: string, sinceInput?: number | null): Promise<FlowResponse | null> {
+  /**
+   * グループが無ければ null。同じグループ・範囲の計算が走っているあいだは、その答えを共有する
+   * (共有した答えの since・generatedAt は、先に始めた要求のもの。画面は答えから読むので、時刻はずれない)
+   */
+  build(groupId: string, sinceInput?: number | null): Promise<FlowResponse | null> {
     const now = this.now()
     const since = normalizeSince(sinceInput, now)
+    const key = flowShareKey(groupId, since, now)
+    const running = this.running.get(key)
+    if (running) return running
+    const promise = this.compute(groupId, since, now).finally(() => {
+      if (this.running.get(key) === promise) this.running.delete(key)
+    })
+    this.running.set(key, promise)
+    return promise
+  }
+
+  private async compute(groupId: string, since: number, now: number): Promise<FlowResponse | null> {
     const { group, sources, outsiders, sideChatCounts } = await this.sessions.groupSources(groupId)
     if (!group) return null
 

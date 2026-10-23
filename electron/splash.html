@@ -86,9 +86,26 @@
         background: #4f46e5;
         border-color: #6366f1;
       }
-      .slow button:focus-visible {
+      .slow button:focus-visible,
+      .early-quit:focus-visible {
         outline: 2px solid #a5b4fc;
         outline-offset: 2px;
+      }
+      /* 目安の前でもやめられるように、20秒を過ぎたら小さく出す（窓の枠が無く、常に手前にあるため） */
+      .early-quit {
+        display: none;
+        padding: 2px 10px;
+        border-radius: 6px;
+        border: 1px solid #52525b;
+        background: transparent;
+        color: #a1a1aa;
+        font: inherit;
+        font-size: 11px;
+        cursor: pointer;
+        -webkit-app-region: no-drag;
+      }
+      .early-quit.shown {
+        display: inline-block;
       }
     </style>
   </head>
@@ -100,6 +117,7 @@
       <span class="label" id="label"></span>
       <span id="eta"></span>
     </div>
+    <button type="button" class="early-quit" id="earlyQuitButton">やめる</button>
     <div class="slow" id="slow" role="alert">
       <span id="slowText">まだ準備中です</span>
       <div class="buttons">
@@ -114,13 +132,19 @@
       const etaEl = document.getElementById("eta")
       const slowEl = document.getElementById("slow")
       const slowTextEl = document.getElementById("slowText")
+      const earlyQuitEl = document.getElementById("earlyQuitButton")
+      /** 小さい［やめる］を出すまでの秒 */
+      const EARLY_QUIT_AFTER_SECONDS = 20
       let slowShown = false
 
       // 目安の時間を超えたら、終了せずに「まだ準備中です」と出し、待つ・やめるを選んでもらう(遅い PC のため)
       window.splashAPI?.onSlow(({ elapsedSeconds }) => {
+        // 秒は下の1か所（eta）だけに出す
         slowShown = true
-        slowTextEl.textContent = `まだ準備中です（${elapsedSeconds}秒）`
+        slowTextEl.textContent = "まだ準備中です"
         slowEl.classList.add("shown")
+        earlyQuitEl.classList.remove("shown")
+        etaEl.textContent = `この画面が出てから${elapsedSeconds}秒`
         document.getElementById("waitButton").focus()
       })
       document.getElementById("waitButton").addEventListener("click", () => {
@@ -131,20 +155,23 @@
       document.getElementById("quitButton").addEventListener("click", () => {
         window.splashAPI?.choose("quit")
       })
+      earlyQuitEl.addEventListener("click", () => {
+        window.splashAPI?.choose("quit")
+      })
 
       window.splashAPI?.onProgress(({ percent, label, etaSeconds, elapsedSeconds }) => {
         const p = Math.max(0, Math.min(100, percent))
         bar.style.width = p + "%"
         percentEl.textContent = Math.round(p) + "%"
         if (label) labelEl.textContent = label
-        // 目安を過ぎたら「まもなく」とは言わず、経過した時間を出す
+        // 目安を過ぎたら「まもなく」とは言わず、この画面が出てからの時間を出す（秒はここ1か所だけ）
         etaEl.textContent =
-          etaSeconds != null && etaSeconds > 1
+          etaSeconds != null && etaSeconds > 1 && !slowShown
             ? `残り約${etaSeconds}秒`
             : elapsedSeconds != null
-              ? `準備中（${elapsedSeconds}秒）`
+              ? `この画面が出てから${elapsedSeconds}秒`
               : ""
-        if (slowShown && elapsedSeconds != null) slowTextEl.textContent = `まだ準備中です（${elapsedSeconds}秒）`
+        if (!slowShown && elapsedSeconds != null && elapsedSeconds >= EARLY_QUIT_AFTER_SECONDS) earlyQuitEl.classList.add("shown")
       })
     </script>
   </body>

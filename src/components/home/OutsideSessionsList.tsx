@@ -21,12 +21,14 @@ interface OutsideSessionsListProps {
  * 注意の要る順に短く並べ、全部はセッション一覧で見る。行を押すとセッションの詳細が開く。
  */
 export function OutsideSessionsList({ sessions, shownIds, failed = false, onSelect }: OutsideSessionsListProps) {
+  // 組織図が済むまでは出さない(画面の外にあり、組織図に出たセッションが分かるまで作れないため。⑫ ST-6)
+  if (shownIds === null && !failed) return null
   if (shownIds === null) {
     return (
       <section aria-label="組織図に出ていないセッション" className="space-y-2" data-testid="home-outside">
         <h2 className="text-sm font-medium">組織図に出ていないセッション</h2>
         <p className="text-xs text-muted-foreground">
-          {failed ? "組織図のデータを取得できないため、組織図に出ていないセッションを選べません。" : "組織図の読み込みを待っています…"}{" "}
+          組織図のデータを取得できないため、組織図に出ていないセッションを選べません。{" "}
           <Link href="/desktop-sessions" className="text-primary hover:underline">
             セッション一覧ですべて見る
           </Link>
