@@ -384,6 +384,13 @@ describe("配り方（electron-builder）", () => {
     expect(yml).not.toMatch(/oneClick:\s*false/)
     expect(yml).toMatch(/artifactName: "\$\{productName\}-\$\{version\}-Setup\.\$\{ext\}"/)
   })
+
+  it("dist:win は yml の対象（nsis）で作る。--win portable と指定すると yml を上書きして portable を作るので、指定しない", async () => {
+    const pkg = JSON.parse(await fs.readFile(path.join(process.cwd(), "package.json"), "utf-8"))
+    const script: string = pkg.scripts["dist:win"]
+    expect(script).toMatch(/electron-builder --win\b/)
+    expect(script).not.toMatch(/portable/)
+  })
 })
 
 describe("早めの取得（静的な HTML のスクリプト）", () => {
