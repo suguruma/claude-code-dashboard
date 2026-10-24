@@ -21,18 +21,12 @@ extraResources:
   - from: config/projects.example.json
     to: seed/config/projects.example.json
 win:
+  # portable をやめて、ユーザーごとに入れるインストーラー（NSIS）にした（v0.3.2）。portable は起動のたびに別の一時フォルダから動くので、
+  # 「スマホから見る」のファイアウォールの確認が起動のたびに出る見込みだった。入れる場所（%LOCALAPPDATA%\Programs の下）は版を上げても同じ
   target:
-    - target: portable
+    - target: nsis
       arch:
         - x64
-artifactName: "${productName}-${version}-portable.exe"
-portable:
-  # 展開中（起動のたびに約25〜30秒。アプリのコードがまだ動いていない間）に出す画像（⑫ ST-14 (a)）。BMP だけ。
-  # 効き目は exe で確かめる（出なければ、この portable の項目を外す）。文は README・使い方ガイドの案内と同じ
-  splashImage: electron/portable-splash.bmp
-  # 展開先を起動ごとに別の一時フォルダ（$PLUGINSDIR\app。%TEMP%\nsXXXX.tmp の中）にする。決まった名前のフォルダだと、
-  # 起動の間に開き直したとき、2つ目が1つ目の動いているフォルダを消して上書きし、起動の失敗や 500 になる（99 の確かめ）。
-  # 値は true。説明の文（scheme.json）は「false で $PLUGINSDIR」と書くが、25.1.8 のコード（app-builder-lib の
-  # out/targets/nsis/NsisTarget.js 235〜237行）は false でもビルドの ksuid の決まった名前にし、true のときだけ $PLUGINSDIR になる。
-  # electron-builder を上げるときは、この値の意味が変わっていないかを見直す
-  unpackDirName: true
+nsis:
+  # oneClick・perMachine は既定のまま（1クリックで入る・ユーザーごと・管理者の権限を求めない。docs/specs/12-exe-packaging.md）
+  artifactName: "${productName}-${version}-Setup.${ext}"

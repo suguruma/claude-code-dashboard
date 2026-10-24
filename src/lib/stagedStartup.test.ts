@@ -374,14 +374,15 @@ describe("起動の見張り（exe）", () => {
   })
 })
 
-describe("portable の展開中の画像", () => {
-  it("[ST-14] electron-builder の portable に、展開中の画像(24ビットの BMP)を指定し、その画像がある", async () => {
+describe("配り方（electron-builder）", () => {
+  it("ユーザーごとに入れる NSIS のインストーラーだけを作る。portable の設定は無く、管理者の権限を求める設定（perMachine・oneClick: false）も無い", async () => {
     const yml = await fs.readFile(path.join(process.cwd(), "electron-builder.yml"), "utf-8")
-    const file = /splashImage:\s*(\S+)/.exec(yml)?.[1]
-    expect(file).toBe("electron/portable-splash.bmp")
-    const bmp = await fs.readFile(path.join(process.cwd(), file!))
-    expect(bmp.subarray(0, 2).toString("latin1")).toBe("BM")
-    expect(bmp.readUInt16LE(28)).toBe(24)
+    expect(yml).toMatch(/- target: nsis/)
+    expect(yml).not.toMatch(/target: portable/)
+    expect(yml).not.toMatch(/^portable:/m)
+    expect(yml).not.toMatch(/perMachine:\s*true/)
+    expect(yml).not.toMatch(/oneClick:\s*false/)
+    expect(yml).toMatch(/artifactName: "\$\{productName\}-\$\{version\}-Setup\.\$\{ext\}"/)
   })
 })
 
