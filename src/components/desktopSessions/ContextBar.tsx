@@ -13,7 +13,7 @@ interface ContextBarProps {
    * 省略時は従来どおり、highRatio 以上を赤にする(一覧・詳細の表示は変えない)。
    */
   levels?: boolean
-  /** 狭い場所用: 「上限は仮置き」の注記を省き、上限を title で見せる */
+  /** 狭い場所用(組織図のカード): トークン量と「上限は仮置き」の注記を省き、量は title で見せる(⑬ の棚卸しの行51) */
   compact?: boolean
 }
 
@@ -34,7 +34,7 @@ export function ContextBar({ context, highRatio, showNote = false, levels = fals
     <div className="min-w-0 space-y-1">
       <div className="flex items-baseline justify-between gap-2 text-xs tabular-nums">
         <span title={`${formatTokens(context.tokens)} / ${formatTokens(context.limit)}`}>
-          {compact ? formatTokens(context.tokens) : `${formatTokens(context.tokens)} / ${formatTokens(context.limit)}`}
+          {compact ? "コンテキスト" : `${formatTokens(context.tokens)} / ${formatTokens(context.limit)}`}
           {!compact && <span className="text-muted-foreground">（上限は仮置き）</span>}
         </span>
         <span

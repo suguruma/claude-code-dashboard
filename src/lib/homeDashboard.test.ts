@@ -8,12 +8,11 @@ import { DesktopSessionService } from "./desktopSessionService"
 import type { DesktopSessionMessaging } from "./desktopSessionTypes"
 import { FlowService } from "./flowService"
 import {
-  OUTSIDE_PREVIEW_COUNT,
   USAGE_KIND_LABEL,
   countDecisions,
   countSendLimitStopped,
   pickHomeWindows,
-  selectOutsideSessions,
+  countOutsideSessions,
   usageValueKind,
 } from "./homeDashboard"
 import { collectDecisions } from "./housekeeping"
@@ -111,7 +110,7 @@ describe("ホームの件数（⑧）", () => {
 })
 
 describe("組織図に出ていないセッション（⑧）", () => {
-  it("カードに出ているもの・アーカイブ済み・サイドチャットを除き、判断待ち → 実行中 → それ以外、同じなら新しい順", () => {
+  it("カードに出ているもの・アーカイブ済み・サイドチャットを除いて数える", () => {
     const sessions = [
       makeSessionSummary("shown", { status: "blocked" }),
       makeSessionSummary("old-idle", { lastActivityAt: 1_000 }),
@@ -122,19 +121,10 @@ describe("組織図に出ていないセッション（⑧）", () => {
       makeSessionSummary("side", { isSideChat: true, spawnedFromId: "shown", lastActivityAt: 9_000 }),
       makeSessionSummary("unknown-time"),
     ]
-    const { items, total } = selectOutsideSessions(sessions, new Set(["shown"]))
-    expect(items.map((s) => s.id)).toEqual(["decision", "running", "new-idle", "old-idle", "unknown-time"])
-    expect(total).toBe(5)
+    expect(countOutsideSessions(sessions, new Set(["shown"]))).toBe(5)
   })
 
-  it("出すのは上位10件まで。total は全件の数", () => {
-    const sessions = Array.from({ length: 13 }, (_, i) => makeSessionSummary(`s${i}`, { lastActivityAt: i }))
-    const { items, total } = selectOutsideSessions(sessions, new Set())
-    expect(items).toHaveLength(OUTSIDE_PREVIEW_COUNT)
-    expect(total).toBe(13)
-  })
-
-  it("合成データ: 判断待ちは整理ページと同じ11件（待機は数えない）、送信上限で停止は1件。試験グループの組織図に出ていないのは16件で、判断待ちが整理ページと同じ順で先頭", async () => {
+  it("合成データ: 判断待ちは整理ページと同じ11件（待機は数えない）、送信上限で停止は1件。試験グループの組織図に出ていないのは16件", async () => {
     const mod = (await import(/* @vite-ignore */ pathToFileURL(path.join(process.cwd(), "scripts", "make-org-chart-sample.mjs")).href)) as SampleModule
     const out = await fs.mkdtemp(path.join(os.tmpdir(), "ccd-home-test-"))
     cleanup.push(out)
@@ -151,22 +141,6 @@ describe("組織図に出ていないセッション（⑧）", () => {
 
     const flow = await new FlowService(sessions, { now: () => now }).build(sample.groups.a)
     const shown = new Set((flow?.members ?? []).map((m) => m.id))
-    const { items, total } = selectOutsideSessions(list.sessions, shown)
-    const ids = sample.ids
-    expect(total).toBe(16)
-    // 上位10件は、組織図に出ていない判断待ち（検証の子〈送信上限〉は組織図に出ている）。
-    // 区分の順は整理ページと同じ（許可 → 承認 → 判断・種類不明 → エラー → 届かなかった送信。⑩）。同じ区分の中は新しい順
-    const got = items.map((s) => s.id)
-    expect(got[0]).toBe(ids.permission)
-    expect(new Set(got.slice(1, 4))).toEqual(new Set([ids.blockedSummary, ids.wrapCommit, ids.planApproval]))
-    expect(new Set(got.slice(4, 8))).toEqual(new Set([ids.askUser, ids.wrapAsk, ids.decideCommit, ids.unknownKind]))
-    expect(got.slice(8)).toEqual([ids.errored, ids.unreachable])
-    expect(got.slice(1, 4)).toEqual([ids.planApproval, ids.wrapCommit, ids.blockedSummary])
-    // 待機は判断待ちではないので、上位10件に入らない
-    for (const id of [ids.wrapStandby, ids.wordStandby]) expect(items.some((s) => s.id === id), id).toBe(false)
-    // サイドチャット・アーカイブ済み・試験グループの木に入ったものは出ない
-    for (const id of [ids.sideChat, ids.archived, ids.adhoc, ids.helperB, ids.deepA, ids.subC, ids.practiceD]) {
-      expect(items.some((s) => s.id === id), id).toBe(false)
-    }
+    expect(countOutsideSessions(list.sessions, shown)).toBe(16)
   })
 })

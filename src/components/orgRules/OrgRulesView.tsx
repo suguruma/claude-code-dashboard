@@ -9,12 +9,13 @@ import { Button } from "@/components/ui/button"
 import { useOrgRules } from "@/hooks/useOrgRules"
 import { useProjects } from "@/hooks/useProjects"
 import type { OrgRulesResponse } from "@/lib/orgRulesTypes"
+import { MemoryBrowser } from "@/components/memory/MemoryBrowser"
 import { MemoryList } from "./MemoryList"
 import { RuleFileView } from "./RuleFileView"
 
 const SECTION = "space-y-3 rounded-xl p-4 ring-1 ring-foreground/10"
 
-/** 組織のルール(⑨)の本体。B(全体)→ C(グループごと)→ D(追加のファイル)の順に並べる */
+/** 組織の「決まり」(⑨)の本体。B(全体)→ C(グループごと)→ D(追加のファイル)→ 記憶の一覧(⑬ でまとめた)の順に並べる */
 export function OrgRulesView() {
   const { data, error, isLoading, isValidating, reload } = useOrgRules()
 
@@ -113,6 +114,14 @@ export function OrgRulesView() {
               </div>
             )}
           </section>
+
+          {/* 記憶の一覧(⑬ でメモリ管理のページからまとめた。/memory はここへ移る) */}
+          <section id="org-memory" className={SECTION} aria-labelledby="org-memory-title">
+            <h2 id="org-memory-title" className="text-base font-semibold">
+              記憶の一覧（選んでいるプロジェクト）
+            </h2>
+            <MemoryBrowser />
+          </section>
         </>
       )}
     </div>
@@ -162,7 +171,7 @@ function EditGlobalButton() {
   if (!global) {
     return (
       <p className="text-xs text-muted-foreground" data-testid="edit-global-guide">
-        プロジェクトの概要の「+」で ~/.claude を登録すると、ルール管理で編集できます。
+        ルール管理などの右上の「+」で ~/.claude を登録すると、ルール管理で編集できます。
       </p>
     )
   }

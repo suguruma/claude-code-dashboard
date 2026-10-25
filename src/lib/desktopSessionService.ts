@@ -23,10 +23,11 @@ import {
   readSidebarPrefs,
   locateDesktopDataDir,
   type DesktopMeta,
+  type PeerReceipt,
   type SidebarPrefs,
   type TranscriptRef,
 } from "./desktopSessions"
-import { CliProcessWatcher, type CliProcessSource } from "./cliProcesses"
+import { buildDecisionDetail } from "./decisionDetail"
 import { DEFAULT_HOUSEKEEPING_THRESHOLDS, type HousekeepingThresholds } from "./housekeepingTypes"
 import type { SessionIdentity } from "./usageEstimate"
 import { resolveProjectsRoot, type DataLocation } from "./dataLocations"
@@ -54,8 +55,6 @@ export interface DesktopSessionServiceOptions {
   tailBytes?: number
   /** 会話ログだけの縮退表示で並べる最大件数 */
   fallbackLimit?: number
-  /** 起動中のCLIプロセスの確認(段階2)。省略時は確認せず、画面には「情報なし」として扱う */
-  cliProcesses?: CliProcessSource
   /** 組織図で、グループの指揮役を見つけるタイトルの接頭辞。省略時は DEFAULT_ORCHESTRATOR_PREFIX */
   orchestratorPrefix?: string
   /** 整理ページ(⑦)の判定のしきい値。省略した項目は DEFAULT_HOUSEKEEPING_THRESHOLDS */
@@ -91,6 +90,23 @@ interface BuiltSession {
   tasks: DesktopSessionTask[]
   ref: TranscriptRef | null
   lastCompactionAt: number | null
+  /** 関係性マップ(⑬)だけに使う値。一覧の応答には入れない */
+  relation: SessionRelationData
+}
+
+/** 関係性マップ(⑬ RM-5〜RM-7)に使う、セッションごとの値(ブランチ・送ったメッセージの届き具合・スキルの呼び出し) */
+export interface SessionRelationData {
+  writtenBranch: string | null
+  peerReceipts: PeerReceipt[]
+  skillCalls: Array<{ name: string; at: number | null }>
+}
+
+/** 関係性マップ(⑬)が使う、アーカイブ・サイドチャットを除いたセッション */
+export interface RelationSource {
+  summary: DesktopSessionSummary
+  /** 会話ログのファイル。見つからなければ null(記憶の置き場は、このファイルのフォルダの memory) */
+  filePath: string | null
+  relation: SessionRelationData
 }
 
 const STATUS_RANK: Record<DesktopSessionStatus, number> = {
@@ -128,7 +144,6 @@ export class DesktopSessionService {
   private lastPrefs: SidebarPrefs | null = null
   private built = new Map<string, BuiltSession>()
   /** この一覧の組み立てで使う、起動中のCLIが開いているセッションIDの集合(取得できていなければ null) */
-  private cliIds: Set<string> | null = null
 
   constructor(options: DesktopSessionServiceOptions = {}) {
     this.opts = options
@@ -272,8 +287,6 @@ export class DesktopSessionService {
     const highContextRatio = this.opts.highContextRatio ?? 0.8
     const dataLocation = await this.getDataLocation()
     const dataDir = dataLocation.path
-    // 手元の結果を即座に受け取るだけで、プロセスの確認(約1秒)の完了は待たない
-    this.cliIds = this.opts.cliProcesses?.peek() ?? null
 
     let metas: DesktopMeta[] = []
     let prefs: SidebarPrefs | null = null
@@ -417,6 +430,17 @@ export class DesktopSessionService {
     return { group: name !== undefined ? { id: groupId, name } : null, sources, outsiders, sideChatCounts }
   }
 
+  /** 関係性マップ(⑬)の材料。一覧と同じ要約キャッシュを使う。アーカイブ・サイドチャットは入れない */
+  async relationSources(): Promise<{ list: DesktopSessionListResponse; sources: RelationSource[] }> {
+    const list = await this.list()
+    const sources: RelationSource[] = []
+    for (const b of this.built.values()) {
+      if (b.summary.isArchived || b.summary.isSideChat) continue
+      sources.push({ summary: b.summary, filePath: b.ref?.filePath ?? null, relation: b.relation })
+    }
+    return { list, sources }
+  }
+
   async detail(id: string): Promise<DesktopSessionDetail | null> {
     // 一覧と同じ要約キャッシュを使うので、毎回組み立て直しても読み直すのは変わったファイルだけ
     await this.list()
@@ -448,11 +472,6 @@ export class DesktopSessionService {
       })
     }
     return map
-  }
-
-  private cliProcessOf(cliSessionId: string | null): DesktopSessionSummary["cliProcess"] {
-    if (this.cliIds === null || cliSessionId === null) return "unknown"
-    return this.cliIds.has(cliSessionId.toLowerCase()) ? "running" : "none"
   }
 
   private countSessions(sessions: DesktopSessionSummary[], highContextRatio: number): DesktopSessionCounts {
@@ -542,6 +561,7 @@ export class DesktopSessionService {
           : null,
       needsActionInfo: needsActionInfo ?? null,
       standbyInfo: standbyInfo ?? null,
+      decision: null,
       createdAt: meta?.createdAt ?? null,
       lastActivityAt,
       completedTurns: meta?.completedTurns ?? null,
@@ -561,11 +581,31 @@ export class DesktopSessionService {
       latestInputOrigin: input?.origin ?? null,
       queuedInputs: digest?.queued ?? 0,
       messaging: digest ? messagingOf(digest) : null,
-      cliProcess: this.cliProcessOf(meta?.cliSessionId ?? ref?.sessionId ?? null),
       spawnedFromId: meta?.spawnedFromId ?? null,
       isSideChat: meta?.isSideChat ?? false,
     }
-    return { summary, tasks, ref, lastCompactionAt: digest?.lastCompactionAt ?? null }
+    // 次にやる判断(⑬)：判断を待つセッションだけに、問いの文と答えの候補を付ける(整理ページの「あなたの対応待ち」と同じ条件)
+    const waitsForOwner =
+      status === "blocked" || status === "error" || summary.messaging?.stopped === true || (summary.messaging?.undelivered ?? 0) > 0
+    if (waitsForOwner && !summary.isArchived) {
+      summary.decision = buildDecisionDetail({
+        status,
+        needsActionInfo: needsActionInfo ?? null,
+        wrapUp: digest?.lastWrapUp ?? null,
+        pendingAsk: digest?.pendingAsk ?? null,
+        pendingPlanLine: digest?.pendingPlan?.line ?? null,
+        pendingTool: digest?.pendingTool ?? null,
+        // 要約の文は前のターンのもの。回答待ち(会話ログで決まった要対応)には当てはまらないので使わない
+        summaryText: awaitingAnswer ? null : (meta?.needsActionText ?? null),
+        errorText: meta?.errorExcerpt ?? null,
+      })
+    }
+    const relation: SessionRelationData = {
+      writtenBranch: meta?.writtenBranch ?? null,
+      peerReceipts: meta?.peerReceipts ?? [],
+      skillCalls: digest?.skillCalls ?? [],
+    }
+    return { summary, tasks, ref, lastCompactionAt: digest?.lastCompactionAt ?? null, relation }
   }
 }
 
@@ -656,7 +696,6 @@ export function getDesktopSessionService(): Promise<DesktopSessionService> {
     return new DesktopSessionService({
       ...fileOptions,
       ...(projectsRoot ? { projectsRoot } : {}),
-      cliProcesses: new CliProcessWatcher(),
     })
   })
   globalForService.__ccdDesktopSessionService = { service, cls: DesktopSessionService }

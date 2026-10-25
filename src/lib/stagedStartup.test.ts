@@ -305,24 +305,29 @@ describe("ホームの部品", () => {
     expect(sideNav).not.toMatch(/from "next\/link"/)
   })
 
-  it("[ST-5] 読み込み中の件数・利用上限のカードに「—」「公式値なし」を出さない。答えが来て無いときだけ「—」", async () => {
-    const { HomeSummaryCards } = await import("@/components/home/HomeSummaryCards")
-    const loading = renderToStaticMarkup(
-      createElement(HomeSummaryCards, { sessions: null, usage: null, countsPhase: "loading", usagePhase: "loading", onRetryUsage: async () => {} })
-    )
+  it("[ST-5] [ND-10] 読み込み中の次にやる判断・利用上限の帯に「—」「公式値なし」を出さない。答えが来て無いときだけ「—」(⑬ で件数カードから置き換え)", async () => {
+    const { NextDecisions } = await import("@/components/home/NextDecisions")
+    const { UsageStrip } = await import("@/components/home/HomeBands")
+    const onRetry = async () => {}
+    const loading =
+      renderToStaticMarkup(createElement(NextDecisions, { sessions: null, phase: "loading", now: 0, onRetry })) +
+      renderToStaticMarkup(createElement(UsageStrip, { usage: null, phase: "loading", onRetry }))
     expect(loading).not.toContain("—")
     expect(loading).not.toContain("公式値なし")
     expect(loading).toContain("読み込んでいます")
-    const none = renderToStaticMarkup(createElement(HomeSummaryCards, { sessions: null, usage: null }))
+    const none = renderToStaticMarkup(createElement(UsageStrip, { usage: null, phase: "ready", onRetry }))
     expect(none).toContain("—")
   })
 
-  it("[ST-5, ST-7] 公式値が失敗したら、件数は出し、利用上限のカードは「取得できません」と［もう一度読み込む］", async () => {
-    const { HomeSummaryCards } = await import("@/components/home/HomeSummaryCards")
-    const html = renderToStaticMarkup(
-      createElement(HomeSummaryCards, { sessions: [], usage: null, countsPhase: "ready", usagePhase: "failed", onRetryUsage: async () => {} })
-    )
+  it("[ST-5, ST-7] [ND-10] 利用上限が失敗しても、次にやる判断は出し、利用上限の帯は「取得できません」と［もう一度読み込む］", async () => {
+    const { NextDecisions } = await import("@/components/home/NextDecisions")
+    const { UsageStrip } = await import("@/components/home/HomeBands")
+    const onRetry = async () => {}
+    const html =
+      renderToStaticMarkup(createElement(NextDecisions, { sessions: [], phase: "ready", now: 0, onRetry })) +
+      renderToStaticMarkup(createElement(UsageStrip, { usage: null, phase: "failed", onRetry }))
     expect(html).toContain("0件")
+    expect(html).toContain("いま決めることはありません。")
     expect(html).toContain("取得できません")
     expect(html).toContain("もう一度読み込む")
   })

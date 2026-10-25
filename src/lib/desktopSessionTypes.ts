@@ -1,3 +1,4 @@
+import type { DecisionDetail } from "./decisionDetail"
 /**
  * Claude Desktop セッション一覧のAPI/画面で共有する型。
  * サーバー専用モジュール(fs等)をimportしない。クライアントコンポーネントからも参照するため。
@@ -134,6 +135,11 @@ export interface DesktopSessionSummary {
   needsActionInfo: DesktopNeedsActionInfo | null
   /** 待機の手がかり(⑩)。状態が standby のときだけ付く */
   standbyInfo: DesktopStandbyInfo | null
+  /**
+   * 次にやる判断(⑬)の問いの文と答えの候補。判断を待つセッション(要対応・送信上限・エラー・届かない送信。アーカイブを除く)
+   * だけに付け、ほかは null(ほかのセッションの会話の本文は返さない。ND-9)
+   */
+  decision: DecisionDetail | null
   createdAt: number | null
   lastActivityAt: number | null
   completedTurns: number | null
@@ -158,12 +164,6 @@ export interface DesktopSessionSummary {
   queuedInputs: number
   /** 他のセッションへの送信回数と、送信上限での停止。会話ログが無いセッションは null */
   messaging: DesktopSessionMessaging | null
-  /**
-   * claude.exe が `--resume=<セッションID>` でこのセッションを開いているか。「実行中」とは別の情報
-   * (入力待ちのセッションでもプロセスは残る)。running: プロセスあり / none: 無し / unknown: 取得できていない
-   * (Windows以外・取得に失敗・初回の取得前)。
-   */
-  cliProcess: "running" | "none" | "unknown"
   /** このセッションを作った(spawnした)セッションのID。組織図の3層目(親子)の根拠。分からなければ null */
   spawnedFromId: string | null
   /**

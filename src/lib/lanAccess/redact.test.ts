@@ -78,3 +78,11 @@ describe("スマホへ返す応答のパスを隠す（すき間）", () => {
     expect(lastSegment("\\\\server\\share\\dir")).toBe("dir")
   })
 })
+
+describe("[ND-9] スマホへ返す一覧から、次にやる判断の問いと候補を外す(ゲート2 の L1。スマホに出すのは D5)", () => {
+  it("decision は null にし、ほかの項目は今までどおり返す", () => {
+    const session = { id: "local_1", title: "合成", decision: { question: "どちらにしますか", options: ["A", "B"], recommended: 0 } }
+    expect(redactForLan({ sessions: [session] })).toEqual({ sessions: [{ id: "local_1", title: "合成", decision: null }] })
+  })
+})
+

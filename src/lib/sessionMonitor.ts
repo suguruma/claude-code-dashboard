@@ -1,4 +1,4 @@
-import { createReadStream, promises as fs, type Dirent } from "fs"
+import { createReadStream, promises as fs } from "fs"
 import path from "path"
 import readline from "readline"
 import { defaultClaudeProjectsRoot, resolveProjectsRoot } from "./dataLocations"
@@ -6,7 +6,6 @@ import { FileIOError } from "./fileIO"
 import {
   CompactionEvent,
   SessionMetrics,
-  SessionProjectSummary,
   SessionSummary,
   ToolCallEvent,
   TokenPoint,
@@ -340,47 +339,6 @@ async function parseSessionFile(filePath: string): Promise<SessionMetrics> {
     hookErrorCount,
     userMessageCount,
   }
-}
-
-export async function listSessionProjects(): Promise<SessionProjectSummary[]> {
-  const root = sessionProjectsRoot()
-  if (!root) return []
-  let dirents: Dirent[]
-  try {
-    dirents = await fs.readdir(root, { withFileTypes: true })
-  } catch (err) {
-    const nodeErr = err as NodeJS.ErrnoException
-    if (nodeErr.code === "ENOENT") return []
-    throw new FileIOError(`${root} の読み込みに失敗しました: ${String(err)}`)
-  }
-
-  const dirNames = dirents.filter((d) => d.isDirectory()).map((d) => d.name)
-
-  const summaries = await Promise.all(
-    dirNames.map(async (dirName): Promise<SessionProjectSummary | null> => {
-      const dirPath = path.join(root, dirName)
-      let files: string[]
-      try {
-        files = (await fs.readdir(dirPath)).filter((f) => f.endsWith(".jsonl"))
-      } catch {
-        return null
-      }
-      if (files.length === 0) return null
-
-      const stats = await Promise.all(files.map((f) => fs.stat(path.join(dirPath, f))))
-      const lastActivityMs = Math.max(...stats.map((s) => s.mtimeMs))
-
-      return {
-        dirName,
-        sessionCount: files.length,
-        lastActivityAt: new Date(lastActivityMs).toISOString(),
-      }
-    })
-  )
-
-  return summaries
-    .filter((s): s is SessionProjectSummary => s !== null)
-    .sort((a, b) => (b.lastActivityAt ?? "").localeCompare(a.lastActivityAt ?? ""))
 }
 
 export async function listSessions(dirName: string): Promise<SessionSummary[]> {

@@ -5,6 +5,8 @@ import type { StatusFilter } from "@/lib/desktopSessionFilters"
 
 interface SummaryCardsProps {
   counts: DesktopSessionCounts
+  /** 次にやる判断の件数(⑬。ホーム・整理ページと同じ数え方) */
+  decisions: number
   highContextRatio: number
   selected: StatusFilter
   onSelect: (filter: StatusFilter) => void
@@ -19,10 +21,10 @@ interface CardDef {
 }
 
 /** 件数カード。押すとその状態で一覧を絞り込み、もう一度押すと解除する */
-export function SummaryCards({ counts, highContextRatio, selected, onSelect }: SummaryCardsProps) {
+export function SummaryCards({ counts, decisions, highContextRatio, selected, onSelect }: SummaryCardsProps) {
   const cards: CardDef[] = [
     { filter: "running", label: "実行中（推定）", value: counts.running, Icon: Activity, color: "var(--primary)" },
-    { filter: "blocked", label: "要対応", value: counts.blocked, Icon: OctagonAlert, color: "var(--status-critical)" },
+    { filter: "decisions", label: "次にやる判断", value: decisions, Icon: OctagonAlert, color: "var(--status-critical)" },
     { filter: "review_ready", label: "確認待ち", value: counts.reviewReady, Icon: Eye, color: "var(--status-warning)" },
     {
       filter: "highContext",

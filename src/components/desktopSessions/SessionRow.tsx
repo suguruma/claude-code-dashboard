@@ -1,4 +1,4 @@
-import { Archive, CalendarClock, Folder, ListChecks, MessageSquareText, OctagonAlert, Pin, SquareTerminal, Users } from "lucide-react"
+import { Archive, CalendarClock, Folder, ListChecks, MessageSquareText, OctagonAlert, Pin, Users } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { isInstructionProvisional } from "@/lib/desktopInstruction"
@@ -74,16 +74,6 @@ export function SessionRow({ session: s, highContextRatio, onSelect, parentTitle
                 </Badge>
               )}
               <SendCountBadge messaging={s.messaging} />
-              {s.cliProcess === "running" && (
-                <Badge
-                  variant="outline"
-                  className="shrink-0"
-                  title="claude.exe が --resume でこのセッションを開いています。入力待ちのセッションでもプロセスは残るため、「実行中」とは別の情報です"
-                >
-                  <SquareTerminal aria-hidden />
-                  CLIプロセスあり
-                </Badge>
-              )}
               {s.isArchived && (
                 <Badge variant="outline" className="shrink-0">
                   <Archive aria-hidden />

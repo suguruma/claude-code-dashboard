@@ -8,16 +8,6 @@
 
 export type MemberOrder = "name" | "created"
 
-export const MEMBER_ORDERS: ReadonlyArray<{ value: MemberOrder; label: string }> = [
-  { value: "name", label: "名前順" },
-  { value: "created", label: "作成順" },
-]
-
-/** 保存された値を、使える並び順にする。未知の値・未設定は名前順 */
-export function normalizeMemberOrder(value: unknown): MemberOrder {
-  return value === "created" ? "created" : "name"
-}
-
 const collator = new Intl.Collator("ja", { numeric: true, sensitivity: "base" })
 
 /**

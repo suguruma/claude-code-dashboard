@@ -52,7 +52,7 @@ describe("言葉の推定（kindFromWords）", () => {
   })
 })
 
-const wrap = (o: Partial<WrapUpDigest>): WrapUpDigest => ({ askExcerpt: null, askWordKind: null, actions: [], blocked: null, ...o })
+const wrap = (o: Partial<WrapUpDigest>): WrapUpDigest => ({ askExcerpt: null, ask: null, askWordKind: null, actions: [], labels: [], blocked: null, ...o })
 
 describe("分け方の表（classifyNeedsAction）", () => {
   it.each([
@@ -89,23 +89,55 @@ describe("分け方の表（classifyNeedsAction）", () => {
 })
 
 describe("wrap_up の入力の取り込み（wrapUpDigestOf）", () => {
-  it("ask は先頭60文字だけ。recap・ボタンの文は取り込まず、決まった名前の操作だけを残す", () => {
+  it("ask の抜粋は先頭60文字、全文は ask に持つ(⑬)。recap・ボタンの message は取り込まず、ボタンの名前と決まった名前の操作だけを残す", () => {
     const d = wrapUpDigestOf({
       recap: "まとめ MARK-RECAP",
       ask: `${"あ".repeat(70)}コミットしてよいですか`,
-      actions: [{ label: "押す MARK-LABEL", message: "送る MARK-MESSAGE" }, { action: "commit" }, { action: "rm -rf" }, "x"],
+      actions: [{ label: "押す", message: "送る MARK-MESSAGE" }, { action: "commit" }, { action: "rm -rf" }, "x"],
       blocked: true,
     })
     expect(d.askExcerpt).toBe(`${"あ".repeat(60)}…`)
-    // 承認の言葉は、60文字より後ろにあっても推定に使う(文は保持しない)
+    expect(d.ask).toBe(`${"あ".repeat(70)}コミットしてよいですか`)
+    // 承認の言葉は、60文字より後ろにあっても推定に使う
     expect(d.askWordKind).toBe("approval")
     expect(d.actions).toEqual(["commit"])
+    expect(d.labels).toEqual(["押す"])
     expect(d.blocked).toBe(true)
     expect(JSON.stringify(d)).not.toMatch(/MARK-/)
   })
 
+  it("[A8] [ND-8] 実際の形(label と message だけ)のボタンは、名前の文から承認の操作を決める(⑬ D6)", () => {
+    const d = wrapUpDigestOf({
+      ask: "この変更をどうしますか",
+      actions: [
+        { label: "コミットして PR を作る", message: "コミットして PR を作ってください" },
+        { label: "マージする", message: "マージしてください" },
+        { label: "このまま待つ" },
+      ],
+      blocked: true,
+    })
+    expect(d.actions.sort()).toEqual(["commit", "create_pr", "merge"])
+    expect(d.labels).toEqual(["コミットして PR を作る", "マージする", "このまま待つ"])
+    expect(classifyNeedsAction({ awaitingTool: null, wrapUp: d, summaryWordKind: null })).toEqual({
+      kind: "approval",
+      source: "wrap-up-action",
+      estimated: false,
+    })
+    // 承認の語の無いボタンだけなら、wrap_up の質問(判断待ち)
+    const ask = wrapUpDigestOf({ ask: "A案とB案のどちらで進めますか", actions: [{ label: "A案", message: "A案で" }, { label: "B案", message: "B案で" }] })
+    expect(ask.actions).toEqual([])
+    expect(classifyNeedsAction({ awaitingTool: null, wrapUp: ask, summaryWordKind: null }).source).toBe("wrap-up-ask")
+  })
+
   it("ask が空・無いときは null。blocked が真偽値でなければ null", () => {
-    expect(wrapUpDigestOf({ ask: "  ", blocked: "yes" })).toEqual({ askExcerpt: null, askWordKind: null, actions: [], blocked: null })
+    expect(wrapUpDigestOf({ ask: "  ", blocked: "yes" })).toEqual({
+      askExcerpt: null,
+      ask: null,
+      askWordKind: null,
+      actions: [],
+      labels: [],
+      blocked: null,
+    })
   })
 })
 
@@ -126,12 +158,16 @@ describe("状態の推定（⑩）", () => {
     statusCategory: "blocked",
     needsAction: true,
     needsActionExcerpt: null,
+    needsActionText: null,
     summaryWordKind: null,
     summaryFor: null,
     lastAssistantUuid: null,
     hasError: false,
+    errorExcerpt: null,
     errorAt: null,
     spawnedFromId: null,
+    writtenBranch: null,
+    peerReceipts: [],
     isSideChat: false,
     ...o,
   })

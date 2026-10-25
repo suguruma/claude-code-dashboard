@@ -3,7 +3,9 @@ import {
   avgOutputCharsPerCall,
   buildSessionTrends,
   cacheHitRate,
+  diagnoseHealth,
   diagnoseSession,
+  HEALTH_ASPECT_IDS,
   toolErrorRate,
   turnsPerUserMessage,
 } from "./sessionDiagnostics"
@@ -298,5 +300,23 @@ describe("buildSessionTrends", () => {
 
   it("セッションが無くても落ちない", () => {
     expect(buildSessionTrends([], null).every((t) => t.points.length === 0)).toBe(true)
+  })
+})
+
+describe("健康の欄(⑬ でセッション一覧の詳細へ移した4つの観点)", () => {
+  it("沼の兆候・ワークフローの安定性・MCP の稼働・寿命の4つだけを、この順に出す", () => {
+    const report = diagnoseHealth(makeMetrics())
+    expect(report.diagnoses.map((d) => d.id)).toEqual(["error-loop", "hooks", "mcp", "lifespan"])
+    expect(HEALTH_ASPECT_IDS).toHaveLength(4)
+  })
+
+  it("総合判定と対処は、4つの観点だけで決める(移さない観点の注意は入らない)", () => {
+    // 作業の分業(移さない観点)だけが注意になるときは、健康の欄は良好のまま
+    const onlySubagent = makeMetrics({ subagentCallCount: 0, compactionCount: 1 })
+    expect(diagnoseSession(onlySubagent).topActions.some((a) => a.includes("作業の分業"))).toBe(true)
+    const health = diagnoseHealth(onlySubagent)
+    expect(health.topActions.some((a) => a.includes("作業の分業"))).toBe(false)
+    expect(health.overall).toBe("warning") // 寿命(圧縮1回)は4つの観点に入る
+    expect(diagnoseHealth(makeMetrics({ compactionCount: 2 })).overall).toBe("critical")
   })
 })

@@ -35,15 +35,15 @@ export function countsVisible(input: { listReadyAt: number | null; usagePhase: S
 export type StageId = "counts" | "usage" | "org"
 
 export const STAGE_LABEL: Record<StageId, string> = {
-  counts: "件数",
+  counts: "次にやる判断",
   usage: "利用上限",
   org: "組織図",
 }
 
 /** 印を押したときに移る欄の id */
 export const STAGE_TARGET_ID: Record<StageId, string> = {
-  counts: "home-counts",
-  usage: "home-usage-card",
+  counts: "home-decisions",
+  usage: "home-usage-strip",
   org: "home-org",
 }
 
@@ -92,7 +92,7 @@ export function markSymbol(phase: SectionPhase): string {
   return "…"
 }
 
-/** 組織図の枠の高さの初めての値(px)。読み込み後の実測(合成データで約1640px。4つの数字の下から)に近い値 */
+/** 組織図の枠の高さの初めての値(px)。読み込み後の実測(合成データで約1640px。⑬ で4つの集計をやめる前に測った)に近い値 */
 export const ORG_FRAME_DEFAULT_HEIGHT = 1_400
 /** 覚えておく高さの範囲(px)。壊れた値で枠が極端にならないように */
 export const ORG_FRAME_MIN_HEIGHT = 320

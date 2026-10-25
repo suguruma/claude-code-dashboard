@@ -6,12 +6,14 @@
  * - 作業フォルダの最後の名前(`folderName`)は、パスの形でないので文字列としては隠れない。同じオブジェクトの `cwd` から
  *   作り直す(ホームのフォルダそのものなら `~`。`cwd` が無ければ null)。ユーザー名が名前として残らないように
  * - `~/.claude/projects/` のフォルダ名(`projectDirName`。パスを `-` でつないだ名前)は null にする
+ * - 次にやる判断の問いの全文と答えの候補(`decision`。⑬)は null にする。スマホで問いの文を出すのは D5 で、そのときに伏せ方と一緒に決める
+ *   (ゲート2 の L1。LAN は暗号化されない HTTP で、wrap_up の ask・プランの文は秘密の伏せの対象外のため)
  * - そのほかの文字列とオブジェクトのキーの中の、絶対パス(`C:\…`・`\\server\…`・`/Users/…`・`/Volumes/…`・`~\…`・`file:///…`・
  *   `C%3A%5C…` のような URL エンコード・`C--Users-…` のようなパスを `-` でつないだ名前)も隠す
  */
 
 const PATH_KEYS = new Set(["cwd", "path"])
-const DROP_KEYS = new Set(["projectDirName"])
+const DROP_KEYS = new Set(["projectDirName", "decision"])
 /** パスから作った名前の項目と、その元のパスの項目。元のパスから作り直す */
 const DERIVED_NAME_KEYS = new Map([["folderName", "cwd"]])
 
@@ -68,6 +70,11 @@ function redactString(s: string): string {
   out = out.replace(DASHED_PATH, "…")
   out = out.replace(BACKSLASH_TOKEN, (m) => lastSegment(m) || "…")
   return out
+}
+
+/** 文の中の絶対パスを、最後の名前にする(⑬ 次にやる判断の問い・候補・エラーの文。スマホと同じ隠し方) */
+export function redactPathsInText(s: string): string {
+  return redactString(s)
 }
 
 export function redactForLan<T>(value: T): T {

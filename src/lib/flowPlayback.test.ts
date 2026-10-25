@@ -1,13 +1,9 @@
 import { describe, expect, it } from "vitest"
 import {
   CTX_FLASH_MIN_TOKENS,
-  IDLE_GAP_MS,
-  IDLE_PASS_MS,
   PARTICLE_MAX_RADIUS,
   PARTICLE_MIN_RADIUS,
   WORKING_WINDOW_MS,
-  advanceReal,
-  buildPlaybackMap,
   buildTimeline,
   describeEvent,
   eventKey,
@@ -22,10 +18,6 @@ import {
   shouldAnimate,
   type SeenEvents,
   stateAt,
-  timelineMarks,
-  WORK_LAP_COLOR_COUNT,
-  workLap,
-  workLapColor,
   workRatio,
 } from "./flowPlayback"
 import { FLOW_WORK_LAP, type FlowEvent, type FlowMember, type FlowResponse, type FlowToolSample } from "./flowTypes"
@@ -255,7 +247,7 @@ describe("stateAt: カードの状態", () => {
     expect(stateAt(timeline, at(600)).counts).toEqual({ instructs: 3, reports: 1, ends: 1, working: 0, leaderInstructs: 3, leaderReports: 1 })
   })
 
-  it("同じ時刻なら、出来事を順に積み上げた状態と一致する（ライブと振り返りの一貫性）", () => {
+  it("同じ時刻なら、出来事を順に積み上げた状態と一致する（ライブで積み上げた状態との一貫性）", () => {
     const full = stateAt(timeline, at(255))
     // 範囲の先頭から、その時刻までの出来事・ツールだけを持つタイムラインでも、同じ状態になる
     const cut = {
@@ -287,38 +279,6 @@ describe("見た目の規則", () => {
     expect(particleRadius(300)).toBe(PARTICLE_MAX_RADIUS)
     expect(particleRadius(50)).toBeCloseTo((PARTICLE_MIN_RADIUS + PARTICLE_MAX_RADIUS) / 2, 5)
     expect(particleRadius(10)).toBeLessThan(particleRadius(40))
-  })
-
-  it("作業量のバーの周と伸びた割合：100回でちょうど1周目が満杯、101回から2周目、200回で2周目が満杯", () => {
-    const cases: [number, number, number][] = [
-      [0, 1, 0],
-      [1, 1, 0.01],
-      [99, 1, 0.99],
-      [100, 1, 1],
-      [101, 2, 0.01],
-      [199, 2, 0.99],
-      [200, 2, 1],
-      [201, 3, 0.01],
-      [300, 3, 1],
-      [1000, 10, 1],
-    ]
-    for (const [tools, lap, ratio] of cases) {
-      const got = workLap(tools)
-      expect(got.lap, `${tools}回の周`).toBe(lap)
-      expect(got.ratio, `${tools}回の割合`).toBeCloseTo(ratio, 10)
-    }
-    expect(workLap(-3)).toEqual({ lap: 1, ratio: 0 })
-    expect(workLap(Number.NaN)).toEqual({ lap: 1, ratio: 0 })
-  })
-
-  it("周の色：4周目までは周の番号、5周目からは3と4を交互（隣の周は、いつも別の色）", () => {
-    expect([1, 2, 3, 4].map(workLapColor)).toEqual([1, 2, 3, 4])
-    expect([5, 6, 7, 8, 9, 10].map(workLapColor)).toEqual([3, 4, 3, 4, 3, 4])
-    for (let lap = 2; lap <= 30; lap++) {
-      expect(workLapColor(lap)).not.toBe(workLapColor(lap - 1))
-      expect(workLapColor(lap)).toBeGreaterThanOrEqual(1)
-      expect(workLapColor(lap)).toBeLessThanOrEqual(WORK_LAP_COLOR_COUNT)
-    }
   })
 
   it("脈動の周期は、直近1分の呼び出しが多いほど短い（0回=1.8秒、30回以上=0.6秒）", () => {
@@ -419,68 +379,6 @@ describe("ライブ: 受信未確認で流した指示が、あとで確認済�
     const { fresh, upgraded } = selectUnseen([senderOnly, another], seen)
     expect(fresh).toEqual([another])
     expect(upgraded).toEqual([])
-  })
-})
-
-describe("振り返り: 再生の時間の変換", () => {
-  const start = at(0)
-  const stop = at(3600)
-
-  it("空き時間を飛ばさないときは、実時間 ÷ 速さ", () => {
-    const map = buildPlaybackMap([at(100), at(1000)], start, stop, { speed: 60, skipIdle: false })
-    expect(map.totalMs).toBeCloseTo(3600 / 60 * 1000, 3)
-    expect(map.toReal(0)).toBe(start)
-    expect(map.toReal(map.totalMs)).toBe(stop)
-    expect(map.toPlay(at(1800))).toBeCloseTo(30_000, 3)
-  })
-
-  it("空き時間を飛ばす: 出来事の間隔が120秒を超える区間だけ、再生にかける時間を2秒までにする（境界120秒・121秒）", () => {
-    // 速さ1（実時間のまま）で、境界を確かめる
-    const exact = buildPlaybackMap([at(IDLE_GAP_MS / SEC)], start, at(IDLE_GAP_MS / SEC), { speed: 1, skipIdle: true })
-    expect(exact.totalMs).toBe(IDLE_GAP_MS) // 120秒ちょうどは飛ばさない
-    const over = buildPlaybackMap([], start, at(IDLE_GAP_MS / SEC + 1), { speed: 1, skipIdle: true })
-    expect(over.totalMs).toBe(IDLE_PASS_MS) // 121秒は2秒で通過
-    // オフなら飛ばさない
-    expect(buildPlaybackMap([], start, at(121), { speed: 1, skipIdle: false }).totalMs).toBe(121_000)
-  })
-
-  it("速さが速くて、元々2秒より短い区間は、そのまま（再生が長くならない）。長い区間は2秒で通過", () => {
-    // ×60: 130秒の空きは自然には2.17秒 → 2秒。×900: 600秒の空きは自然には0.67秒 → そのまま
-    const slow = buildPlaybackMap([], start, at(130), { speed: 60, skipIdle: true })
-    expect(slow.totalMs).toBe(IDLE_PASS_MS)
-    const fast = buildPlaybackMap([], start, at(600), { speed: 900, skipIdle: true })
-    expect(fast.totalMs).toBeCloseTo(600_000 / 900, 3)
-    const long = buildPlaybackMap([], start, at(3600), { speed: 60, skipIdle: true })
-    expect(long.totalMs).toBe(IDLE_PASS_MS)
-  })
-
-  it("出来事に挟まれた区間ごとに判断する。再生位置と実時間は、飛ばした区間をまたいでも往復で一致する", () => {
-    // 0〜60秒に出来事が密、そのあと2000秒の空き、最後に密
-    const marks = [at(10), at(30), at(60), at(2060), at(2070)]
-    const map = buildPlaybackMap(marks, start, at(2100), { speed: 60, skipIdle: true })
-    // 密な区間: 60秒/60 = 1秒。空き2000秒 → 2秒。残り40秒/60
-    expect(map.totalMs).toBeCloseTo(1000 + IDLE_PASS_MS + 40_000 / 60, 3)
-    for (const real of [at(0), at(25), at(60), at(1000), at(2060), at(2065), at(2100)]) {
-      expect(map.toReal(map.toPlay(real))).toBeCloseTo(real, 0)
-    }
-    // 空き時間の途中の再生位置は、空きの中の時刻になる
-    expect(map.toReal(1000 + IDLE_PASS_MS / 2)).toBeCloseTo(at(60) + 1000 * SEC, -2)
-  })
-
-  it("再生を進める: 壁の時間 dt だけ進めた実時間。範囲の端を超えない", () => {
-    const marks = [at(60), at(2060)]
-    const map = buildPlaybackMap(marks, start, at(2100), { speed: 60, skipIdle: true })
-    expect(advanceReal(map, at(0), 500)).toBeCloseTo(at(30), 0)
-    // 60秒の出来事の直後に1秒進めると、空き時間（2000秒）の途中へ入る
-    const mid = advanceReal(map, at(60), 1000)
-    expect(mid).toBeGreaterThan(at(60))
-    expect(mid).toBeLessThan(at(2060))
-    expect(advanceReal(map, at(2090), 10_000_000)).toBe(at(2100))
-  })
-
-  it("出来事・ツール呼び出しのどちらも、空き時間の判断に使う", () => {
-    const timeline = buildTimeline(flow([instruct(10, A)], [[500, 1, 300, 1]]))
-    expect(timelineMarks(timeline).sort((a, b) => a - b)).toEqual([at(10), at(500)])
   })
 })
 

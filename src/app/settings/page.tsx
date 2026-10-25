@@ -1,19 +1,13 @@
 "use client"
 
-import { useState } from "react"
-import { Pencil } from "lucide-react"
 import { useProjects } from "@/hooks/useProjects"
 import { useSettings } from "@/hooks/useSettings"
 import { useBackups } from "@/hooks/useBackups"
-import { useBlockedPlugins } from "@/hooks/usePlugins"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { BackupList } from "@/components/settings/BackupList"
-import { PluginBlocklist } from "@/components/settings/PluginBlocklist"
-import { SettingsEditDialog } from "@/components/settings/SettingsEditDialog"
 
 const KNOWN_KEYS = [
   "permissions",
@@ -43,20 +37,13 @@ function KeyValueTable({ data }: { data: Record<string, unknown> }) {
 
 export default function SettingsPage() {
   const { selectedProjectId, selectedProject, isLoading: projectsLoading } = useProjects()
-  const { raw, isLoading, error, updateSettings } = useSettings(selectedProjectId)
+  const { raw, isLoading, error } = useSettings(selectedProjectId)
   const {
     backups,
     isLoading: backupsLoading,
     error: backupsError,
     restoreBackup,
   } = useBackups(selectedProjectId)
-  const {
-    blockedPlugins,
-    isLoading: pluginsLoading,
-    error: pluginsError,
-  } = useBlockedPlugins(selectedProjectId)
-  const [editDialogOpen, setEditDialogOpen] = useState(false)
-
   if (projectsLoading) {
     return <p className="text-sm text-muted-foreground">読み込み中...</p>
   }
@@ -82,7 +69,7 @@ export default function SettingsPage() {
       <div>
         <h1 className="text-xl font-semibold">設定 & システム情報</h1>
         <p className="text-sm text-muted-foreground">
-          {selectedProject.name} の settings.json / backups / plugins を表示します（プラグインは読み取り専用）
+          {selectedProject.name} の settings.json を読み取り専用で表示し、書き換えの退避（バックアップ）を戻せます。settings.json を直すときは、ファイルを直接編集してください
         </p>
       </div>
 
@@ -90,17 +77,9 @@ export default function SettingsPage() {
         <TabsList>
           <TabsTrigger value="settings">設定</TabsTrigger>
           <TabsTrigger value="backups">バックアップ</TabsTrigger>
-          <TabsTrigger value="plugins">プラグイン</TabsTrigger>
         </TabsList>
 
         <TabsContent value="settings" className="space-y-4">
-          <div className="flex justify-end">
-            <Button variant="outline" size="sm" onClick={() => setEditDialogOpen(true)}>
-              <Pencil className="size-3.5" />
-              編集する
-            </Button>
-          </div>
-
           {error && (
             <Alert variant="destructive">
               <AlertTitle>読み込みエラー</AlertTitle>
@@ -179,24 +158,7 @@ export default function SettingsPage() {
           )}
         </TabsContent>
 
-        <TabsContent value="plugins" className="space-y-4">
-          {pluginsError && (
-            <Alert variant="destructive">
-              <AlertTitle>読み込みエラー</AlertTitle>
-              <AlertDescription>{pluginsError.message}</AlertDescription>
-            </Alert>
-          )}
-          {!pluginsLoading && !pluginsError && <PluginBlocklist blockedPlugins={blockedPlugins} />}
-        </TabsContent>
       </Tabs>
-
-      <SettingsEditDialog
-        open={editDialogOpen}
-        onOpenChange={setEditDialogOpen}
-        raw={raw}
-        isGlobalConfig={selectedProject.isGlobalConfig}
-        onSave={updateSettings}
-      />
     </div>
   )
 }

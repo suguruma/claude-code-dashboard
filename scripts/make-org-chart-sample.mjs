@@ -359,7 +359,20 @@ export function makeOrgChartSample(outDir, options = {}) {
 
   // ---- 整理ページ（⑦）用: 判断待ちのセッション（どのグループにも入っていない）-----------------
   // 回答待ち: ユーザーへの質問のツールを呼んだまま止まっている（要対応）
-  assistantRow(S.askUser, 150, 60_000, { tools: [{ name: "AskUserQuestion", input: { question: "合成の質問" } }] })
+  // 実際の形(questions[].question・options[].label)。推しの印「(Recommended)」の付いた選択肢が推しになる(⑬ A4)
+  assistantRow(S.askUser, 150, 60_000, {
+    tools: [
+      {
+        name: "AskUserQuestion",
+        input: {
+          questions: [
+            { question: "合成の質問：どちらの案で進めますか", options: [{ label: "A案 (Recommended)" }, { label: "B案" }] },
+            { question: "合成の質問：期限はいつにしますか", options: [{ label: "今週" }, { label: "来週" }] },
+          ],
+        },
+      },
+    ],
+  })
   // 要約が「要対応」: ターンは終わり、Desktopが要対応と分類している（書き出しのときに要約をメタデータへ付ける）
   assistantRow(S.blockedSummary, 100, 70_000)
   // エラー: 最後の応答のあとでエラーが記録されている
@@ -382,7 +395,8 @@ export function makeOrgChartSample(outDir, options = {}) {
   assistantRow(S.permission, 95, 30_000)
   wrapUpTurn(S.wrapCommit, 85, {
     ask: "この変更をコミットしてよいですか（合成のデータ）",
-    actions: [{ label: "コミットする", message: `コミットしてください ${WRAP_UP_MARK}` }, { action: "commit" }],
+    // 実際の wrap_up のボタンは label と message だけ(action のキーは無い。⑬ D6)。承認は label の文から決まる
+    actions: [{ label: "コミットする", message: `コミットしてください ${WRAP_UP_MARK}` }, { label: "このまま待つ", message: `待ってください ${WRAP_UP_MARK}` }],
     blocked: true,
   })
   wrapUpTurn(S.wrapAsk, 80, { ask: "A案とB案のどちらで進めますか（合成のデータ）", blocked: true })

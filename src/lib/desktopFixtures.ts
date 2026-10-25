@@ -13,6 +13,8 @@ export const SENTINEL = "SENTINEL-DO-NOT-LEAK-7f3a9c"
 
 /** blocked のセッションの needs_action の先頭(画面に出る部分) */
 export const NEEDS_ACTION_HEAD = "対応が必要: 本番環境への反映を承認してください"
+/** 要対応の説明文の60文字より後ろの目印。先頭60文字の抜粋には出ず、次にやる判断(⑬)の問いの全文にだけ出る */
+export const NEEDS_ACTION_TAIL = "全文の末尾の目印"
 
 export const FAKE_ACCOUNT = "00000000-0000-4000-8000-0000000000a1"
 export const FAKE_ORG = "00000000-0000-4000-8000-0000000000b1"
@@ -83,8 +85,8 @@ export function makeMeta(o: MetaOptions): Record<string, unknown> {
     meta.postTurnSummary = {
       status_category: o.category,
       status_detail: `detail ${SENTINEL}`,
-      // 先頭60文字だけが表示される。60文字を超えた末尾に SENTINEL を置き、切り詰められることを確かめる
-      needs_action: o.category === "blocked" ? `${NEEDS_ACTION_HEAD}${"あ".repeat(80)}${SENTINEL}` : "",
+      // 抜粋は先頭60文字。60文字を超えた末尾に目印を置き、抜粋では切られ、次にやる判断(⑬)の問いの全文にだけ出ることを確かめる
+      needs_action: o.category === "blocked" ? `${NEEDS_ACTION_HEAD}${"あ".repeat(80)}${NEEDS_ACTION_TAIL}` : "",
       summarizes_uuid: o.summaryFor ?? fakeUuid(o.n),
     }
     meta.postTurnSummaryFor = o.summaryFor ?? fakeUuid(o.n)
@@ -358,6 +360,7 @@ export function makeSessionSummary(id: string, overrides: Partial<DesktopSession
     needsActionExcerpt: null,
     needsActionInfo: null,
     standbyInfo: null,
+    decision: null,
     createdAt: null,
     lastActivityAt: null,
     completedTurns: null,
@@ -371,7 +374,6 @@ export function makeSessionSummary(id: string, overrides: Partial<DesktopSession
     latestInputOrigin: null,
     queuedInputs: 0,
     messaging: null,
-    cliProcess: "unknown",
     spawnedFromId: null,
     isSideChat: false,
     ...overrides,

@@ -1,16 +1,12 @@
 import {
   Activity,
   ArrowLeftRight,
-  BrainCircuit,
   BrushCleaning,
   Gauge,
   HelpCircle,
   Home,
-  LayoutDashboard,
   MonitorSmartphone,
-  LineChart,
   ListChecks,
-  ListTodo,
   Settings as SettingsIcon,
   Sparkles,
   ScrollText,
@@ -47,7 +43,7 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "ホーム",
         icon: Home,
         description:
-          "あなたの対応待ち・送信上限で停止・利用上限を上に、その下に組織図（指揮役から各セッションへの指示と、各セッションからの報告の動き）を出します。組織図に出ていないセッションは、いちばん下にまとめます（読み取り専用）。",
+          "いまあなたが決めることを急ぐ順に上に出し、その下に組織図を出します（読み取り専用）。",
       },
     ],
   },
@@ -75,16 +71,17 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "整理",
         icon: BrushCleaning,
         description:
-          "コンテキストが大きい・長く止まっているセッション（再開すると上限をどれだけ使うかの目安つき）、返事の来ていない指示、あなたの対応を待っているセッションを、1画面にまとめます。対処はセッションを開いて行います（読み取り専用）。",
+          "返事の来ていない指示と、コンテキストが大きい・長く止まっているセッション（再開すると上限をどれだけ使うかの目安つき）を、1画面にまとめます。次にやる判断はホームで見ます。対処はセッションを開いて行います（読み取り専用）。",
       },
       {
-        // ⑨。指揮役の見つけ方が Desktop のグループに頼るので、この群に置く。選んでいるプロジェクトは使わない
+        // ⑨・⑬。指揮役の見つけ方が Desktop のグループに頼るので、この群に置く。選んでいるプロジェクトは使わない。
+        // 上のタブで「決まり」(⑨)と「つながり」(⑬ の関係性マップ)を切り替える
         href: "/org-rules",
-        label: "組織のルール",
+        label: "組織",
         icon: ScrollText,
         usesProject: false,
         description:
-          "全グループ共通の決まり（グローバルの CLAUDE.md）と、グループごとの指揮役の決まり（作業フォルダの CLAUDE.md と記憶）を、1か所で読みます。番号の入れ替えなどで古くなったセッション名に印を付けます（読み取り専用）。",
+          "「決まり」では全体とグループごとの決まり（CLAUDE.md と記憶）を読み、「つながり」では誰がどのグループにいて、何が効いているかを見ます（読み取り専用）。",
       },
     ],
   },
@@ -92,10 +89,8 @@ export const NAV_GROUPS: NavGroup[] = [
     // 選択中のプロジェクトに紐づく設定の管理(ヘルプの「設定管理の対象」と同じ範囲)
     label: "設定管理",
     items: [
-      { href: "/project", label: "プロジェクトの概要", icon: LayoutDashboard, usesProject: true },
       { href: "/rules", label: "ルール管理", icon: ListChecks, usesProject: true },
       { href: "/skills", label: "スキル管理", icon: Sparkles, usesProject: true },
-      { href: "/memory", label: "メモリ管理", icon: BrainCircuit, usesProject: true },
       { href: "/settings", label: "設定", icon: SettingsIcon, usesProject: true },
     ],
   },
@@ -103,9 +98,8 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "分析・振り返り",
     items: [
       { href: "/trace", label: "実行ログ", icon: Activity, usesProject: true },
-      // セッション監視は選んでいるプロジェクトを使わない(~/.claude/projects を直接読む)ので、切り替えを出さない(⑧ Q5)
-      { href: "/session-monitor", label: "セッション監視", icon: LineChart, usesProject: false },
-      { href: "/tasks", label: "タスク履歴", icon: ListTodo, usesProject: true },
+      // 振り返りのスキル(rule-optimizer)の結果を読む(⑬ で「ツール」から移した)
+      { href: "/refactor", label: "ルール整理", icon: Wand2, usesProject: true },
     ],
   },
   {
@@ -113,7 +107,6 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       // 選んでいるプロジェクトへ書き込むので、対象が見えるよう切り替えを出す(⑧ Q6)
       { href: "/migrate", label: "移行", icon: ArrowLeftRight, usesProject: true },
-      { href: "/refactor", label: "ルール整理", icon: Wand2, usesProject: true },
       {
         // ⑪。オン・オフと端末の管理は、この PC の画面からだけ(LAN の入り口は、このページを通さない)
         href: "/lan-access",

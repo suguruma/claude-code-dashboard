@@ -13,6 +13,7 @@ import {
 } from "./desktopSessions"
 import {
   NEEDS_ACTION_HEAD,
+  NEEDS_ACTION_TAIL,
   SENTINEL,
   fakeCliId,
   fakeSessionId,
@@ -48,6 +49,7 @@ describe("projectMeta(許可リスト方式の射影、S3)", () => {
         "cwd",
         "effort",
         "errorAt",
+        "errorExcerpt",
         "hasError",
         "id",
         "isArchived",
@@ -58,21 +60,26 @@ describe("projectMeta(許可リスト方式の射影、S3)", () => {
         "model",
         "needsAction",
         "needsActionExcerpt",
+        "needsActionText",
+        "peerReceipts",
         "permissionMode",
         "spawnedFromId",
         "statusCategory",
         "summaryFor",
         "summaryWordKind",
         "title",
+        "writtenBranch",
       ].sort()
     )
     expect(meta).toMatchObject({ id: fakeSessionId(1), statusCategory: "blocked", needsAction: true, hasError: true })
   })
 
-  it("要対応の内容は先頭60文字だけを取り込み、全文・状態の説明・ターンのまとめは保持しない", () => {
+  it("要対応の内容の抜粋は先頭60文字。全文は次にやる判断(⑬)のための項目にだけ持ち、状態の説明・ターンのまとめは保持しない", () => {
     const meta = projectMeta(makeMeta({ n: 1, category: "blocked" }))
     expect(meta?.needsActionExcerpt).toBe(`${NEEDS_ACTION_HEAD}${"あ".repeat(60 - NEEDS_ACTION_HEAD.length)}…`)
     expect(meta?.needsActionExcerpt?.replace("…", "").length).toBe(60)
+    expect(meta?.needsActionExcerpt).not.toContain(NEEDS_ACTION_TAIL)
+    expect(meta?.needsActionText).toContain(NEEDS_ACTION_TAIL)
     expect(JSON.stringify(meta)).not.toContain(SENTINEL)
     // 要対応でないセッションには付かない
     expect(projectMeta(makeMeta({ n: 2, category: "completed" }))?.needsActionExcerpt).toBeNull()

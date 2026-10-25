@@ -3,7 +3,8 @@ import os from "os"
 import path from "path"
 import { isAutodetectDisabled, type DataLocation, type Env } from "./dataLocations"
 import { kindFromWords, type WordKind } from "./needsActionKind"
-import { makeExcerpt } from "./transcriptDigest"
+import { cutAfterMask } from "./secretMask"
+import { QUESTION_MAX_CHARS, makeExcerpt } from "./transcriptDigest"
 
 /**
  * Claude Desktop の内部形式を読む処理は、すべてこのファイルに閉じ込める。
@@ -41,6 +42,8 @@ export interface DesktopMeta {
    * 全文は保持しない。同じ要約の status_detail と、ターンのまとめ(turnWrapUp)の文は取り込まない。
    */
   needsActionExcerpt: string | null
+  /** 要対応の説明文の全文(上限で切る)。次にやる判断(⑬)の問いにだけ使い、ほかの応答には出さない */
+  needsActionText: string | null
   /**
    * 要約の言葉(needs_action、無ければ status_detail)から推定した要対応の種類(⑩)。種類の名前だけを持ち、文は保持しない
    */
@@ -48,8 +51,10 @@ export interface DesktopMeta {
   /** ターン後の要約が対応している assistant の uuid */
   summaryFor: string | null
   lastAssistantUuid: string | null
-  /** Desktopがエラーを記録しているか(内容は保持しない) */
+  /** Desktopがエラーを記録しているか */
   hasError: boolean
+  /** エラーの文の先頭60文字(秘密らしい文字列は伏せる)。次にやる判断(⑬)の「何が起きたか」にだけ使う */
+  errorExcerpt: string | null
   /** エラーを記録した時刻。回復後もエラーの記録が残るため、その後に活動があったかの判断に使う */
   errorAt: number | null
   /**
@@ -57,6 +62,13 @@ export interface DesktopMeta {
    * 組織図の3層目(親子)の根拠にする。`spawnedFrom` のほかの項目(taskId・title・name など)は取り込まない。
    */
   spawnedFromId: string | null
+  /** 書き込んだブランチ(`writtenBranches` の最後。80文字まで)。関係性マップ(⑬ RM-5)だけに使う。無ければ null */
+  writtenBranch: string | null
+  /**
+   * 他のセッションへ送ったメッセージの届き具合(`peerReceipts`。⑬ RM-7)。宛先・時刻・届き具合の名前だけを取り込み、
+   * メッセージの ID・理由の文は取り込まない
+   */
+  peerReceipts: PeerReceipt[]
   /**
    * サイドチャット(Desktop の分岐の操作で作られた脇の会話。Desktop はサイドバーに出さない)か。
    * `spawnedFrom.btw` と `spawnedFrom.userFork` が両方 true のものだけ。`spawnedFrom.sideSession` だけでは判定しない
@@ -191,12 +203,46 @@ export async function listMetaFiles(dataDir: string): Promise<MetaFileRef[]> {
 }
 
 const NEEDS_ACTION_EXCERPT_CHARS = 60
+const ERROR_EXCERPT_CHARS = 60
 
 const str = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null)
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null)
 
 /** Desktopのセッション識別子(`local_…`)の形 */
 const SESSION_ID_FORM = /^local_[A-Za-z0-9_-]+$/
+
+/** 送ったメッセージ1件の届き具合(⑬ RM-7) */
+export interface PeerReceipt {
+  targetSessionId: string
+  sentAt: number | null
+  /** delivered: 届いた / undelivered: 届かなかった / queued: 待っている / unknown: ほかの値 */
+  delivery: "delivered" | "undelivered" | "queued" | "unknown"
+  deliveredAt: number | null
+  readAt: number | null
+  repliedAt: number | null
+}
+
+const MAX_PEER_RECEIPTS = 200
+
+function peerReceiptsOf(raw: unknown): PeerReceipt[] {
+  if (!Array.isArray(raw)) return []
+  const out: PeerReceipt[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue
+    const r = item as Record<string, unknown>
+    const target = typeof r.targetSessionId === "string" && SESSION_ID_FORM.test(r.targetSessionId) ? r.targetSessionId : null
+    if (!target) continue
+    const delivery = r.delivery === "delivered" || r.delivery === "undelivered" || r.delivery === "queued" ? r.delivery : "unknown"
+    out.push({ targetSessionId: target, sentAt: num(r.sentAt), delivery, deliveredAt: num(r.deliveredAt), readAt: num(r.readAt), repliedAt: num(r.repliedAt) })
+  }
+  return out.slice(-MAX_PEER_RECEIPTS)
+}
+
+function writtenBranchOf(raw: unknown): string | null {
+  if (!Array.isArray(raw)) return null
+  const names = raw.filter((b): b is string => typeof b === "string" && b.trim().length > 0)
+  return names.length > 0 ? makeExcerpt(names[names.length - 1], 80) : null
+}
 
 /** `spawnedFrom` から取り出すのは、親のセッションIDだけ。ID以外の項目・形に合わない値は捨てる */
 function spawnedFromIdOf(spawnedFrom: unknown): string | null {
@@ -248,6 +294,8 @@ export function projectMeta(raw: unknown): DesktopMeta | null {
       typeof needsActionText === "string" && needsActionText.trim().length > 0
         ? makeExcerpt(needsActionText, NEEDS_ACTION_EXCERPT_CHARS)
         : null,
+    needsActionText:
+      typeof needsActionText === "string" && needsActionText.trim().length > 0 ? makeExcerpt(needsActionText, QUESTION_MAX_CHARS) : null,
     // status_detail の文は、ここで種類を推定するのに使うだけで、戻り値には残さない(S3・ゲート1の条件3)
     summaryWordKind:
       kindFromWords(typeof needsActionText === "string" ? needsActionText : null) ??
@@ -255,8 +303,11 @@ export function projectMeta(raw: unknown): DesktopMeta | null {
     summaryFor: str(r.postTurnSummaryFor) ?? str(summary?.summarizes_uuid),
     lastAssistantUuid: str(r.lastAssistantUuid),
     hasError: typeof r.error === "string" ? r.error.length > 0 : r.error != null && r.error !== false,
+    errorExcerpt: typeof r.error === "string" && r.error.trim() ? cutAfterMask(r.error, ERROR_EXCERPT_CHARS) : null,
     errorAt: num(r.errorAt),
     spawnedFromId: spawnedFromIdOf(r.spawnedFrom),
+    writtenBranch: writtenBranchOf(r.writtenBranches),
+    peerReceipts: peerReceiptsOf(r.peerReceipts),
     isSideChat: isSideChatOf(r.spawnedFrom),
   }
 }

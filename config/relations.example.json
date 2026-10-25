@@ -1,0 +1,12 @@
+{
+  "leaderPattern": "00_",
+  "helperPattern": "補助",
+  "roleLabels": { "leader": "指揮役", "member": "担当", "helper": "確認役・補助" },
+  "ordersHeading": "### 指示",
+  "reportsHeading": "### 報告",
+  "members": [
+    { "titlePrefix": "01_", "ordersFile": "C:\\sample\\orders\\01.md", "reportsFile": "C:\\sample\\app-one\\docs\\plan.md" },
+    { "titlePrefix": "02_", "ordersFile": "C:\\sample\\orders\\02.md", "reportsFile": "C:\\sample\\app-two\\docs\\plan.md" },
+    { "titlePrefix": "01_", "group": "情報収集", "ordersFile": "C:\\sample\\orders\\info-01.md" }
+  ]
+}

@@ -3,12 +3,13 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { ArrowRight } from "lucide-react"
-import { DesktopDataNotices } from "@/components/desktopSessions/DesktopDataNotices"
+import { DataLocationLine, DesktopDataNotices } from "@/components/desktopSessions/DesktopDataNotices"
 import { DesktopSessionsFrame } from "@/components/desktopSessions/DesktopSessionsFrame"
 import { OrgChartView, useOrgFrameHeightBeforeList } from "@/components/desktopSessions/OrgChartView"
 import { SessionDetailDialog } from "@/components/desktopSessions/SessionDetailDialog"
-import { OrgLoadingFrame, OrgTabsSkeleton, RetryNotice } from "@/components/home/HomeLoading"
-import { HomeSummaryCards } from "@/components/home/HomeSummaryCards"
+import { OrgLoadingFrame, OrgTabsSkeleton } from "@/components/home/HomeLoading"
+import { HomeBands, UsageStrip } from "@/components/home/HomeBands"
+import { NextDecisions } from "@/components/home/NextDecisions"
 import { OutsideSessionsList } from "@/components/home/OutsideSessionsList"
 import { useDesktopSessions } from "@/hooks/useDesktopSessions"
 import { publishHomeStages } from "@/hooks/useHomeStages"
@@ -29,8 +30,8 @@ import {
 } from "@/lib/homeStartup"
 
 /**
- * ホーム(⑧)。上に件数の帯(あなたの対応待ち・送信上限で停止・利用上限)、その下に組織図、いちばん下に組織図に出ていないセッション。
- * 件数の帯は一覧と利用上限の値だけで出し、組織図の出来事の読み込みを待たない。
+ * ホーム(⑧・⑬)。上から、帯の枠(PC の警告〈⑭〉・利用上限の1行)、次にやる判断(急ぐ順。最大5件)、判断待ちではないセッションの1行、
+ * 組織図、組織図に出ていないセッション、データの出どころの行。次にやる判断は一覧と利用上限の値だけで出し、組織図の出来事の読み込みを待たない。
  * 選んでいるプロジェクトは使わない(上のバーにプロジェクトの切り替えは出さない)。
  *
  * 段階的な表示(⑫)：見出し・件数の枠・組織図の枠は、ビルドのときの静的な HTML に入る(窓が出た最初の描画に枠がある)。
@@ -133,39 +134,24 @@ export default function HomePage() {
   const bandReady = countsPhase !== "loading" || (usageReadyAt !== null && now - usageReadyAt >= OFFICIAL_WAIT_MS)
 
   return (
-    <DesktopSessionsFrame guardFrom={{ usage: bandReady ? usage : null }}>
+    <DesktopSessionsFrame guardFrom={{ usage: bandReady ? usage : null }} hideGuard>
       {/* 一覧と利用上限の要求を、JS の読み込み・ハイドレーションと並べて始める(静的な HTML でだけ動く。earlyFetch.ts) */}
       <script dangerouslySetInnerHTML={{ __html: earlyFetchScript() }} />
       <div className="space-y-6">
-        <HomeSummaryCards
-          sessions={available ? data.sessions : null}
-          usage={usage}
-          countsPhase={countsPhase}
-          usagePhase={usagePhase}
-          onRetryUsage={retryUsage}
-        />
-        {/* 件数の2枚は同じ一覧から来るので、時間がかかる・失敗の文とボタンは、2枚の下に1行だけ出す */}
-        {listPhase === "slow" && (
-          <RetryNotice phase="slow" text="件数の読み込みに時間がかかっています（30秒以上）。このまま待てます。" onRetry={retryListNow} />
-        )}
-        {listPhase === "failed" && (
-          <RetryNotice
-            phase="failed"
-            text={`！ セッションの一覧を読み込めませんでした（${failureReason(error)}）。利用上限は使えます。`}
-            onRetry={retryListNow}
-          />
-        )}
+        {/* ホームの上の帯の枠(⑬ 4-5)。PC の警告(⑭)は、この枠の利用上限の上に入る */}
+        <HomeBands usage={<UsageStrip usage={bandReady ? usage : null} phase={bandReady ? usagePhase : "loading"} onRetry={retryUsage} />} />
 
-        {/* 一覧を読めなかったことは上の1行で出すので、ここでは、前の答えがあるときの再取得の失敗だけを出す */}
-        <DesktopDataNotices data={data} error={data ? error : undefined} isLoading={false} />
-        {/* データの出どころの1行の場所(一覧が来る前。来た後に下の枠がずれないように) */}
-        {data === null && <p className="h-4" aria-hidden data-testid="data-location-placeholder" />}
+        <NextDecisions sessions={available ? data.sessions : data ? [] : null} phase={countsPhase} now={data?.generatedAt ?? 0} failure={failureReason(error)} onRetry={retryListNow} />
+
+        {/* 一覧を読めなかったことは次にやる判断の欄で出すので、ここでは、前の答えがあるときの再取得の失敗だけを出す。
+            データの場所の1行は、ホームのいちばん下に出す(⑬) */}
+        <DesktopDataNotices data={data} error={data ? error : undefined} isLoading={false} showLocation={false} />
 
         {data && data.source === "none" && (
           <p className="text-sm">
             Claude Desktop を使っていないときは、Claude Code の設定を{" "}
-            <Link href="/project" className="inline-flex items-center gap-1 text-primary hover:underline">
-              プロジェクトの概要 <ArrowRight className="size-3.5" aria-hidden />
+            <Link href="/rules" className="inline-flex items-center gap-1 text-primary hover:underline">
+              ルール管理 <ArrowRight className="size-3.5" aria-hidden />
             </Link>{" "}
             から見られます。
           </p>
@@ -182,11 +168,11 @@ export default function HomePage() {
                 onShownChange={onShownChange}
                 onPhaseChange={setOrgPhase}
               />
-              <OutsideSessionsList sessions={data.sessions} shownIds={shown.ids} failed={shown.failed} onSelect={setSelectedId} />
+              <OutsideSessionsList sessions={data.sessions} shownIds={shown.ids} failed={shown.failed} />
             </>
           ) : (
             data === null && (
-              // 読み込み後と同じ並び(タブの行 → 4つの数字 → 組織図のカード)の枠
+              // 読み込み後と同じ並び(タブの行 → 組織図のカード)の枠
               <div className="space-y-3">
                 <OrgTabsSkeleton />
                 <OrgLoadingFrame height={frameHeightBeforeList} state={listPhase === "failed" ? "blocked" : "loading"} />
@@ -194,6 +180,18 @@ export default function HomePage() {
             )
           )}
         </div>
+
+        {/* 関係性マップ(⑬)への入口の一文だけ。中身は組織のページの「つながり」 */}
+        <p className="text-sm text-muted-foreground">
+          誰がどのグループにいて、どの決まり・記憶が効いているかは{" "}
+          <Link href="/org-rules?tab=links" className="inline-flex items-center gap-1 text-primary hover:underline">
+            組織の「つながり」 <ArrowRight className="size-3.5" aria-hidden />
+          </Link>{" "}
+          で見ます。
+        </p>
+
+        {/* データの出どころの行(設定・環境変数で場所を指定したときだけ。自動で見つけたときは出さない。⑬) */}
+        {data?.dataLocation && data.dataLocation.origin !== "auto" && <DataLocationLine location={data.dataLocation} />}
 
         {/* `?session=` を読む部分だけを Suspense に入れる(ほかを静的な HTML に入れるため) */}
         <Suspense fallback={null}>
