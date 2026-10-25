@@ -19,6 +19,25 @@ const readUrlTab = (): string | null => new URLSearchParams(window.location.sear
 /** サーバーの描画とハイドレーションの間は、URL をまだ読んでいない(undefined) */
 const readServerTab = (): string | null | undefined => undefined
 
+/** `?tab=` を書き換えて、同じページの useTabParam・useUrlTab に知らせる */
+function writeUrlTab(tab: string): void {
+  const next = new URLSearchParams(window.location.search)
+  next.set("tab", tab)
+  // Next.js は history.replaceState を自分のルーターに取り込む(usePathname・useSearchParams も追従する)
+  window.history.replaceState(null, "", `${window.location.pathname}?${next.toString()}`)
+  window.dispatchEvent(new Event(TAB_CHANGE_EVENT))
+}
+
+/**
+ * 出すタブを決める。URL を読む前(undefined)は null。URL に正しい値があればそれ、無ければ前回の選択、
+ * それも無ければ最初のタブ。前回の選択を覚えない使い方(useUrlTab)では remembered を null で渡す。
+ */
+export function chooseTab<T extends string>(fromUrl: string | null | undefined, remembered: string | null, allowed: ReadonlyArray<T>): T | null {
+  if (fromUrl === undefined) return null
+  const pick = (v: string | null): T | null => (v !== null && (allowed as ReadonlyArray<string>).includes(v) ? (v as T) : null)
+  return pick(fromUrl) ?? pick(remembered) ?? allowed[0]
+}
+
 /**
  * 選んでいるタブを、URL の `?tab=` と前回の選択(localStorage)に結ぶ。
  * URL に正しい値があればそれを使い、無ければ前回の選択、それも無ければ最初のタブ。
@@ -34,16 +53,20 @@ export function useTabParam<T extends string>(storageKey: string, allowed: Reado
   const setValue = useCallback(
     (tab: T) => {
       setRemembered(tab)
-      const next = new URLSearchParams(window.location.search)
-      next.set("tab", tab)
-      // Next.js は history.replaceState を自分のルーターに取り込む(usePathname・useSearchParams も追従する)
-      window.history.replaceState(null, "", `${window.location.pathname}?${next.toString()}`)
-      window.dispatchEvent(new Event(TAB_CHANGE_EVENT))
+      writeUrlTab(tab)
     },
     [setRemembered]
   )
 
-  if (fromUrl === undefined) return [null, setValue]
-  const pick = (v: string | null): T | null => (v !== null && (allowed as ReadonlyArray<string>).includes(v) ? (v as T) : null)
-  return [pick(fromUrl) ?? pick(remembered) ?? allowed[0], setValue]
+  return [chooseTab(fromUrl, remembered, allowed), setValue]
+}
+
+/**
+ * 前回の選択を覚えない使い方(⑭ のリソース。L7)。`?tab=` に正しい値があればそれ、無ければいつも最初のタブ。
+ * localStorage は読まない・書かない。タブを押したときに `?tab=` を書き換えるのは useTabParam と同じ(戻る・再読み込みで同じタブ)。
+ */
+export function useUrlTab<T extends string>(allowed: ReadonlyArray<T>): [T | null, (tab: T) => void] {
+  const fromUrl = useSyncExternalStore(subscribeUrl, readUrlTab, readServerTab)
+  const setValue = useCallback((tab: T) => writeUrlTab(tab), [])
+  return [chooseTab(fromUrl, null, allowed), setValue]
 }
