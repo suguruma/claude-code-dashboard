@@ -23,7 +23,7 @@ describe("サイドバーの項目", () => {
     const group = NAV_GROUPS.find((g) => g.label === "Claude Desktop")
     expect(group?.items.map((i) => [i.href, i.label])).toEqual([
       ["/desktop-sessions", "セッション一覧"],
-      ["/desktop-sessions/usage", "利用上限"],
+      ["/desktop-sessions/usage", "リソース"],
       ["/desktop-sessions/housekeeping", "整理"],
       ["/org-rules", "組織"],
     ])
@@ -35,7 +35,7 @@ describe("サイドバーの項目", () => {
     expect(findNavItem("/desktop-sessions")?.label).toBe("セッション一覧")
     // 組織図のページはホームへ移すだけなので、サイドバーの項目は無い
     expect(findNavItem("/desktop-sessions/org")).toBeNull()
-    expect(findNavItem("/desktop-sessions/usage")?.label).toBe("利用上限")
+    expect(findNavItem("/desktop-sessions/usage")?.label).toBe("リソース")
     expect(findNavItem("/desktop-sessions/housekeeping")?.label).toBe("整理")
     expect(findNavItem("/org-rules")?.label).toBe("組織")
     expect(findNavItem("/help")?.label).toBe(HELP_ITEM.label)
@@ -51,7 +51,7 @@ describe("サイドバーの項目", () => {
     expect(items.map((i) => i.label)).toEqual([
       "ホーム",
       "セッション一覧",
-      "利用上限",
+      "リソース",
       "整理",
       "組織",
       "ルール管理",

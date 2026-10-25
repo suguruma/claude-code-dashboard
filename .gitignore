@@ -53,6 +53,8 @@ next-env.d.ts
 /config/org-rules.json
 # dashboard: 組織の「つながり」の役割の見分け方・担当と指示のファイル・台帳の結び（ローカルの絶対パスを含みうる）
 /config/relations.json
+# dashboard: リソースのページ(⑭)で読む作業計画・待ち行列・CPU の記録の場所（ローカルの絶対パスを含みうる）
+/config/monitor.json
 # dashboard: スマホから見る(⑪)のオン・オフ・登録した端末(鍵のハッシュ)・登録コード(ハッシュ)・待ち受けの状態(利用者ごと)
 /config/lan-access.json
 /config/lan-devices.json
