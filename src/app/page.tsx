@@ -9,6 +9,7 @@ import { OrgChartView, useOrgFrameHeightBeforeList } from "@/components/desktopS
 import { SessionDetailDialog } from "@/components/desktopSessions/SessionDetailDialog"
 import { OrgLoadingFrame, OrgTabsSkeleton } from "@/components/home/HomeLoading"
 import { HomeBands, UsageStrip } from "@/components/home/HomeBands"
+import { PcAlertStrip } from "@/components/resources/PcAlertBands"
 import { NextDecisions } from "@/components/home/NextDecisions"
 import { OutsideSessionsList } from "@/components/home/OutsideSessionsList"
 import { useDesktopSessions } from "@/hooks/useDesktopSessions"
@@ -139,7 +140,7 @@ export default function HomePage() {
       <script dangerouslySetInnerHTML={{ __html: earlyFetchScript() }} />
       <div className="space-y-6">
         {/* ホームの上の帯の枠(⑬ 4-5)。PC の警告(⑭)は、この枠の利用上限の上に入る */}
-        <HomeBands usage={<UsageStrip usage={bandReady ? usage : null} phase={bandReady ? usagePhase : "loading"} onRetry={retryUsage} />} />
+        <HomeBands pcAlert={<PcAlertStrip />} usage={<UsageStrip usage={bandReady ? usage : null} phase={bandReady ? usagePhase : "loading"} onRetry={retryUsage} />} />
 
         <NextDecisions sessions={available ? data.sessions : data ? [] : null} phase={countsPhase} now={data?.generatedAt ?? 0} failure={failureReason(error)} onRetry={retryListNow} />
 

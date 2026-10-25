@@ -93,7 +93,7 @@ describe("[WC-7] セッションの名前(A7)", () => {
 
 describe("[WC-8] 設定ファイル(A8)", () => {
   it("設定が無いときはエラーにせず configured=false で返す", async () => {
-    const res = await new MonitorService({ config: async () => null, titles: async () => new Map(), now: () => NOW }).plan()
+    const res = await new MonitorService({ config: async () => null, sessions: async () => new Map(), now: () => NOW }).plan()
     expect(res.configured).toBe(false)
     expect(res.plan.status).toBe("unset")
   })
@@ -124,7 +124,7 @@ describe("[WC-9] [WC-10] 読むだけ・パスと生の行を返さない(A10・
     const writes = [vi.spyOn(fs, "writeFile"), vi.spyOn(fs, "appendFile"), vi.spyOn(fs, "rm"), vi.spyOn(fs, "unlink")]
     const res = await new MonitorService({
       config: async () => ({ workPlanFile: plan, resumeQueueFile: queue }),
-      titles: async () => TITLES,
+      sessions: async () => new Map([...TITLES].map(([id, title]) => [id, { title, group: null }])),
       now: () => NOW,
     }).plan()
     for (const w of writes) expect(w).not.toHaveBeenCalled()

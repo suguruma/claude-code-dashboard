@@ -28,6 +28,8 @@ export interface NavItem {
    * 「グローバル設定」の印を出す(⑧。ページごとの出す・出さないは、この1か所で変えられる)
    */
   usesProject?: boolean
+  /** 名前の横に出す印。pc-alert：今日 PC の警告(CPU・メモリ)があったら文字「！」(⑭ WC-6) */
+  mark?: "pc-alert"
 }
 
 export interface NavGroup {
@@ -65,6 +67,7 @@ export const NAV_GROUPS: NavGroup[] = [
         href: "/desktop-sessions/usage",
         label: "リソース",
         icon: Gauge,
+        mark: "pc-alert",
         description:
           "利用上限のゲージと誰が使っているか、各セッションの作業の順番と利用上限の回復の待ち、PC の CPU とメモリの負荷を見ます（読み取り専用）。",
       },

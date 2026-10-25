@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { usePersistedState } from "@/hooks/useLocalStorage"
+import { useMonitorAlerts } from "@/hooks/useMonitor"
 import { HoverPrefetchLink, LinkPendingHint } from "./HoverPrefetchLink"
 import { HELP_ITEM, NAV_GROUPS, type NavItem } from "./navConfig"
 
@@ -121,13 +122,14 @@ function NavRow({
     <HoverPrefetchLink
       href={item.href}
       className={cn(
-        "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+        "relative flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
         active ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground" : "text-sidebar-foreground/80",
         iconOnly && "justify-center px-0"
       )}
     >
       <Icon className="size-4 shrink-0" />
       {!iconOnly && <span className="truncate">{item.label}</span>}
+      {item.mark === "pc-alert" && <PcAlertMark iconOnly={iconOnly} />}
       {!iconOnly && <LinkPendingHint />}
     </HoverPrefetchLink>
   )
@@ -143,5 +145,22 @@ function NavRow({
       <TooltipTrigger render={<div />}>{content}</TooltipTrigger>
       <TooltipContent side="right">{tooltipLabel}</TooltipContent>
     </Tooltip>
+  )
+}
+
+/** 今日 PC の警告があったときの文字「！」(色だけにしない。⑭ WC-6・A30) */
+function PcAlertMark({ iconOnly }: { iconOnly: boolean }) {
+  const summary = useMonitorAlerts()
+  if (!summary?.today) return null
+  return (
+    <span
+      className={cn("font-bold", iconOnly && "absolute top-0 right-1 text-sm")}
+      style={{ color: "var(--status-critical-text)" }}
+      aria-label="今日 PC の警告がありました"
+      title="今日 PC の警告がありました"
+      data-testid="nav-pc-alert"
+    >
+      ！
+    </span>
   )
 }
