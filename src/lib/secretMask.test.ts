@@ -61,6 +61,12 @@ describe("[ND-5] 秘密らしい文字列を伏せる(ゲート2 の M1 で見�
     "。redis-cli -a hunter2 ping",
     "redis-cli --pass hunter2 ping",
     "redis-cli --pass=hunter2 ping",
+    // ⑭ のゲート2 の N2：Windows のコマンド名は大文字小文字を区別しない。redis-cli の -a=値 も
+    "MYSQL -u r -phunter2",
+    "C:\\Program Files\\MySQL\\bin\\MYSQL.EXE -u r -p hunter2",
+    "SshPass -p hunter2 ssh h",
+    "Redis-Cli -a hunter2 ping",
+    "redis-cli -a=hunter2 ping",
   ])("[ND-14] 文章の中・パスつきのコマンドの値も伏せる：%s", (input) => {
     expect(maskSecrets(input)).not.toContain("hunter2")
   })
@@ -76,6 +82,9 @@ describe("[ND-5] 秘密らしい文字列を伏せる(ゲート2 の M1 で見�
       "（mkdir -pv out/dir）",
       "my-mysql-backup -p data",
       "mysql の -p は値を取る",
+      // 旗の -P はポート(大文字小文字を問わないのはコマンド名だけ)
+      "MYSQL -h db -P 3306",
+      "mysql -h db -Pdbport",
     ]) {
       expect(maskSecrets(plain), plain).toBe(plain)
     }

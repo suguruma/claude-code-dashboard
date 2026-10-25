@@ -14,10 +14,18 @@ const NAME_PART = String.raw`[A-Za-z0-9_-]*`
 /** 値：引用符で囲んだもの、または空白・&・引用符までの続き */
 const VALUE = String.raw`("[^"]*"|'[^']*'|[^\s&"']+)`
 /**
+ * コマンド名を、大文字小文字を問わずに合わせる形にする(Windows のコマンド名は大文字小文字を区別しない。`MYSQL.EXE`)。
+ * 正規表現に i を付けないのは、旗の `-p`(パスワード)と `-P`(ポート)を分けるため(⑭ のゲート2 の N2)
+ */
+function anyCase(word: string): string {
+  return word.replace(/[a-z]/g, (c) => `[${c}${c.toUpperCase()}]`).replace(/\./g, String.raw`\.`)
+}
+
+/**
  * -p でパスワードを取るコマンド。前が英数字・`_`・`-`・`.` でなければよい(文章の中の「`…`」「（…）」「：」の後ろや、
  * `/usr/bin/mysql`・`C:\…\mysql.exe` のようなパスつきでも効くように。⑭ のゲート2 の M2)
  */
-const PW_COMMAND = String.raw`(?<![\w.-])(?:mysql\w*|mariadb[\w-]*|sshpass|mongo\w*)(?:\.exe)?\b`
+const PW_COMMAND = String.raw`(?<![\w.-])(?:${anyCase("mysql")}\w*|${anyCase("mariadb")}[\w-]*|${anyCase("sshpass")}|${anyCase("mongo")}\w*)(?:${anyCase(".exe")})?\b`
 
 /** 上から順に置き換える。先に「名前つき」の形を伏せ、最後に長い英数字の塊を伏せる */
 const SECRET_PATTERNS: Array<{ pattern: RegExp; replace: string }> = [
@@ -45,7 +53,10 @@ const SECRET_PATTERNS: Array<{ pattern: RegExp; replace: string }> = [
   // 次の語は英数字・記号で始まるものだけ(「mysql の -p は値を取る」のような文の続きは伏せない)
   { pattern: new RegExp(String.raw`(${PW_COMMAND}[^;&|\n]*?\s-p\s+)(?!\d+(?::\d+)?(?:\s|$))(?!-)(?=[\x21-\x7e])\S+`, "g"), replace: `$1${SECRET_MARK}` },
   // redis-cli の -a パスワードと、その別名の --pass(ゲート2 の L6・M2)
-  { pattern: /((?<![\w.-])redis-cli(?:\.exe)?\b[^;&|\n]*?\s(?:-a\s+|--pass(?:\s+|=)))(?!-)\S+/g, replace: `$1${SECRET_MARK}` },
+  {
+    pattern: new RegExp(String.raw`((?<![\w.-])${anyCase("redis-cli")}(?:${anyCase(".exe")})?\b[^;&|\n]*?\s(?:-a(?:\s+|=)|--pass(?:\s+|=)))(?!-)\S+`, "g"),
+    replace: `$1${SECRET_MARK}`,
+  },
   // DB_PASSWORD=…・SECRET_KEY=…・token: … など(名前の前後に文字が付いてもよい。= か : の右を丸ごと)
   {
     pattern: new RegExp(String.raw`(${NAME_PART}${SECRET_NAME}${NAME_PART}\s*[=:]\s*)${VALUE}`, "gi"),
