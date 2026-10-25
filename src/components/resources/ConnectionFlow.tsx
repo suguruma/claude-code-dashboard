@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react"
-import { buildFlow, lapMs, MAX_FPS, shouldAnimate, type FlowModel } from "@/lib/monitor/connectionFlow"
+import { buildFlow, frameWait, lapMs, shouldAnimate, type FlowModel } from "@/lib/monitor/connectionFlow"
 import { hhmm, pct, type Metric } from "@/lib/monitor/loadView"
 import type { MonitorSnapshotResponse } from "@/lib/monitor/monitorTypes"
 
@@ -26,7 +26,7 @@ function subscribeHidden(listener: () => void) {
 /**
  * つながりの図「どこに CPU を使っているか」(⑭ WC-13)。左にセッションの点(名前と %)、右に PC 全体の点。
  * 線の太さと、線を流れる粒の数・速さが、PC 全体に対する割合。セッションの外は点線。数は必ず文字でも出す。
- * 粒は requestAnimationFrame で 30回／秒まで動かし、動きを減らす設定・［動きを止める］・窓が隠れている・図が画面の外のときは止める(A21)。
+ * 粒は setTimeout で 30回／秒まで動かし、動きを減らす設定・［動きを止める］・窓が隠れている・図が画面の外のときは止める(A21)。
  */
 export function ConnectionFlow({ snap, metric }: { snap: MonitorSnapshotResponse; metric: Metric }) {
   const model = buildFlow(snap, metric)
@@ -90,7 +90,7 @@ export function ConnectionFlow({ snap, metric }: { snap: MonitorSnapshotResponse
           <p className="font-semibold">
             PC 全体の {what} {pct(model.total)}
           </p>
-          <p className="text-muted-foreground" data-testid="flow-unexplained">
+          <p className="text-muted-foreground [word-break:auto-phrase]" data-testid="flow-unexplained">
             説明できない分 {pct(model.unexplained)}（システムなど）
           </p>
         </div>
@@ -127,23 +127,21 @@ function FlowLines({ model, width, height, animate }: { model: FlowModel; width:
         dots.push({ el, path, offset: i / n.particles, len })
       }
     }
-    let raf = 0
-    let last = 0
+    let timer = 0
     const start = performance.now()
-    const tick = (now: number) => {
-      raf = requestAnimationFrame(tick)
-      if (now - last < 1000 / MAX_FPS) return
-      last = now
+    const tick = () => {
+      const now = performance.now()
       const phase = ((now - start) % lap) / lap
       for (const d of dots) {
         const p = d.path.getPointAtLength((((phase + d.offset) % 1) * d.len))
         d.el.setAttribute("cx", p.x.toFixed(1))
         d.el.setAttribute("cy", p.y.toFixed(1))
       }
+      timer = window.setTimeout(tick, frameWait(performance.now(), now))
     }
-    raf = requestAnimationFrame(tick)
+    tick()
     return () => {
-      cancelAnimationFrame(raf)
+      window.clearTimeout(timer)
       group.replaceChildren()
     }
     // signature に数と大きさをまとめている

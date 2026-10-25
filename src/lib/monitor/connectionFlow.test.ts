@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs"
 import path from "node:path"
 import { describe, expect, it } from "vitest"
-import { buildFlow, lineWidth, MAX_FPS, MAX_PARTICLES, particleCount, shouldAnimate } from "./connectionFlow"
+import { buildFlow, frameWait, lineWidth, MAX_FPS, MAX_PARTICLES, particleCount, shouldAnimate } from "./connectionFlow"
 import type { MonitorSnapshotResponse, SnapshotSession } from "./monitorTypes"
 
 // 値はどれも合成
@@ -66,8 +66,24 @@ describe("[WC-13] つながりの図(A20・A21・A23・A29)", () => {
     expect(shouldAnimate({ ...base, hidden: true })).toBe(false)
     expect(shouldAnimate({ ...base, onScreen: false })).toBe(false)
     expect(MAX_FPS).toBe(30)
-    // 動かさないときは requestAnimationFrame を呼ばない(effect の最初で返す)
+    // 動かさないときはタイマーを始めない(effect の最初で返す)
     const code = readFileSync(path.resolve(__dirname, "../../components/resources/ConnectionFlow.tsx"), "utf-8")
     expect(code).toMatch(/if \(!animate\) return\s+const lap/)
+  })
+
+  // ⑭ のゲート2 の L3：requestAnimationFrame を使わず、タイマーで 1/30 秒ごとに描く。タイマーが遅れても30回／秒を超えない
+  it.each([0, 1, 4])("粒はタイマーが %dms 遅れても、1秒に30回まで(描くのにかかった時間は次の待ちから引く)", (lateMs) => {
+    let t = 0
+    let draws = 0
+    while (t < 999.99) {
+      draws += 1
+      const drawn = t
+      t = drawn + 0.5 + frameWait(drawn + 0.5, drawn) + lateMs
+    }
+    expect(draws).toBeLessThanOrEqual(30)
+    expect(draws).toBeGreaterThanOrEqual(lateMs === 0 ? 30 : 26)
+    expect(frameWait(100, 0)).toBe(0)
+    const code = readFileSync(path.resolve(__dirname, "../../components/resources/ConnectionFlow.tsx"), "utf-8")
+    expect(code).not.toMatch(/requestAnimationFrame\(/)
   })
 })

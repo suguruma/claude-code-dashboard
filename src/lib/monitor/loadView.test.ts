@@ -6,6 +6,7 @@ import {
   gapSummary,
   homeAlertText,
   initialTime,
+  timeToPinOnMetricSwitch,
   memText,
   pageAlertText,
   sparkLabel,
@@ -45,6 +46,14 @@ describe("[WC-4] 時刻の選び方と表(A4・A25・A27)", () => {
     expect(initialTime(pts, alerts, "mem")).toBe(T0 + 11 * MIN)
     expect(initialTime(pts, { cpu: [], mem: alerts.mem }, "cpu")).toBe(T0 + 11 * MIN)
     expect(initialTime(pts, { cpu: [], mem: [] }, "cpu")).toBe(T0 + 29 * MIN)
+  })
+
+  it("[WC-11] ［CPU］［メモリ］を切り替えても選んだ時刻は動かない。まだ選んでいないときは、今の最初の時刻を選んだことにする(⑭ のゲート2 の L4)", () => {
+    const alerts = { cpu: [band(T0, T0 + 5 * MIN, 90, 85, T0 + 3 * MIN)], mem: [band(T0 + 10 * MIN, T0 + 12 * MIN, 91, 90, T0 + 11 * MIN)] }
+    const first = initialTime(pts, alerts, "cpu")
+    expect(timeToPinOnMetricSwitch(first, null)).toBe(T0 + 3 * MIN)
+    expect(timeToPinOnMetricSwitch(first, T0 + 20 * MIN)).toBeNull()
+    expect(timeToPinOnMetricSwitch(null, null)).toBeNull()
   })
 
   it("表は上位8件と「ほか n」の合計。並びは選んだほう(CPU・メモリ)の多い順", () => {

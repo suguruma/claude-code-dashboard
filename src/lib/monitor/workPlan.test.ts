@@ -1,6 +1,7 @@
 import { promises as fs } from "fs"
 import os from "os"
 import path from "path"
+import { NextRequest } from "next/server"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { MonitorService, parseMonitorConfig, readMonitorFile } from "./monitorService"
 import { sessionLabel, summarizePlan, summarizeQueue } from "./workPlan"
@@ -139,5 +140,17 @@ describe("[WC-9] [WC-10] 読むだけ・パスと生の行を返さない(A10・
     expect((await readMonitorFile(path.join(tmp, "none.tsv"))).status).toBe("missing")
     expect((await readMonitorFile(path.join(tmp, ".env"))).status).toBe("refused")
     expect((await readMonitorFile(undefined)).status).toBe("unset")
+  })
+})
+
+describe("[WC-10] 見張りの API はスマホ(LAN の入り口の経由)に出さない(⑭ のゲート2 の L2)", () => {
+  it("入り口の印つきの要求は、記録を読む前に 403", async () => {
+    const { GET: plan } = await import("@/app/api/monitor/plan/route")
+    const { GET: load } = await import("@/app/api/monitor/load/route")
+    const { GET: snapshot } = await import("@/app/api/monitor/snapshot/route")
+    const { GET: alerts } = await import("@/app/api/monitor/alerts/route")
+    const req = (p: string) => new NextRequest(`http://127.0.0.1:3000/api/monitor/${p}`, { headers: { "x-ccd-via-lan": "1" } })
+    const res = await Promise.all([plan(req("plan")), load(req("load?range=1")), snapshot(req("snapshot?at=1")), alerts(req("alerts"))])
+    expect(res.map((r) => r.status)).toEqual([403, 403, 403, 403])
   })
 })

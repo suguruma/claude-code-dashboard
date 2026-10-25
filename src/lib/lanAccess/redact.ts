@@ -9,6 +9,8 @@
  * - 次にやる判断(`decision`。⑬)は、問いの文と答えの候補だけを、秘密らしい文字列(maskSecrets)とパスを伏せて返す。
  *   エラーの文は返さない(⑬ の D5・ND-15。LAN は暗号化されない HTTP なので、wrap_up の ask・AskUserQuestion の文も伏せの対象にする。
  *   ゲート2 の L1 で一度外したものを、伏せた形で戻した)
+ * - 会話から取った文の項目(要対応の抜粋・最新の指示の先頭・作業の文・判断の根拠など。SECRET_TEXT_KEYS)も、秘密らしい文字列を伏せる
+ *   (⑭ のゲート2 の M1。問いだけ伏せても、同じ文が要対応の抜粋から漏れるため)。ID は伏せの対象にしない(長い英数字の塊とみなされるため)
  * - そのほかの文字列とオブジェクトのキーの中の、絶対パス(`C:\…`・`\\server\…`・`/Users/…`・`/Volumes/…`・`~\…`・`file:///…`・
  *   `C%3A%5C…` のような URL エンコード・`C--Users-…` のようなパスを `-` でつないだ名前)も隠す
  */
@@ -17,6 +19,8 @@ import { maskSecrets } from "@/lib/secretMask"
 
 const PATH_KEYS = new Set(["cwd", "path"])
 const DROP_KEYS = new Set(["projectDirName"])
+/** 会話から取った文の項目。パスに加えて、秘密らしい文字列も伏せる(⑭ のゲート2 の M1) */
+const SECRET_TEXT_KEYS = new Set(["needsActionExcerpt", "needsActionText", "excerpt", "summary", "content", "currentStep", "statusReason"])
 /** パスから作った名前の項目と、その元のパスの項目。元のパスから作り直す */
 const DERIVED_NAME_KEYS = new Map([["folderName", "cwd"]])
 
@@ -104,6 +108,7 @@ export function redactForLan<T>(value: T): T {
 function walk(value: unknown, key: string | null): unknown {
   if (typeof value === "string") {
     if (key && PATH_KEYS.has(key)) return lastSegment(value) || null
+    if (key && SECRET_TEXT_KEYS.has(key)) return redactString(maskSecrets(value))
     return redactString(value)
   }
   if (Array.isArray(value)) return value.map((v) => walk(v, null))

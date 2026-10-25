@@ -207,6 +207,18 @@ describe("[WC-4] [WC-11] [WC-12] 見張りのサービス(A4・A15・A16・A17�
     expect((await soon.alerts()).items[0].active).toBe(true)
   })
 
+  it("[WC-3] 追記の直後に同じ時刻を40本同時に読んでも、セッションは10件のまま(読み足しを1本ずつ。⑭ のゲート2 の L1)", async () => {
+    const service = svc()
+    await service.snapshot(today + (14 * 60 + 35) * MIN)
+    const at = today + (14 * 60 + 36) * MIN
+    const rows = [[stamp(at), "total", "all", "", "41.0", "30000", "200", "32768"].join("\t")]
+    for (let i = 0; i < 10; i++) rows.push([stamp(at), "session", `local_s${i}`, `担当${i}`, "5.0", "100", "2", ""].join("\t"))
+    await fs.appendFile(path.join(tmp, `cpu_${dayKey(today)}.tsv`), rows.join("\n") + "\n", "utf-8")
+    const snaps = await Promise.all(Array.from({ length: 40 }, () => service.snapshot(at)))
+    expect(new Set(snaps.map((s) => s.sessions.length))).toEqual(new Set([10]))
+    expect(snaps.every((s) => s.t === at)).toBe(true)
+  })
+
   it("応答にフォルダのパス・ファイルの名前が無く、ファイルに書き込まない", async () => {
     const writes = [vi.spyOn(fs, "writeFile"), vi.spyOn(fs, "appendFile")]
     const json = JSON.stringify([await svc().load({ rangeHours: 24 }), await svc().snapshot(today + (14 * 60 + 35) * MIN), await svc().alerts()])

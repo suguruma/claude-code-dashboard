@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server"
+import { rejectViaLan } from "@/lib/lanAccess/apiGuard"
 import { getMonitorService } from "@/lib/monitor/monitorService"
 
 export const dynamic = "force-dynamic"
@@ -6,8 +7,11 @@ export const dynamic = "force-dynamic"
 /**
  * リソースのページの［負荷］の推移の図(⑭ WC-3〜WC-5・WC-11・WC-12)。
  * ?date=YYYY-MM-DD&range=1|2|6|24&center=<epoch ms>。読み取り専用。パスとファイルの生の行は返さない。
+ * スマホ(LAN の入り口の経由)には出さない(⑭ のゲート2 の L2。入り口の許可リストにも無いが、念のため重ねる)。
  */
 export async function GET(req: NextRequest) {
+  const denied = rejectViaLan(req)
+  if (denied) return denied
   const q = req.nextUrl.searchParams
   const date = /^\d{4}-\d{2}-\d{2}$/.test(q.get("date") ?? "") ? q.get("date") : null
   const range = Number(q.get("range")) || null

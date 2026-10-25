@@ -14,6 +14,16 @@ export const MAX_PARTICLES = 40
 export const MAX_PER_LINE = 6
 /** 粒を描く回数の上限(回／秒)。数(線の太さ)は記録の間隔(約1分)で変わるだけ */
 export const MAX_FPS = 30
+const FRAME_MS = 1000 / MAX_FPS
+
+/**
+ * 次に粒を描くまでの待ち(ms。⑭ のゲート2 の L3)。粒は requestAnimationFrame でなく setTimeout で 1/30 秒ごとに描く。
+ * requestAnimationFrame を毎フレーム呼んで間引くと、描かないフレームでも起き(60回／秒)、小数の差で 33.3ms の書き換えを
+ * 飛ばして約22回／秒に落ちていた。SVG の属性の書き換えは、次の画面の書き換えでまとめて描かれる
+ */
+export function frameWait(now: number, lastDrawn: number): number {
+  return Math.max(0, lastDrawn + FRAME_MS - now)
+}
 
 export type FlowNodeKind = "session" | "others" | "outside"
 

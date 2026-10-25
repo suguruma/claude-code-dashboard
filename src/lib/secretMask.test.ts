@@ -48,8 +48,35 @@ describe("[ND-5] 秘密らしい文字列を伏せる(ゲート2 の M1 で見�
     expect(maskSecrets(input)).not.toContain(secret)
   })
 
+  // ⑭ のゲート2 の M2：文章の中・パスつきのコマンドでも伏せる(4a9c051 の版より伏せが減らない)
+  it.each([
+    "`mysql -u root -phunter2 db`",
+    "（mysql -u root -phunter2 db）",
+    "実行します：mysql -u root -phunter2 db",
+    "「mysql -u root -phunter2」を流してよいですか",
+    "C:\\Program Files\\MySQL\\bin\\mysql.exe -u r -phunter2",
+    "/usr/bin/mysql -u r -phunter2",
+    "`sshpass -p hunter2 ssh h`",
+    "`redis-cli -a hunter2`",
+    "。redis-cli -a hunter2 ping",
+    "redis-cli --pass hunter2 ping",
+    "redis-cli --pass=hunter2 ping",
+  ])("[ND-14] 文章の中・パスつきのコマンドの値も伏せる：%s", (input) => {
+    expect(maskSecrets(input)).not.toContain("hunter2")
+  })
+
   it("[ND-14] 値を取らない旗・ほかのコマンドの -p は伏せすぎない(ゲート2 の L7)", () => {
-    for (const plain of ["rg -p pattern src", "mkdir -pv out/dir", "ls -a src", "git commit -a -m fix", "psql -p 5432 -d app"]) {
+    for (const plain of [
+      "rg -p pattern src",
+      "mkdir -pv out/dir",
+      "ls -a src",
+      "git commit -a -m fix",
+      "psql -p 5432 -d app",
+      "`rg -p pattern src`",
+      "（mkdir -pv out/dir）",
+      "my-mysql-backup -p data",
+      "mysql の -p は値を取る",
+    ]) {
       expect(maskSecrets(plain), plain).toBe(plain)
     }
   })

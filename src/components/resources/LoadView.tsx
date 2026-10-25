@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { usePersistedState } from "@/hooks/useLocalStorage"
 import { useMonitorLoad, useMonitorSnapshot } from "@/hooks/useMonitor"
-import { beforeGap, emptyText, gapSummary, hhmm, initialTime, memText, pastAlertText, pct, type Metric } from "@/lib/monitor/loadView"
+import { beforeGap, emptyText, gapSummary, hhmm, initialTime, memText, pastAlertText, pct, timeToPinOnMetricSwitch, type Metric } from "@/lib/monitor/loadView"
 import type { MonitorLoadResponse } from "@/lib/monitor/monitorTypes"
 import { ConnectionFlow } from "./ConnectionFlow"
 import { LoadChart } from "./LoadChart"
@@ -44,11 +44,17 @@ export function LoadView({ focus }: { focus: { at: number; nonce: number } | nul
     setPicked({ at: t, focusNonce })
     if (!data.isToday && data.rangeHours < 24) setCenter(t)
   }
+  // ［CPU］［メモリ］を切り替えても、選んでいる時刻は変えない(⑭ のゲート2 の L4)
+  const switchMetric = (m: Metric) => {
+    const pin = timeToPinOnMetricSwitch(selected, inWindow)
+    if (pin !== null) setPicked({ at: pin, focusNonce })
+    setMetric(m)
+  }
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-        <Header data={data} metric={metric} onMetric={setMetric} />
+        <Header data={data} metric={metric} onMetric={switchMetric} />
         <Controls
         data={data}
         onDate={(d) => {

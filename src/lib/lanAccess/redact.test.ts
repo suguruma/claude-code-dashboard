@@ -104,6 +104,23 @@ describe("[ND-9] [ND-15] スマホへ返す一覧の次にやる判断は、問�
     expect(d.options).toEqual(["はい（token=●●●●", "いいえ"])
   })
 
+  it("[ND-15] 要対応の抜粋・最新の指示・作業の文・判断の根拠など、会話から取った文の項目でも秘密を伏せる(⑭ のゲート2 の M1)。ID は伏せない", () => {
+    const leak = "`mysql -u root -phunter2 db` と DB_PASSWORD=Sup3rS3cret! を C:\\Users\\someone\\proj\\.env に書き込む許可をください"
+    const session = {
+      id: "local_0123456789abcdef0123456789abcdef",
+      needsActionExcerpt: leak,
+      needsActionText: leak,
+      statusReason: `要約: ${leak}`,
+      latestInstruction: { origin: "human", excerpt: leak, at: 1 },
+      tasks: [{ content: leak, status: "pending" }],
+      phase: { currentStep: leak, completed: 0, total: 1 },
+      decision: { question: leak, questionSource: "summary", moreQuestions: 0, options: [leak], moreOptions: 0, recommended: null, errorText: leak },
+    }
+    const json = JSON.stringify(redactForLan({ sessions: [session], pending: [{ summary: leak, excerpt: leak }] }))
+    for (const secret of ["hunter2", "Sup3rS3cret", "someone"]) expect(json).not.toContain(secret)
+    expect(json).toContain("local_0123456789abcdef0123456789abcdef")
+  })
+
   it("判断の無いセッションは null のまま", () => {
     expect(redactForLan({ sessions: [{ id: "local_2", decision: null }] })).toEqual({ sessions: [{ id: "local_2", decision: null }] })
   })

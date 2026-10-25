@@ -87,6 +87,14 @@ export function initialTime(points: ReadonlyArray<LoadPoint>, alerts: Record<Ale
   return points[points.length - 1]?.t ?? null
 }
 
+/**
+ * ［CPU］［メモリ］を切り替えるときに、選んだことにする時刻(⑭ のゲート2 の L4・WC-11)。まだ選んでいない(最初の時刻を出している)ときだけ、
+ * 今の時刻を返す。最初の時刻は図に出しているほうの警告のピークなので、選んだことにしないと切り替えで動いてしまう。選んであれば null(そのまま)
+ */
+export function timeToPinOnMetricSwitch(selected: number | null, picked: number | null): number | null {
+  return picked === null ? selected : null
+}
+
 /** 途切れの直前の記録(［途切れの直前を見る］。最後の途切れ) */
 export function beforeGap(gaps: ReadonlyArray<{ start: number; end: number }>): number | null {
   return gaps.length ? gaps[gaps.length - 1].start : null

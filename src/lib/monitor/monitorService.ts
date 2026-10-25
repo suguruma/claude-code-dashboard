@@ -145,12 +145,26 @@ export class MonitorService {
     }
   }
 
-  /** その日のファイルを読み足して、記録を返す */
-  private async dayRecords(cpuDir: string, day: string): Promise<{ status: MonitorFileStatus; records: MinuteRecord[]; skipped: number }> {
+  /** ファイルごとの、読み足しの列の最後(同じファイルの読み足しを1本ずつにする) */
+  private readonly reading = new Map<string, Promise<unknown>>()
+
+  /**
+   * その日のファイルを読み足して、記録を返す。読み足しの状態(どこまで読んだか)を要求のあいだで共有するので、
+   * 同じファイルの読み足しは前の読み足しが終わってから始める(⑭ のゲート2 の L1。同時に来た要求が同じ追記を二重に読まないように)
+   */
+  private dayRecords(cpuDir: string, day: string): Promise<{ status: MonitorFileStatus; records: MinuteRecord[]; skipped: number }> {
     const filePath = path.join(cpuDir, `cpu_${day}.tsv`)
-    const { status, state } = await readCpuFile(filePath, this.files.get(filePath))
-    this.files.set(filePath, state)
-    return { status, records: status === "ok" ? state.records() : [], skipped: state.skipped }
+    const run = (this.reading.get(filePath) ?? Promise.resolve()).then(async () => {
+      const { status, state } = await readCpuFile(filePath, this.files.get(filePath))
+      this.files.set(filePath, state)
+      return { status, records: status === "ok" ? state.records() : [], skipped: state.skipped }
+    })
+    const tail = run.catch(() => undefined)
+    this.reading.set(filePath, tail)
+    void tail.then(() => {
+      if (this.reading.get(filePath) === tail) this.reading.delete(filePath)
+    })
+    return run
   }
 
   private hostMem(): number {
