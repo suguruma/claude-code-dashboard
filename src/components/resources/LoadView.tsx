@@ -3,8 +3,9 @@
 import { useState } from "react"
 import { usePersistedState } from "@/hooks/useLocalStorage"
 import { useMonitorLoad, useMonitorSnapshot } from "@/hooks/useMonitor"
-import { beforeGap, gapSummary, hhmm, initialTime, memText, pct, type Metric } from "@/lib/monitor/loadView"
+import { beforeGap, emptyText, gapSummary, hhmm, initialTime, memText, pastAlertText, pct, type Metric } from "@/lib/monitor/loadView"
 import type { MonitorLoadResponse } from "@/lib/monitor/monitorTypes"
+import { ConnectionFlow } from "./ConnectionFlow"
 import { LoadChart } from "./LoadChart"
 import { MonitorLoadError, MonitorSetupNotice, MonitorSkeleton } from "./MonitorNotices"
 import { SnapshotTable } from "./SnapshotTable"
@@ -16,7 +17,7 @@ const PILL_ON = "bg-foreground text-background ring-foreground"
 
 /**
  * ［負荷］(⑭ WC-3〜WC-6・WC-11〜WC-14)。上から：［CPU］［メモリ］と今の値 → 日付と範囲 → 手がかりの1行と［警告のピークを見る］［途切れの直前を見る］
- * → 推移の図 → つながりの図(段3) → 「〇〇 に動いていたもの」 → 出どころの1行。
+ * → 推移の図 → つながりの図 → 「〇〇 に動いていたもの」 → 出どころの1行(A26)。
  * focus：ページの上の警告の帯の［ピークを見る］から渡される時刻(押すたびに nonce が変わる)。
  */
 export function LoadView({ focus }: { focus: { at: number; nonce: number } | null }) {
@@ -163,34 +164,6 @@ function ChartSection({ data, metric, selected, onSelect }: { data: MonitorLoadR
   )
 }
 
-/** 過去の日の警告の回数と最大(灰色の1行。L2) */
-function pastAlertText(data: MonitorLoadResponse): string {
-  const parts = (["cpu", "mem"] as const)
-    .filter((k) => data.alerts[k].length > 0)
-    .map((k) => {
-      const max = Math.max(...data.alerts[k].map((b) => b.max ?? 0))
-      return `${k === "cpu" ? "CPU" : "メモリ"} ${data.alerts[k].length}回（最大 ${pct(max)}）`
-    })
-  return parts.length ? `この日の警告：${parts.join("・")}` : "この日は警告の行があります（今の範囲の外）"
-}
-
-/** 空の状態の文(4-3。WC-14) */
-function emptyText(data: MonitorLoadResponse): string | null {
-  if (data.status === "unset") return "CPU の記録のフォルダが設定されていません（config/monitor.json の cpuDir）。"
-  if (data.status === "refused") return "CPU の記録のフォルダは、認証情報などを含むおそれがあるため読みません。"
-  if (data.status === "missing" && data.isToday) {
-    const last = data.lastRecordAt === null ? "" : `（最後の記録：${new Date(data.lastRecordAt).getMonth() + 1}/${new Date(data.lastRecordAt).getDate()} ${hhmm(data.lastRecordAt)}）`
-    return `今日の記録はまだありません${last}。PC を起動し直した後は、記録の仕組みが動くまで空きます。日付を選ぶと前の日を見られます`
-  }
-  if (data.status === "missing") {
-    const first = data.days[data.days.length - 1]
-    return `${data.date.slice(5).replace("-", "/")} の記録はありません。${first ? `記録があるのは ${first.slice(5).replace("-", "/")} からです` : ""}`
-  }
-  if (data.status === "unreadable") return "CPU の記録のファイルを読めませんでした。"
-  if (data.points.length === 0) return "この時間帯には記録がありません（PC が止まっていたか、記録の仕組みが動いていませんでした）"
-  return null
-}
-
 function SnapshotSection({ at, metric, onSelect }: { at: number | null; metric: Metric; onSelect: (t: number) => void }) {
   const { data, error } = useMonitorSnapshot(at)
   if (at === null) return null
@@ -209,5 +182,10 @@ function SnapshotSection({ at, metric, onSelect }: { at: number | null; metric: 
         )}
       </div>
     )
-  return <SnapshotTable snap={data} metric={metric} />
+  return (
+    <>
+      <ConnectionFlow snap={data} metric={metric} />
+      <SnapshotTable snap={data} metric={metric} />
+    </>
+  )
 }

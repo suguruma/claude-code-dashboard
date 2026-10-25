@@ -1,4 +1,4 @@
-import type { AlertBand, AlertKey, LoadPoint, PcAlertItem, SnapshotSession } from "./monitorTypes"
+import type { AlertBand, AlertKey, LoadPoint, MonitorLoadResponse, PcAlertItem, SnapshotSession } from "./monitorTypes"
 
 /**
  * ［負荷］の画面の計算と文(⑭ WC-3〜WC-6・WC-11〜WC-13)。画面とテストで同じものを使う(サーバー専用のモジュールを import しない)。
@@ -153,4 +153,32 @@ export function sparkLabel(values: ReadonlyArray<number | null>, metric: Metric)
   if (nums.length === 0) return "直近30分：記録なし"
   const max = Math.max(...nums)
   return `直近30分：最大 ${metric === "cpu" ? pct(max) : gb(max)}`
+}
+
+/** 過去の日の警告の回数と最大(灰色の1行。L2) */
+export function pastAlertText(data: MonitorLoadResponse): string {
+  const parts = (["cpu", "mem"] as const)
+    .filter((k) => data.alerts[k].length > 0)
+    .map((k) => {
+      const max = Math.max(...data.alerts[k].map((b) => b.max ?? 0))
+      return `${k === "cpu" ? "CPU" : "メモリ"} ${data.alerts[k].length}回（最大 ${pct(max)}）`
+    })
+  return parts.length ? `この日の警告：${parts.join("・")}` : "この日は警告の行があります（今の範囲の外）"
+}
+
+/** 空の状態の文(4-3。WC-14) */
+export function emptyText(data: MonitorLoadResponse): string | null {
+  if (data.status === "unset") return "CPU の記録のフォルダが設定されていません（config/monitor.json の cpuDir）。"
+  if (data.status === "refused") return "CPU の記録のフォルダは、認証情報などを含むおそれがあるため読みません。"
+  if (data.status === "missing" && data.isToday) {
+    const last = data.lastRecordAt === null ? "" : `（最後の記録：${new Date(data.lastRecordAt).getMonth() + 1}/${new Date(data.lastRecordAt).getDate()} ${hhmm(data.lastRecordAt)}）`
+    return `今日の記録はまだありません${last}。PC を起動し直した後は、記録の仕組みが動くまで空きます。日付を選ぶと前の日を見られます`
+  }
+  if (data.status === "missing") {
+    const first = data.days[data.days.length - 1]
+    return `${data.date.slice(5).replace("-", "/")} の記録はありません。${first ? `記録があるのは ${first.slice(5).replace("-", "/")} からです` : ""}`
+  }
+  if (data.status === "unreadable") return "CPU の記録のファイルを読めませんでした。"
+  if (data.points.length === 0) return "この時間帯には記録がありません（PC が止まっていたか、記録の仕組みが動いていませんでした）"
+  return null
 }

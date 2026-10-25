@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from "node:fs"
 import path from "node:path"
 import { describe, expect, it } from "vitest"
 import {
+  emptyText,
   gapSummary,
   homeAlertText,
   initialTime,
@@ -14,7 +15,7 @@ import {
   valueText,
   yMax,
 } from "./loadView"
-import type { AlertBand, LoadPoint, PcAlertItem, SnapshotSession } from "./monitorTypes"
+import type { AlertBand, LoadPoint, MonitorLoadResponse, PcAlertItem, SnapshotSession } from "./monitorTypes"
 import { createPcAlertNotifyTracker, PC_ALERT_TARGET } from "./pcAlertNotifications"
 
 // 値はどれも合成
@@ -107,7 +108,7 @@ describe("[WC-12] しきい値の線と警告の文(A13・A18・A30)", () => {
     expect(pageAlertText(item("mem", band(T0, T0, null, null), false))).toBe("PC の メモリ の警告　14:30")
   })
 
-  it("ホームの帯：直近10分は「！」つき、過ぎたら灰色の1行。CPU とメモリは1本。無ければ出さない", () => {
+  it("[WC-6] ホームの帯：直近10分は「！」つき、過ぎたら灰色の1行。CPU とメモリは1本。無ければ出さない(帯の高さが変わらない)", () => {
     const cpu = item("cpu", band(T0, T0 + 6 * MIN, 88, 85), true)
     const mem = item("mem", band(T0 + 2 * MIN, T0 + 4 * MIN, 91.5, 90), false)
     expect(homeAlertText([cpu, mem])).toEqual({ active: true, text: "！ PC の CPU 88%（警告）14:30〜14:36" })
@@ -118,7 +119,7 @@ describe("[WC-12] しきい値の線と警告の文(A13・A18・A30)", () => {
     expect(homeAlertText([])).toBeNull()
   })
 
-  it("通知：新しく始まった直近10分の帯だけ1回。最初の取得は基準を取るだけ。押すと［負荷］を開く印", () => {
+  it("[WC-6] 通知：新しく始まった直近10分の帯だけ1回。最初の取得は基準を取るだけ。押すと［負荷］を開く印", () => {
     const tr = createPcAlertNotifyTracker()
     const summary = (items: PcAlertItem[]) => ({ configured: true, generatedAt: T0, items, today: true })
     const first = item("cpu", band(T0, T0 + MIN, 88, 85), true)
@@ -130,5 +131,43 @@ describe("[WC-12] しきい値の線と警告の文(A13・A18・A30)", () => {
     expect(out[0]).toMatchObject({ sessionId: PC_ALERT_TARGET, title: "PC の警告: CPU が 85% 以上" })
     expect(tr.update(summary([next]))).toEqual([])
     expect(tr.update(summary([item("mem", band(T0 + 40 * MIN, T0 + 40 * MIN, 91, 90), false)]))).toEqual([])
+  })
+})
+
+describe("[WC-14] 空の状態の文(A32)", () => {
+  const base: MonitorLoadResponse = {
+    configured: true,
+    status: "ok",
+    generatedAt: T0,
+    date: "2026-10-26",
+    days: ["2026-10-26", "2026-10-24"],
+    isToday: true,
+    rangeHours: 6,
+    from: T0,
+    to: T0 + 60 * MIN,
+    points: pts,
+    memTotalMb: null,
+    memTotalSource: null,
+    thresholds: { cpu: null, mem: null },
+    alerts: { cpu: [], mem: [] },
+    gaps: [],
+    dayHasAlert: false,
+    lastRecordAt: T0,
+    skipped: 0,
+  }
+
+  it("記録があるときは文を出さない(図を出す)", () => {
+    expect(emptyText(base)).toBeNull()
+  })
+
+  it("今日のファイルが無い・選んだ日が無い・範囲に記録が無い・設定が無い・拒否", () => {
+    const last = new Date(2026, 9, 25, 23, 59).getTime()
+    expect(emptyText({ ...base, status: "missing", points: [], lastRecordAt: last })).toBe(
+      "今日の記録はまだありません（最後の記録：10/25 23:59）。PC を起動し直した後は、記録の仕組みが動くまで空きます。日付を選ぶと前の日を見られます"
+    )
+    expect(emptyText({ ...base, status: "missing", isToday: false, date: "2026-10-22", points: [] })).toBe("10/22 の記録はありません。記録があるのは 10/24 からです")
+    expect(emptyText({ ...base, points: [] })).toBe("この時間帯には記録がありません（PC が止まっていたか、記録の仕組みが動いていませんでした）")
+    expect(emptyText({ ...base, status: "unset" })).toContain("config/monitor.json")
+    expect(emptyText({ ...base, status: "refused" })).toContain("読みません")
   })
 })
