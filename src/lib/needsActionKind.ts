@@ -80,6 +80,8 @@ export function approvalActionsOfLabel(label: string): string[] {
  */
 const WORD_TABLE: Array<{ kind: WordKind; pattern: RegExp }> = [
   { kind: "decision", pattern: /決めて|選んで|選択して|どれ|どちら|どの案|答えて|回答|教えて|方針/ },
+  // 「許可」と承認の操作の語が同じ文にあるときは承認(「『コミットして』と一言でコミットの許可」は承認待ち。⑬ 報告72 の real2・ND-13)
+  { kind: "approval", pattern: /(?=[^。\n]*(?:許可|権限|permission|allow))[^。\n]*(?:コミット|commit|push|プッシュ|マージ|merge|プルリク|\bPR\b|デプロイ|deploy)/i },
   { kind: "permission", pattern: /許可|権限|permission|allow/i },
   { kind: "approval", pattern: /承認|コミット|commit|push|プッシュ|マージ|merge|プルリク|\bPR\b|反映|デプロイ|deploy|公開して|送信して/i },
   { kind: "decision", pattern: /[?？]/ },

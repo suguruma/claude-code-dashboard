@@ -60,6 +60,8 @@ next-env.d.ts
 /config/lan-devices.json
 /config/lan-pairing.json
 /config/lan-status.json
+# dashboard: ページを開いた回数(⑬ FS-7。13ページのパスと日付ごとの回数だけ。利用者ごとの記録)
+/config/page-visits.json
 
 # dashboard: real ~/.claude data provided for local testing (contains personal session logs)
 /sample-data-user/

@@ -10,6 +10,7 @@ import {
   parsePhoneFilters,
   parseSessionHash,
   phoneDecisionRows,
+  phoneQuestion,
   phoneFiltersToSearch,
   sendLimitStopped,
   sessionHash,
@@ -138,5 +139,23 @@ describe("スマホの URL の値", () => {
     for (const bad of ["", "#", "#session=", "#session=../api/rules", "#session=%E0%A4%A", "#other=local_x", "#session=local_a/b"]) {
       expect(parseSessionHash(bad), bad).toBeNull()
     }
+  })
+})
+
+describe("[ND-15] スマホの対応待ちの行の問いの文(⑬ の D5)", () => {
+  it("問いがあれば出し、要約から取った問いは「要約：」を付ける。無ければ null", () => {
+    const decision = (question: string | null, questionSource: "wrap-up" | "summary" | null) => ({
+      question,
+      questionSource,
+      moreQuestions: 0,
+      options: [],
+      moreOptions: 0,
+      recommended: null,
+      errorText: null,
+    })
+    expect(phoneQuestion(makeSessionSummary("a", { decision: decision("どちらで進めますか", "wrap-up") }))).toBe("どちらで進めますか")
+    expect(phoneQuestion(makeSessionSummary("b", { decision: decision("反映を承認してください", "summary") }))).toBe("要約：反映を承認してください")
+    expect(phoneQuestion(makeSessionSummary("c", { decision: null }))).toBeNull()
+    expect(phoneQuestion(undefined)).toBeNull()
   })
 })

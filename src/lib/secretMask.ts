@@ -13,6 +13,8 @@ const SECRET_NAME = String.raw`(?:password|passwd|passphrase|pwd|token|secret|ap
 const NAME_PART = String.raw`[A-Za-z0-9_-]*`
 /** 値：引用符で囲んだもの、または空白・&・引用符までの続き */
 const VALUE = String.raw`("[^"]*"|'[^']*'|[^\s&"']+)`
+/** -p でパスワードを取るコマンド(行の頭か区切りの後ろ) */
+const PW_COMMAND = String.raw`(?:^|[\s;&|])(?:mysql\w*|mariadb[\w-]*|sshpass|mongo\w*)\b`
 
 /** 上から順に置き換える。先に「名前つき」の形を伏せ、最後に長い英数字の塊を伏せる */
 const SECRET_PATTERNS: Array<{ pattern: RegExp; replace: string }> = [
@@ -34,9 +36,12 @@ const SECRET_PATTERNS: Array<{ pattern: RegExp; replace: string }> = [
     pattern: new RegExp(String.raw`((?:^|\s)--?${NAME_PART}${SECRET_NAME}${NAME_PART}(?:\s+|=))${VALUE}`, "gi"),
     replace: `$1${SECRET_MARK}`,
   },
-  // mysql の -pパスワード(続けて書く形。数字だけ〈-p3000 のポート〉は除く)と、-p の次の語(数字とポートの形は除く)
-  { pattern: /((?:^|\s)-p)(?=\S*[A-Za-z!@#$%^&*])\S+/g, replace: `$1${SECRET_MARK}` },
-  { pattern: /((?:^|\s)-p\s+)(?!\d+(?::\d+)?(?:\s|$))(?!-)\S+/g, replace: `$1${SECRET_MARK}` },
+  // -p でパスワードを取るコマンド(mysql・mariadb・sshpass・mongo)の -pパスワード(続けて書く形)と、-p の次の語(数字とポートの形は除く)。
+  // ほかのコマンドの -p(rg -p・mkdir -pv・docker -p 8080:80)は値を取らないかポートなので伏せない(ゲート2 の L7)
+  { pattern: new RegExp(String.raw`(${PW_COMMAND}[^;&|\n]*?\s-p)(?=\S*[A-Za-z!@#$%^&*'"])\S+`, "g"), replace: `$1${SECRET_MARK}` },
+  { pattern: new RegExp(String.raw`(${PW_COMMAND}[^;&|\n]*?\s-p\s+)(?!\d+(?::\d+)?(?:\s|$))(?!-)\S+`, "g"), replace: `$1${SECRET_MARK}` },
+  // redis-cli の -a パスワード(ゲート2 の L6)
+  { pattern: /((?:^|[\s;&|])redis-cli\b[^;&|\n]*?\s-a\s+)(?!-)\S+/g, replace: `$1${SECRET_MARK}` },
   // DB_PASSWORD=…・SECRET_KEY=…・token: … など(名前の前後に文字が付いてもよい。= か : の右を丸ごと)
   {
     pattern: new RegExp(String.raw`(${NAME_PART}${SECRET_NAME}${NAME_PART}\s*[=:]\s*)${VALUE}`, "gi"),

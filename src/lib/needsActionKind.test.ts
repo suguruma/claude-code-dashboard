@@ -46,6 +46,16 @@ describe("言葉の推定（kindFromWords）", () => {
     expect(kindFromWords(text)).toBe(kind)
   })
 
+  it.each([
+    ["「コミットして」と一言でコミットの許可", "approval"], // 実データの外れ(⑬ 報告72 の real2)。許可より承認の操作を見る
+    ["push の許可をください", "approval"],
+    ["Allow merge into main?", "approval"],
+    ["コミットしました。次の作業の許可をください", "permission"], // 文が違えば許可のまま
+    ["許可をください。マージは後でします", "permission"],
+  ])("[ND-13] 「許可」と承認の操作の語が同じ文にあるときは承認：%s → %s", (text, kind) => {
+    expect(kindFromWords(text)).toBe(kind)
+  })
+
   it("null・undefined は null", () => {
     expect(kindFromWords(null)).toBeNull()
     expect(kindFromWords(undefined)).toBeNull()

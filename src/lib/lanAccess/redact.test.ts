@@ -79,10 +79,33 @@ describe("スマホへ返す応答のパスを隠す（すき間）", () => {
   })
 })
 
-describe("[ND-9] スマホへ返す一覧から、次にやる判断の問いと候補を外す(ゲート2 の L1。スマホに出すのは D5)", () => {
-  it("decision は null にし、ほかの項目は今までどおり返す", () => {
-    const session = { id: "local_1", title: "合成", decision: { question: "どちらにしますか", options: ["A", "B"], recommended: 0 } }
-    expect(redactForLan({ sessions: [session] })).toEqual({ sessions: [{ id: "local_1", title: "合成", decision: null }] })
+describe("[ND-9] [ND-15] スマホへ返す一覧の次にやる判断は、問いと候補だけを伏せて返す(ゲート2 の L1 → ⑬ の D5)", () => {
+  it("問いと候補の秘密とパスを伏せ、エラーの文は返さない。ほかの項目は今までどおり", () => {
+    const session = {
+      id: "local_1",
+      title: "合成",
+      decision: {
+        question: "DB_PASSWORD=Sup3rS3cret で C:\\Users\\someone\\work\\app を動かしてよいですか",
+        questionSource: "wrap-up",
+        moreQuestions: 1,
+        options: ["はい（token=abc123def）", "いいえ"],
+        moreOptions: 0,
+        recommended: 0,
+        errorText: "合成のエラー sk-ant-api03-0123456789abcdefghij",
+      },
+    }
+    const out = redactForLan({ sessions: [session] }) as { sessions: Array<{ decision: Record<string, unknown> }> }
+    const d = out.sessions[0].decision
+    expect(d).toMatchObject({ questionSource: "wrap-up", moreQuestions: 1, moreOptions: 0, recommended: 0, errorText: null })
+    const json = JSON.stringify(d)
+    for (const leak of ["Sup3rS3cret", "someone", "abc123def", "sk-ant"]) expect(json).not.toContain(leak)
+    expect(d.question).toContain("を動かしてよいですか")
+    // 値は空白まで丸ごと伏せる(安全側。閉じ括弧も値の続きとみなす)
+    expect(d.options).toEqual(["はい（token=●●●●", "いいえ"])
+  })
+
+  it("判断の無いセッションは null のまま", () => {
+    expect(redactForLan({ sessions: [{ id: "local_2", decision: null }] })).toEqual({ sessions: [{ id: "local_2", decision: null }] })
   })
 })
 

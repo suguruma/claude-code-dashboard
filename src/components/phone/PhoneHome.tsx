@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { Activity, ChevronRight, Gauge, OctagonAlert, Send } from "lucide-react"
 import { useDesktopSessions } from "@/hooks/useDesktopSessions"
@@ -12,9 +13,11 @@ import {
   countRunning,
   decisionWaitLabel,
   phoneDecisionRows,
+  phoneQuestion,
   sendLimitStopped,
   summarizeGroups,
 } from "@/lib/phoneView"
+import type { DecisionItem } from "@/lib/housekeepingTypes"
 import { cn } from "@/lib/utils"
 import { LEVEL_LABEL, LEVEL_TEXT_COLOR } from "@/components/desktopSessions/UsageGauge"
 import { formatAgo } from "@/components/desktopSessions/format"
@@ -32,6 +35,7 @@ export function PhoneHome() {
   const available = data !== null && data.source !== "none"
   const sessions = available ? data.sessions : []
   const decisions = phoneDecisionRows(sessions)
+  const byId = new Map(sessions.map((s) => [s.id, s]))
   const stopped = sendLimitStopped(sessions)
   const running = countRunning(sessions)
   const groups = available ? summarizeGroups(sessions, data.groups) : []
@@ -64,18 +68,7 @@ export function PhoneHome() {
             ) : (
               <ul className="divide-y">
                 {decisions.items.map((d) => (
-                  <li key={d.id}>
-                    <button type="button" onClick={() => openSession(d.id)} className={cn(TAPPABLE, "flex items-center gap-2 px-4 py-2.5")}>
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-base font-medium">{d.title}</span>
-                        <span className={cn(META, "block truncate")}>
-                          <span className="font-medium text-[var(--status-critical-text)]">{decisionWaitLabel(d)}</span>
-                          {d.groupName && `・${d.groupName}`}・{formatAgo(d.lastActivityAt)}
-                        </span>
-                      </span>
-                      <ChevronRight className="size-5 shrink-0 text-muted-foreground" aria-hidden />
-                    </button>
-                  </li>
+                  <DecisionRow key={d.id} item={d} question={phoneQuestion(byId.get(d.id))} />
                 ))}
               </ul>
             )}
@@ -187,5 +180,57 @@ function HomeUsageValue({
       </span>
       {w?.resetsAt != null && now !== null && <span className={cn(META, "block")}>リセット {formatRemaining(w.resetsAt - now)}</span>}
     </span>
+  )
+}
+
+/**
+ * 対応待ちの1行。題名・待っているもの・問いの文(3行まで。長いときは［全文を開く］。⑬ の D5)。
+ * 行を押すと詳細を開く。［全文を開く］は行のボタンの外に置く(ボタンの中にボタンを入れない)。
+ * ［全文を開く］は、3行に入りきらなかったときだけ出す(字数では決めない。幅と改行の位置で行数が変わるため)
+ */
+function DecisionRow({ item, question }: { item: DecisionItem; question: string | null }) {
+  const [open, setOpen] = useState(false)
+  const [clipped, setClipped] = useState(false)
+  const questionRef = useRef<HTMLSpanElement>(null)
+  useEffect(() => {
+    const el = questionRef.current
+    if (!el || open || typeof ResizeObserver === "undefined") return
+    const observer = new ResizeObserver(() => setClipped(el.scrollHeight > el.clientHeight + 1))
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [open, question])
+  const long = open || clipped
+  return (
+    <li>
+      <button type="button" onClick={() => openSession(item.id)} className={cn(TAPPABLE, "flex items-center gap-2 px-4 py-2.5")}>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-base font-medium">{item.title}</span>
+          <span className={cn(META, "block truncate")}>
+            <span className="font-medium text-[var(--status-critical-text)]">{decisionWaitLabel(item)}</span>
+            {item.groupName && `・${item.groupName}`}・{formatAgo(item.lastActivityAt)}
+          </span>
+          {question && (
+            <span
+              ref={questionRef}
+              className={cn("mt-1 block text-base leading-snug [word-break:auto-phrase]", !open && "line-clamp-3")}
+              data-testid="phone-decision-question"
+            >
+              {question}
+            </span>
+          )}
+        </span>
+        <ChevronRight className="size-5 shrink-0 text-muted-foreground" aria-hidden />
+      </button>
+      {long && (
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className={cn(TAPPABLE, "flex min-h-11 items-center px-4 text-base text-primary")}
+        >
+          {open ? "たたむ" : "全文を開く"}
+        </button>
+      )}
+    </li>
   )
 }

@@ -117,6 +117,31 @@ describe("[A3] [ND-3] 急ぐ順", () => {
   })
 })
 
+describe("[ND-12] 7日以上そのままのものは「いつでも」の最後(⑬ 報告72 の real1)", () => {
+  const DAY = 24 * 60
+  it("種類によらず「いつでも」に置き、同じ段の最後に並べ、札「7日以上そのまま」。件数の文は「いつでも n（うち7日以上 m）」", () => {
+    const list = buildNextDecisions(
+      [
+        blocked("perm-old", "permission", 108 * DAY),
+        blocked("appr-old", "approval", 7 * DAY),
+        blocked("ask", "decision", 30),
+        blocked("perm", "permission", 10),
+        blocked("appr-6d", "approval", 6 * DAY),
+      ],
+      NOW
+    )
+    expect(list.map((d) => [d.id, d.urgency, d.stale])).toEqual([
+      ["perm", "urgent", false],
+      ["appr-6d", "today", false],
+      ["ask", "anytime", false],
+      ["perm-old", "anytime", true],
+      ["appr-old", "anytime", true],
+    ])
+    expect(list.find((d) => d.id === "perm-old")?.notes).toContain("7日以上そのまま")
+    expect(countsText(countByUrgency(list))).toBe("5件（急ぎ 1・今日中 1・いつでも 3（うち7日以上 2））")
+  })
+})
+
 describe("[A6] [ND-6] 最初に見せる件数と畳む行", () => {
   it("最初は5件。残りは内訳つきで畳む", () => {
     const list = buildNextDecisions(elevenSessions(), NOW)

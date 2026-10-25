@@ -27,6 +27,8 @@ export type DecisionKindLabel = "許可" | "承認" | "質問" | "送信上限" 
 export const DECISION_PREVIEW_COUNT = 5
 /** この時間を超えて待っているものは、種類によらず今日中に上げる(推定・種類不明も。M7) */
 export const LONG_WAIT_MS = 2 * 60 * 60_000
+/** この時間を超えてそのままのものは、種類によらず「いつでも」の最後に置く(急がない判断か、忘れて終わったもの。⑬ 報告72 の real1・ND-12) */
+export const STALE_WAIT_MS = 7 * 24 * 60 * 60_000
 
 export interface NextDecision {
   id: string
@@ -37,6 +39,8 @@ export interface NextDecision {
   /** 言葉からの推定(札に「（推定）」) */
   estimated: boolean
   urgency: Urgency
+  /** 7日以上そのまま(「いつでも」の最後に置き、札「7日以上そのまま」) */
+  stale: boolean
   /** 待ち時間(最後の活動から)。分からなければ null */
   waitMs: number | null
   /** 問いの文と答えの候補(サーバーが判断を待つセッションにだけ付ける)。無ければ null */
@@ -79,9 +83,10 @@ function waitingChildrenOf(id: string, sessions: DesktopSessionSummary[]): numbe
  * 急ぐ順(ND-3・A3)。
  * - 急ぎ：送信上限、許可(推定を含む)、エラー、配下が答えを待っているもの
  * - 今日中：承認(推定を含む)、届かない送信、待ちが2時間以上のもの(推定・種類不明を含む)
- * - いつでも：それ以外
+ * - いつでも：それ以外と、7日以上そのままのもの(種類によらない。ND-12)
  */
 export function urgencyOf(item: DecisionItem, waitMs: number | null, waitingChildren: number): Urgency {
+  if (waitMs !== null && waitMs >= STALE_WAIT_MS) return "anytime"
   const needs = item.reasons.includes("needs-action")
   const kind = item.needsAction?.kind
   if (item.reasons.includes("send-limit") || item.reasons.includes("error") || (needs && kind === "permission") || waitingChildren > 0) {
@@ -99,6 +104,7 @@ export function buildNextDecisions(sessions: DesktopSessionSummary[], now: numbe
     const waitMs = item.lastActivityAt === null ? null : Math.max(0, now - item.lastActivityAt)
     const children = waitingChildrenOf(item.id, sessions)
     const urgency = urgencyOf(item, waitMs, children)
+    const stale = waitMs !== null && waitMs >= STALE_WAIT_MS
     const kindLabel = kindLabelOf(item)
     const messaging = s?.messaging ?? null
     const detail = s?.decision ?? null
@@ -121,6 +127,7 @@ export function buildNextDecisions(sessions: DesktopSessionSummary[], now: numbe
     if (first !== "undelivered" && item.undeliveredCount > 0) notes.push(`届かなかった送信も${item.undeliveredCount}件あります`)
     const byKindToday = (item.reasons.includes("needs-action") && item.needsAction?.kind === "approval") || item.reasons.includes("undelivered")
     if (urgency === "today" && !byKindToday) notes.push("2時間を超えたので今日中")
+    if (stale) notes.push("7日以上そのまま")
 
     return {
       id: item.id,
@@ -129,6 +136,7 @@ export function buildNextDecisions(sessions: DesktopSessionSummary[], now: numbe
       kindLabel,
       estimated: item.reasons[0] === "needs-action" && item.needsAction?.estimated === true,
       urgency,
+      stale,
       waitMs,
       detail,
       happened,
@@ -138,6 +146,8 @@ export function buildNextDecisions(sessions: DesktopSessionSummary[], now: numbe
   return list.sort((a, b) => {
     const r = URGENCY_RANK[a.urgency] - URGENCY_RANK[b.urgency]
     if (r !== 0) return r
+    // 7日以上そのままのものは、同じ段(いつでも)の最後
+    if (a.stale !== b.stale) return a.stale ? 1 : -1
     // 同じ段では、待ちの長いものを先に(分からないものは後)
     const wa = a.waitMs ?? -1
     const wb = b.waitMs ?? -1
@@ -151,6 +161,8 @@ export interface DecisionCounts {
   urgent: number
   today: number
   anytime: number
+  /** いつでものうち、7日以上そのままのもの */
+  stale: number
 }
 
 export function countByUrgency(list: NextDecision[]): DecisionCounts {
@@ -159,6 +171,7 @@ export function countByUrgency(list: NextDecision[]): DecisionCounts {
     urgent: list.filter((d) => d.urgency === "urgent").length,
     today: list.filter((d) => d.urgency === "today").length,
     anytime: list.filter((d) => d.urgency === "anytime").length,
+    stale: list.filter((d) => d.stale).length,
   }
 }
 
@@ -167,7 +180,7 @@ export function countsText(c: DecisionCounts): string {
   if (c.total === 0) return "0件"
   const parts = (["urgent", "today", "anytime"] as const)
     .filter((u) => c[u] > 0)
-    .map((u) => `${URGENCY_LABEL[u].replace("！ ", "")} ${c[u]}`)
+    .map((u) => `${URGENCY_LABEL[u].replace("！ ", "")} ${c[u]}${u === "anytime" && c.stale > 0 ? `（うち7日以上 ${c.stale}）` : ""}`)
   return `${c.total}件（${parts.join("・")}）`
 }
 

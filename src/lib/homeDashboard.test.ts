@@ -124,7 +124,7 @@ describe("組織図に出ていないセッション（⑧）", () => {
     expect(countOutsideSessions(sessions, new Set(["shown"]))).toBe(5)
   })
 
-  it("合成データ: 判断待ちは整理ページと同じ11件（待機は数えない）、送信上限で停止は1件。試験グループの組織図に出ていないのは16件", async () => {
+  it("合成データ: 判断待ちは整理ページと同じ12件（待機は数えない）、送信上限で停止は1件。試験グループの組織図に出ていないのは17件", async () => {
     const mod = (await import(/* @vite-ignore */ pathToFileURL(path.join(process.cwd(), "scripts", "make-org-chart-sample.mjs")).href)) as SampleModule
     const out = await fs.mkdtemp(path.join(os.tmpdir(), "ccd-home-test-"))
     cleanup.push(out)
@@ -135,12 +135,12 @@ describe("組織図に出ていないセッション（⑧）", () => {
     const list = await sessions.list()
 
     expect(countDecisions(list.sessions)).toBe(sample.expected.housekeeping.decisions.length)
-    expect(countDecisions(list.sessions)).toBe(11)
+    expect(countDecisions(list.sessions)).toBe(12)
     expect(countDecisions(list.sessions)).toBe(sample.expected.needsAction.decisionCount)
     expect(countSendLimitStopped(list.sessions)).toBe(1)
 
     const flow = await new FlowService(sessions, { now: () => now }).build(sample.groups.a)
     const shown = new Set((flow?.members ?? []).map((m) => m.id))
-    expect(countOutsideSessions(list.sessions, shown)).toBe(16)
+    expect(countOutsideSessions(list.sessions, shown)).toBe(17)
   })
 })

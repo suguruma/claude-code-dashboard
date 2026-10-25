@@ -86,6 +86,7 @@ const S = {
   decideCommit: 310, // 要約に「決めて」と「commit」→ 判断待ち（推定。言葉の優先の順の確認）
   planApproval: 311, // ExitPlanMode で止まっている → 承認待ち
   unknownKind: 312, // 要約の言葉からも決められない → 要対応（種類不明）
+  commitAllow: 313, // 要約に「許可」と「コミット」→ 承認待ち（推定。実データの外れの形〈⑬ 報告72 の real2〉）
 }
 
 /**
@@ -123,6 +124,7 @@ const SESSIONS = [
   { n: S.decideCommit, title: "判断_4つの案", createdAgo: 390, needsAction: "4つの案から決めてください。決まったら commit します（合成のデータ）" },
   { n: S.planApproval, title: "判断_プランの承認", createdAgo: 380 },
   { n: S.unknownKind, title: "判断_種類の分からない要対応", createdAgo: 370, needsAction: "画面の表示を見てください（合成のデータ）" },
+  { n: S.commitAllow, title: "判断_コミットの一言", createdAgo: 360, needsAction: "「コミットして」と一言でコミットの許可をください（合成のデータ）" },
 ]
 
 /**
@@ -268,6 +270,7 @@ export function makeOrgChartSample(outDir, options = {}) {
     [S.decideCommit, "案を出してください"],
     [S.planApproval, "計画を立ててください"],
     [S.unknownKind, "画面を直してください"],
+    [S.commitAllow, "変更をまとめてください"],
   ]) {
     humanRow(n, 236, text)
   }
@@ -366,7 +369,12 @@ export function makeOrgChartSample(outDir, options = {}) {
         name: "AskUserQuestion",
         input: {
           questions: [
-            { question: "合成の質問：どちらの案で進めますか", options: [{ label: "A案 (Recommended)" }, { label: "B案" }] },
+            // 長い問い(スマホで3行に入らず［全文を開く］が出る)。秘密とパスの形を含め、スマホへは伏せて返ることを確かめる(⑬ の D5)
+            {
+              question:
+                "合成の質問：DB_PASSWORD=Synth3ticValue を使う /home/sample/work/app の一覧の画面を、A案（最近の順に並べて上に出す）とB案（グループごとにまとめて出す）のどちらで進めますか。決めた方で明日までに直します",
+              options: [{ label: "A案 (Recommended)" }, { label: "B案" }],
+            },
             { question: "合成の質問：期限はいつにしますか", options: [{ label: "今週" }, { label: "来週" }] },
           ],
         },
@@ -405,6 +413,7 @@ export function makeOrgChartSample(outDir, options = {}) {
   assistantRow(S.decideCommit, 68, 30_000)
   assistantRow(S.planApproval, 66, 30_000, { tools: [{ name: "ExitPlanMode", input: { plan: "合成のプラン" } }] })
   assistantRow(S.unknownKind, 64, 30_000)
+  assistantRow(S.commitAllow, 62, 30_000)
 
   // ---- 書き出し -----------------------------------------------------------
   const dataDir = path.join(outDir, "data")
@@ -691,6 +700,7 @@ export function makeOrgChartSample(outDir, options = {}) {
           [sid(S.blockedSummary), ["needs-action"]],
           [sid(S.wrapCommit), ["needs-action"]],
           [sid(S.planApproval), ["needs-action"]],
+          [sid(S.commitAllow), ["needs-action"]],
           [sid(S.askUser), ["needs-action"]],
           [sid(S.wrapAsk), ["needs-action"]],
           [sid(S.decideCommit), ["needs-action"]],
@@ -711,6 +721,7 @@ export function makeOrgChartSample(outDir, options = {}) {
           [sid(S.wrapAsk)]: ["decision", "wrap-up-ask", false],
           [sid(S.decideCommit)]: ["decision", "summary-words", true],
           [sid(S.unknownKind)]: ["unknown", "none", false],
+          [sid(S.commitAllow)]: ["approval", "summary-words", true],
         },
         standby: [sid(S.wrapStandby), sid(S.wordStandby)].sort(),
         // 要約に要対応の文が無いものは、wrap_up の質問の先頭60文字が出る
@@ -719,7 +730,7 @@ export function makeOrgChartSample(outDir, options = {}) {
           [sid(S.wrapAsk)]: "A案とB案のどちらで進めますか（合成のデータ）",
         },
         // ホームの「判断待ち」の数（整理ページと同じ）
-        decisionCount: 11,
+        decisionCount: 12,
         marks: [WRAP_UP_MARK, STATUS_DETAIL_MARK],
       },
       groupB: {

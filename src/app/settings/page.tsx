@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { BackupList } from "@/components/settings/BackupList"
+import { PageVisitsCard } from "@/components/settings/PageVisitsCard"
 
 const KNOWN_KEYS = [
   "permissions",
@@ -48,12 +49,16 @@ export default function SettingsPage() {
     return <p className="text-sm text-muted-foreground">読み込み中...</p>
   }
 
+  // ページを開いた回数(⑬ FS-7)はアプリ全体の設定なので、プロジェクトが無くても出す
   if (!selectedProject) {
     return (
-      <Alert>
-        <AlertTitle>プロジェクトが未登録です</AlertTitle>
-        <AlertDescription>画面右上の「+」からプロジェクトを登録してください。</AlertDescription>
-      </Alert>
+      <div className="space-y-6">
+        <Alert>
+          <AlertTitle>プロジェクトが未登録です</AlertTitle>
+          <AlertDescription>画面右上の「+」からプロジェクトを登録してください。</AlertDescription>
+        </Alert>
+        <PageVisitsCard />
+      </div>
     )
   }
 
@@ -159,6 +164,8 @@ export default function SettingsPage() {
         </TabsContent>
 
       </Tabs>
+
+      <PageVisitsCard />
     </div>
   )
 }

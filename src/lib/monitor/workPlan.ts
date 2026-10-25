@@ -1,6 +1,6 @@
 import { redactPathsInText } from "@/lib/lanAccess/redact"
 import { maskSecrets } from "@/lib/secretMask"
-import type { PlanGroup, PlanItem, PlanState, WaitingItem } from "./monitorTypes"
+import type { PlanGroup, PlanState, WaitingItem } from "./monitorTypes"
 import { hasColumns, parseLocalTime, parseNumber, parseTsv } from "./tsv"
 
 /**

@@ -4,6 +4,7 @@ import { useState, type ReactNode } from "react"
 import { useSelectedLayoutSegments } from "next/navigation"
 import { DesktopNotificationWatcher } from "@/components/desktopSessions/DesktopNotificationWatcher"
 import { PHONE_SEGMENT } from "@/lib/lanAccess/phoneRoutes"
+import { PageVisitRecorder } from "./PageVisitRecorder"
 import { SideNav } from "./SideNav"
 import { StartupNoticeBanner } from "./StartupNoticeBanner"
 import { TopBar } from "./TopBar"
@@ -19,6 +20,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex h-full">
       <DesktopNotificationWatcher />
+      <PageVisitRecorder />
       <SideNav mobileOpen={mobileNavOpen} onMobileClose={() => setMobileNavOpen(false)} />
       <div className="flex h-full min-w-0 flex-1 flex-col">
         <TopBar onMenuClick={() => setMobileNavOpen(true)} />

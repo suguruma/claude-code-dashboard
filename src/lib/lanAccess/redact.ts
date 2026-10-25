@@ -6,14 +6,17 @@
  * - 作業フォルダの最後の名前(`folderName`)は、パスの形でないので文字列としては隠れない。同じオブジェクトの `cwd` から
  *   作り直す(ホームのフォルダそのものなら `~`。`cwd` が無ければ null)。ユーザー名が名前として残らないように
  * - `~/.claude/projects/` のフォルダ名(`projectDirName`。パスを `-` でつないだ名前)は null にする
- * - 次にやる判断の問いの全文と答えの候補(`decision`。⑬)は null にする。スマホで問いの文を出すのは D5 で、そのときに伏せ方と一緒に決める
- *   (ゲート2 の L1。LAN は暗号化されない HTTP で、wrap_up の ask・プランの文は秘密の伏せの対象外のため)
+ * - 次にやる判断(`decision`。⑬)は、問いの文と答えの候補だけを、秘密らしい文字列(maskSecrets)とパスを伏せて返す。
+ *   エラーの文は返さない(⑬ の D5・ND-15。LAN は暗号化されない HTTP なので、wrap_up の ask・AskUserQuestion の文も伏せの対象にする。
+ *   ゲート2 の L1 で一度外したものを、伏せた形で戻した)
  * - そのほかの文字列とオブジェクトのキーの中の、絶対パス(`C:\…`・`\\server\…`・`/Users/…`・`/Volumes/…`・`~\…`・`file:///…`・
  *   `C%3A%5C…` のような URL エンコード・`C--Users-…` のようなパスを `-` でつないだ名前)も隠す
  */
 
+import { maskSecrets } from "@/lib/secretMask"
+
 const PATH_KEYS = new Set(["cwd", "path"])
-const DROP_KEYS = new Set(["projectDirName", "decision"])
+const DROP_KEYS = new Set(["projectDirName"])
 /** パスから作った名前の項目と、その元のパスの項目。元のパスから作り直す */
 const DERIVED_NAME_KEYS = new Map([["folderName", "cwd"]])
 
@@ -77,6 +80,23 @@ export function redactPathsInText(s: string): string {
   return redactString(s)
 }
 
+/** 次にやる判断の問いと候補だけを、秘密とパスを伏せて返す(⑬ D5・ND-15) */
+function lanDecision(value: unknown): unknown {
+  if (!value || typeof value !== "object") return null
+  const d = value as Record<string, unknown>
+  const text = (x: unknown) => (typeof x === "string" ? redactString(maskSecrets(x)) : null)
+  const num = (x: unknown) => (typeof x === "number" && Number.isFinite(x) ? x : null)
+  return {
+    question: text(d.question),
+    questionSource: typeof d.questionSource === "string" ? d.questionSource : null,
+    moreQuestions: num(d.moreQuestions) ?? 0,
+    options: Array.isArray(d.options) ? d.options.map(text).filter((o): o is string => o !== null) : [],
+    moreOptions: num(d.moreOptions) ?? 0,
+    recommended: num(d.recommended),
+    errorText: null,
+  }
+}
+
 export function redactForLan<T>(value: T): T {
   return walk(value, null) as T
 }
@@ -97,7 +117,7 @@ function walk(value: unknown, key: string | null): unknown {
         out[redactString(k)] = typeof p === "string" ? lastSegment(p) || null : null
         continue
       }
-      out[redactString(k)] = DROP_KEYS.has(k) ? null : walk(v, k)
+      out[redactString(k)] = DROP_KEYS.has(k) ? null : k === "decision" ? lanDecision(v) : walk(v, k)
     }
     return out
   }

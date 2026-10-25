@@ -38,6 +38,22 @@ describe("[ND-5] 秘密らしい文字列を伏せる(ゲート2 の M1 で見�
     expect(maskSecrets("token=abc123&x=1")).toBe(`token=${SECRET_MARK}&x=1`)
   })
 
+  it.each([
+    ["redis-cli -a hunter2 ping", "hunter2"],
+    ["redis-cli -h 127.0.0.1 -a s3cretpw get k", "s3cretpw"],
+    ["mysql -u root -p'hunter2' shop", "hunter2"],
+    ["sshpass -p hunter2 ssh host", "hunter2"],
+    ["mysqldump -u root -p hunter2 db", "hunter2"],
+  ])("[ND-14] パスワードを取るコマンドの -a・-p は伏せる：%s", (input, secret) => {
+    expect(maskSecrets(input)).not.toContain(secret)
+  })
+
+  it("[ND-14] 値を取らない旗・ほかのコマンドの -p は伏せすぎない(ゲート2 の L7)", () => {
+    for (const plain of ["rg -p pattern src", "mkdir -pv out/dir", "ls -a src", "git commit -a -m fix", "psql -p 5432 -d app"]) {
+      expect(maskSecrets(plain), plain).toBe(plain)
+    }
+  })
+
   it("秘密でない普通のコマンドは変えない(ポートの -p・パス・メッセージ)", () => {
     for (const plain of [
       "npx next dev -p 3964",
