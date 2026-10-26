@@ -28,9 +28,9 @@ export type WordKind = NeedsActionKind | "standby"
  * 文は ask(全文。上限あり)とボタンの名前(label)だけ。recap・ボタンの message は取り込まない
  */
 export interface WrapUpDigest {
-  /** ask の先頭60文字。ask が無ければ null */
+  /** ask の先頭60文字(秘密らしい文字列は伏せてから切る。ND-5)。ask が無ければ null */
   askExcerpt: string | null
-  /** ask の全文(空白をつめ、上限で切る)。次にやる判断の問いに使う。ask が無ければ null */
+  /** ask の全文(空白をつめ、秘密らしい文字列を伏せてから上限で切る。ND-5)。次にやる判断の問いに使う。ask が無ければ null */
   ask: string | null
   /** 承認の判断に使うため、ask の全文から言葉で推定した種類 */
   askWordKind: WordKind | null

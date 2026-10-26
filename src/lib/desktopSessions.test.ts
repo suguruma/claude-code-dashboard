@@ -23,6 +23,7 @@ import {
   writeMeta,
   writeTranscript,
 } from "./desktopFixtures"
+import { SECRET_MARK } from "./secretMask"
 
 const cleanup: string[] = []
 afterEach(async () => {
@@ -84,6 +85,17 @@ describe("projectMeta(許可リスト方式の射影、S3)", () => {
     // 要対応でないセッションには付かない
     expect(projectMeta(makeMeta({ n: 2, category: "completed" }))?.needsActionExcerpt).toBeNull()
     expect(projectMeta(makeMeta({ n: 3 }))?.needsActionExcerpt).toBeNull()
+  })
+
+  it("[ND-5] 要対応の内容の抜粋と全文は、秘密らしい文字列を伏せてから切る(指示53)", () => {
+    const raw = makeMeta({ n: 1, category: "blocked" })
+    const summary = raw.postTurnSummary as Record<string, unknown>
+    // 60文字の境に秘密がまたがっても、頭が残らない
+    summary.needs_action = `${"い".repeat(50)} DB_PASSWORD=Synth3ticValue を使ってよいですか`
+    const meta = projectMeta(raw)
+    expect(meta?.needsActionExcerpt).not.toContain("Synth")
+    expect(meta?.needsActionText).toContain(`DB_PASSWORD=${SECRET_MARK}`)
+    expect(meta?.needsActionText).not.toContain("Synth3ticValue")
   })
 
   it("エラーの記録時刻(errorAt)を取り込む。無ければ null", () => {

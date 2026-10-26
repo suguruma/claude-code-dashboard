@@ -283,6 +283,30 @@ describe("[A5] [ND-5] 長さの上限・パスと秘密の隠し方", () => {
     // 切る前に伏せるので、切った後ろに秘密の頭が残らない
     expect(cutAfterMask(`echo ${"x".repeat(30)} ${"A".repeat(30)}`, 40)).not.toContain("AAAA")
   })
+
+  it("問いの文・答えの候補・エラーの文も、秘密らしい文字列を伏せてからパスを隠す(PC の画面。指示53)", () => {
+    const secret = "Synth3ticValue"
+    const pendingAsk = { toolUseId: "t", question: `DB_PASSWORD=${secret} を使う C:\\Users\\someone\\work\\app で進めますか`, count: 1, options: [`token=${secret} で進める`, "やめる"] }
+    const ask = buildDecisionDetail(detailInput({ needsActionInfo: { ...needs("decision"), source: "ask-tool" }, pendingAsk }))
+    expect(ask.question).toBe(`DB_PASSWORD=${SECRET_MARK} を使う app で進めますか`)
+    expect(ask.options).toEqual([`token=${SECRET_MARK} で進める`, "やめる"])
+    const summary = buildDecisionDetail(detailInput({ needsActionInfo: needs("decision", true), summaryText: `パスワードは${secret} です` }))
+    expect(summary.question).toBe(`パスワードは${SECRET_MARK} です`)
+    const error = buildDecisionDetail(detailInput({ status: "error", needsActionInfo: null, errorText: `password: ${secret}` }))
+    expect(error.errorText).toBe(`password: ${SECRET_MARK}`)
+    for (const d of [ask, summary, error]) expect(JSON.stringify(d)).not.toContain(secret)
+  })
+
+  it("会話ログから取る問い・候補・抜粋は、伏せてから切る(切った境に秘密の頭が残らない。指示53)", () => {
+    const head = "あ".repeat(55)
+    const wrapUp = wrapUpDigestOf({ ask: `${head} DB_PASSWORD=Synth3ticValue で進めますか`, actions: [{ label: "secret=Synth3ticValue で進める" }] })
+    expect(wrapUp.askExcerpt).not.toContain("Synth")
+    expect(wrapUp.ask).toContain(`DB_PASSWORD=${SECRET_MARK}`)
+    expect(wrapUp.labels).toEqual([`secret=${SECRET_MARK} で進める`])
+    const ask = pendingAskOf({ questions: [{ question: "token: Synth3ticValue123 を使いますか", options: [{ label: "api_key=Synth3tic" }] }] }, "t")
+    expect(ask?.question).toBe(`token: ${SECRET_MARK} を使いますか`)
+    expect(ask?.options).toEqual([`api_key=${SECRET_MARK}`])
+  })
 })
 
 describe("結果を待っている呼び出しの取り込み（⑬）", () => {

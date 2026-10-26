@@ -292,10 +292,10 @@ export function projectMeta(raw: unknown): DesktopMeta | null {
     needsAction: typeof needsActionText === "string" && needsActionText.trim().length > 0,
     needsActionExcerpt:
       typeof needsActionText === "string" && needsActionText.trim().length > 0
-        ? makeExcerpt(needsActionText, NEEDS_ACTION_EXCERPT_CHARS)
+        ? cutAfterMask(needsActionText, NEEDS_ACTION_EXCERPT_CHARS)
         : null,
     needsActionText:
-      typeof needsActionText === "string" && needsActionText.trim().length > 0 ? makeExcerpt(needsActionText, QUESTION_MAX_CHARS) : null,
+      typeof needsActionText === "string" && needsActionText.trim().length > 0 ? cutAfterMask(needsActionText, QUESTION_MAX_CHARS) : null,
     // status_detail の文は、ここで種類を推定するのに使うだけで、戻り値には残さない(S3・ゲート1の条件3)
     summaryWordKind:
       kindFromWords(typeof needsActionText === "string" ? needsActionText : null) ??

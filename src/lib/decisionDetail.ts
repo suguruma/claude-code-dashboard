@@ -1,4 +1,5 @@
 import { redactPathsInText } from "./lanAccess/redact"
+import { maskSecrets } from "./secretMask"
 import type { DesktopNeedsActionInfo, DesktopSessionStatus } from "./desktopSessionTypes"
 import type { PendingAsk, PendingTool } from "./transcriptDigest"
 import type { WrapUpDigest } from "./needsActionKind"
@@ -6,7 +7,7 @@ import type { WrapUpDigest } from "./needsActionKind"
 /**
  * 次にやる判断(⑬ ND-2・ND-4・ND-5・ND-9)の1行に出す、問いの文と答えの候補。
  * 判断を待つセッション(要対応・送信上限・エラー・届かない送信)だけに付け、ほかのセッションの会話の本文は返さない。
- * 文の中の作業フォルダのパスは、サーバーで隠す(スマホと同じ隠し方)。
+ * 文の中の秘密らしい文字列は伏せ、作業フォルダのパスは隠す(どちらもサーバーで。スマホと同じ隠し方。ND-5)。
  */
 export interface DecisionDetail {
   /** 問いの文(全文)。取れなければ null(画面は「問いは取れません（開いて読む）」) */
@@ -32,6 +33,11 @@ export const MAX_SHOWN_OPTIONS = 5
 
 /** 選択肢の名前の末尾の推しの印(⑬ A4 の (1))。印は外して返す */
 const RECOMMENDED_MARK = /\s*[（(]\s*(?:recommended|推奨|おすすめ)\s*[)）]\s*$/i
+
+/** 画面に出す文：秘密らしい文字列を伏せてから、作業フォルダのパスを隠す(ND-5。スマホの入口と同じ順) */
+function redactShown(text: string): string {
+  return redactPathsInText(maskSecrets(text))
+}
 
 export interface DecisionDetailInput {
   status: DesktopSessionStatus
@@ -94,16 +100,16 @@ export function buildDecisionDetail(input: DecisionDetailInput): DecisionDetail 
     return label.replace(RECOMMENDED_MARK, "")
   })
   if (recommended === null && fromWrapUp && cleaned.length > 0) recommended = 0
-  const options = cleaned.slice(0, MAX_SHOWN_OPTIONS).map(redactPathsInText)
+  const options = cleaned.slice(0, MAX_SHOWN_OPTIONS).map(redactShown)
   if (recommended !== null && recommended >= MAX_SHOWN_OPTIONS) recommended = null
 
   return {
-    question: question === null ? null : redactPathsInText(question),
+    question: question === null ? null : redactShown(question),
     questionSource,
     moreQuestions,
     options,
     moreOptions: Math.max(0, cleaned.length - options.length),
     recommended,
-    errorText: input.status === "error" && input.errorText ? redactPathsInText(input.errorText) : null,
+    errorText: input.status === "error" && input.errorText ? redactShown(input.errorText) : null,
   }
 }

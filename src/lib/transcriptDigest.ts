@@ -492,12 +492,12 @@ export function wrapUpDigestOf(input: Record<string, unknown>): WrapUpDigest {
     if (typeof b.action === "string" && allowed.includes(b.action)) actions.add(b.action)
     if (typeof b.label === "string" && b.label.trim()) {
       for (const a of approvalActionsOfLabel(b.label)) actions.add(a)
-      if (labels.length < MAX_OPTIONS) labels.push(makeExcerpt(b.label, OPTION_MAX_CHARS))
+      if (labels.length < MAX_OPTIONS) labels.push(cutAfterMask(b.label, OPTION_MAX_CHARS))
     }
   }
   return {
-    askExcerpt: ask === null ? null : makeExcerpt(ask, INSTRUCTION_EXCERPT_CHARS),
-    ask: ask === null ? null : makeExcerpt(ask, QUESTION_MAX_CHARS),
+    askExcerpt: ask === null ? null : cutAfterMask(ask, INSTRUCTION_EXCERPT_CHARS),
+    ask: ask === null ? null : cutAfterMask(ask, QUESTION_MAX_CHARS),
     askWordKind: kindFromWords(ask),
     actions: [...actions],
     labels,
@@ -518,9 +518,9 @@ export function pendingAskOf(input: Record<string, unknown>, toolUseId: string |
         .map((o) => (o && typeof o === "object" ? (o as Record<string, unknown>).label : typeof o === "string" ? o : undefined))
         .filter((l): l is string => typeof l === "string" && l.trim().length > 0)
         .slice(0, MAX_OPTIONS)
-        .map((l) => makeExcerpt(l, OPTION_MAX_CHARS))
+        .map((l) => cutAfterMask(l, OPTION_MAX_CHARS))
     : []
-  return { toolUseId, question: makeExcerpt(text, QUESTION_MAX_CHARS), count: Math.max(1, questions.length), options }
+  return { toolUseId, question: cutAfterMask(text, QUESTION_MAX_CHARS), count: Math.max(1, questions.length), options }
 }
 
 /** ツールの入力の先頭(許可待ちの推定で出す)。コマンド・ファイル・URL の順に探し、秘密らしい文字列を伏せてから40字で切る */
@@ -632,7 +632,7 @@ export function applyEntry(d: TranscriptDigest, entry: RawEntry): void {
             if (block.name === "ExitPlanMode") {
               const plan = typeof input?.plan === "string" ? input.plan : ""
               const line = plan.split(/\r?\n/).map((l) => l.replace(/^#+\s*/, "").trim()).find((l) => l.length > 0)
-              d.pendingPlan = line ? { toolUseId, line: makeExcerpt(line, QUESTION_MAX_CHARS) } : null
+              d.pendingPlan = line ? { toolUseId, line: cutAfterMask(line, QUESTION_MAX_CHARS) } : null
             }
           }
           if (!input) continue
