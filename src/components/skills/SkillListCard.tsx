@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Archive, Pencil, Trash2 } from "lucide-react"
+import { Pencil, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { format } from "date-fns"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -10,32 +10,24 @@ import { Button } from "@/components/ui/button"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { SkillArchiveDialog } from "@/components/skills/SkillArchiveDialog"
 import { SkillMeta } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 interface SkillListCardProps {
   skill: SkillMeta
-  projectId: string | null
   onEdit: (skill: SkillMeta) => void
   onDelete: (dirName: string) => Promise<void>
-  onArchive: (dirName: string) => Promise<void>
-  onRestore: (dirName: string, model: string) => Promise<void>
   onToggleEnabled: (dirName: string, enabled: boolean) => Promise<void>
 }
 
 export function SkillListCard({
   skill,
-  projectId,
   onEdit,
   onDelete,
-  onArchive,
-  onRestore,
   onToggleEnabled,
 }: SkillListCardProps) {
   const [busy, setBusy] = useState(false)
   const [toggling, setToggling] = useState(false)
-  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
 
   async function handleDelete() {
@@ -72,13 +64,6 @@ export function SkillListCard({
           )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <div className="flex flex-wrap justify-end gap-1">
-            {skill.targetModel && <Badge variant="outline">🎯 {skill.targetModel}</Badge>}
-            {skill.argumentSchema !== undefined && <Badge variant="outline">引数あり</Badge>}
-            {skill.hasReferences && <Badge variant="secondary">📎 references</Badge>}
-            {skill.hasScripts && <Badge variant="secondary">🔧 scripts</Badge>}
-            {skill.hasEvals && <Badge variant="secondary">✅ evals</Badge>}
-          </div>
           <Tooltip>
             <TooltipTrigger render={<div />}>
               <Switch checked={skill.enabled} disabled={toggling} onCheckedChange={handleToggle} />
@@ -91,6 +76,19 @@ export function SkillListCard({
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-sm leading-relaxed text-muted-foreground">{skill.description}</p>
+        {/* 対象モデルと成熟度(references・scripts・evals)は、数が増えたときだけ役立つので初めは閉じておく(⑬ の棚卸しの行33) */}
+        {(skill.targetModel || skill.argumentSchema !== undefined || skill.hasReferences || skill.hasScripts || skill.hasEvals) && (
+          <details className="text-sm" data-testid="skill-details">
+            <summary className="cursor-pointer text-muted-foreground">詳しく（対象モデル・成熟度）</summary>
+            <div className="mt-2 flex flex-wrap gap-1">
+              {skill.targetModel && <Badge variant="outline">🎯 {skill.targetModel}</Badge>}
+              {skill.argumentSchema !== undefined && <Badge variant="outline">引数あり</Badge>}
+              {skill.hasReferences && <Badge variant="secondary">📎 references</Badge>}
+              {skill.hasScripts && <Badge variant="secondary">🔧 scripts</Badge>}
+              {skill.hasEvals && <Badge variant="secondary">✅ evals</Badge>}
+            </div>
+          </details>
+        )}
         {(skill.createdAt || skill.updatedAt) && (
           <p className="text-xs text-muted-foreground">
             {skill.createdAt && <>作成日: {format(new Date(skill.createdAt), "yyyy-MM-dd")}</>}
@@ -99,16 +97,6 @@ export function SkillListCard({
           </p>
         )}
         <div className="flex items-center justify-end gap-1">
-          {skill.enabled && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-7"
-              onClick={() => setArchiveDialogOpen(true)}
-            >
-              <Archive className="size-3.5" />
-            </Button>
-          )}
           <Button variant="ghost" size="icon" className="size-7" onClick={() => onEdit(skill)}>
             <Pencil className="size-3.5" />
           </Button>
@@ -139,14 +127,6 @@ export function SkillListCard({
         onConfirm={handleDelete}
       />
 
-      <SkillArchiveDialog
-        open={archiveDialogOpen}
-        onOpenChange={setArchiveDialogOpen}
-        projectId={projectId}
-        skill={skill}
-        onArchive={onArchive}
-        onRestore={onRestore}
-      />
     </Card>
   )
 }

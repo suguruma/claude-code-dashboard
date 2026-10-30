@@ -1,7 +1,6 @@
 "use client"
 
-import Link from "next/link"
-import { CheckCircle2, Circle, CircleDot, ExternalLink } from "lucide-react"
+import { CheckCircle2, Circle, CircleDot } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import {
   Dialog,
@@ -18,6 +17,7 @@ import { cn } from "@/lib/utils"
 import { ContextBar } from "./ContextBar"
 import { InstructionPendingBadge } from "./InstructionPendingBadge"
 import { SendCountBadge, SendLimitNotice } from "./Messaging"
+import { SessionHealthSection } from "./SessionHealthSection"
 import { DesktopStatusBadge } from "./statusMeta"
 import { ORIGIN_LABEL, formatAgo, formatDateTime } from "./format"
 
@@ -102,13 +102,6 @@ export function SessionDetailDialog({ sessionId, highContextRatio, onClose }: Se
                 ) : (
                   "—"
                 )}
-              </Field>
-              <Field label="CLIプロセス">
-                {detail.cliProcess === "running"
-                  ? "あり（--resume で起動中。「実行中」とは別の情報）"
-                  : detail.cliProcess === "none"
-                    ? "なし"
-                    : "確認できていません"}
               </Field>
             </dl>
 
@@ -195,14 +188,9 @@ export function SessionDetailDialog({ sessionId, highContextRatio, onClose }: Se
               )}
             </div>
 
+            {/* セッション監視の診断の移り先(⑬ の棚卸しの行25・27) */}
             {detail.projectDirName && detail.transcriptId && (
-              <Link
-                href={`/session-monitor?dir=${encodeURIComponent(detail.projectDirName)}&session=${encodeURIComponent(detail.transcriptId)}`}
-                className="inline-flex items-center gap-1 text-sm text-primary underline-offset-4 hover:underline"
-              >
-                <ExternalLink className="size-3.5" aria-hidden />
-                セッション監視で詳しく診断する
-              </Link>
+              <SessionHealthSection key={detail.transcriptId} dirName={detail.projectDirName} transcriptId={detail.transcriptId} />
             )}
           </div>
         )}

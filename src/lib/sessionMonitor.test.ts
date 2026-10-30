@@ -2,7 +2,7 @@ import { promises as fs } from "fs"
 import os from "os"
 import path from "path"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { getClaudeProjectsRoot, getSessionMetrics, listSessionProjects, listSessions } from "./sessionMonitor"
+import { getClaudeProjectsRoot, getSessionMetrics, listSessions } from "./sessionMonitor"
 
 const cleanupDirs: string[] = []
 let homeDir: string
@@ -80,21 +80,6 @@ const SAMPLE_LINES = [
     hookErrors: ["some hook failed"],
   },
 ]
-
-describe("listSessionProjects", () => {
-  it("~/.claude/projects が無ければ空配列を返す", async () => {
-    expect(await listSessionProjects()).toEqual([])
-  })
-
-  it(".jsonlを持つディレクトリのみ一覧化する", async () => {
-    await writeSession("proj-a", "s1", SAMPLE_LINES.map(line).join(""))
-    await fs.mkdir(path.join(homeDir, ".claude", "projects", "empty-dir"), { recursive: true })
-
-    const projects = await listSessionProjects()
-    expect(projects).toHaveLength(1)
-    expect(projects[0]).toMatchObject({ dirName: "proj-a", sessionCount: 1 })
-  })
-})
 
 describe("listSessions / getSessionMetrics", () => {
   it("トークン・ツール呼び出し・エラー・コンパクション・フック失敗を正しく集計する", async () => {

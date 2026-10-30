@@ -23,9 +23,9 @@ describe("サイドバーの項目", () => {
     const group = NAV_GROUPS.find((g) => g.label === "Claude Desktop")
     expect(group?.items.map((i) => [i.href, i.label])).toEqual([
       ["/desktop-sessions", "セッション一覧"],
-      ["/desktop-sessions/usage", "利用上限"],
+      ["/desktop-sessions/usage", "リソース"],
       ["/desktop-sessions/housekeeping", "整理"],
-      ["/org-rules", "組織のルール"],
+      ["/org-rules", "組織"],
     ])
     // 各ページの見出しの下に出す説明がある
     expect(group?.items.every((i) => (i.description ?? "").length > 0)).toBe(true)
@@ -35,16 +35,34 @@ describe("サイドバーの項目", () => {
     expect(findNavItem("/desktop-sessions")?.label).toBe("セッション一覧")
     // 組織図のページはホームへ移すだけなので、サイドバーの項目は無い
     expect(findNavItem("/desktop-sessions/org")).toBeNull()
-    expect(findNavItem("/desktop-sessions/usage")?.label).toBe("利用上限")
+    expect(findNavItem("/desktop-sessions/usage")?.label).toBe("リソース")
     expect(findNavItem("/desktop-sessions/housekeeping")?.label).toBe("整理")
-    expect(findNavItem("/org-rules")?.label).toBe("組織のルール")
+    expect(findNavItem("/org-rules")?.label).toBe("組織")
     expect(findNavItem("/help")?.label).toBe(HELP_ITEM.label)
     expect(findNavItem("/no-such-page")).toBeNull()
   })
 
-  it("プロジェクトに紐づく設定は「設定管理」に並び、先頭はプロジェクトの概要(もとのホームの中身)", () => {
+  it("[FS-1] プロジェクトに紐づく設定は「設定管理」に並ぶ(プロジェクトの概要・メモリ管理は ⑬ でやめた)", () => {
     const group = NAV_GROUPS.find((g) => g.label === "設定管理")
-    expect(group?.items.map((i) => i.href)).toEqual(["/project", "/rules", "/skills", "/memory", "/settings"])
+    expect(group?.items.map((i) => i.href)).toEqual(["/rules", "/skills", "/settings"])
+  })
+
+  it("[FS-1, RM-1] サイドバーは13ページ(⑬ の機能の整理。使い方ガイドを含む)", () => {
+    expect(items.map((i) => i.label)).toEqual([
+      "ホーム",
+      "セッション一覧",
+      "リソース",
+      "整理",
+      "組織",
+      "ルール管理",
+      "スキル管理",
+      "設定",
+      "実行ログ",
+      "ルール整理",
+      "移行",
+      "スマホから見る",
+      "使い方ガイド",
+    ])
   })
 
   it("並びは、ホーム → Claude Desktop → 設定管理 → 分析・振り返り → ツール。ホームのすぐ次がセッション一覧", () => {
@@ -62,14 +80,10 @@ describe("プロジェクトの切り替えを出すページ(⑧の表)", () =>
     "/desktop-sessions/usage": false,
     "/desktop-sessions/housekeeping": false,
     "/org-rules": false,
-    "/project": true,
     "/rules": true,
     "/skills": true,
-    "/memory": true,
     "/settings": true,
     "/trace": true,
-    "/session-monitor": false,
-    "/tasks": true,
     "/migrate": true,
     "/refactor": true,
     "/lan-access": false,

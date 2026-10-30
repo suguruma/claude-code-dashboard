@@ -11,11 +11,14 @@ interface SimilarSkillsAlertProps {
 export function SimilarSkillsAlert({ pairs }: SimilarSkillsAlertProps) {
   if (pairs.length === 0) return null
 
+  // 数が増えたときだけ役立つので、初めは閉じておく(⑬ の棚卸しの行33。設定の項目は作らない)
   return (
     <Alert className="border-amber-300 dark:border-amber-800">
       <AlertTriangle className="size-4 text-amber-600 dark:text-amber-400" />
-      <AlertTitle>発火が曖昧かもしれないスキルの組</AlertTitle>
+      <AlertTitle>発火が曖昧かもしれないスキルの組（{pairs.length}組）</AlertTitle>
       <AlertDescription>
+        <details data-testid="similar-skills">
+        <summary className="cursor-pointer">開いて読む</summary>
         <p className="mb-2 text-muted-foreground">
           同カテゴリ内でdescriptionの内容が似ているスキルです。Claude
           Codeがどちらを発火すべきか判断しづらくなっている可能性があります。
@@ -38,6 +41,7 @@ export function SimilarSkillsAlert({ pairs }: SimilarSkillsAlertProps) {
             </li>
           ))}
         </ul>
+        </details>
       </AlertDescription>
     </Alert>
   )

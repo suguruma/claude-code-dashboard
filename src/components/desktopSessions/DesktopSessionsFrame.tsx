@@ -10,9 +10,18 @@ import type { UsageResponse } from "@/lib/usageTypes"
 /**
  * ホームと Claude Desktop の各ページ(セッション一覧・利用上限・整理)に共通の枠。
  * 見出しと説明はサイドバーの項目(navConfig)から取り、上限ガードの帯を全ページの先頭に1つだけ出す。
- * guardFrom: 帯に使う利用上限をページが決める(ホームは、件数と同じときに帯を出し、件数のカードを後から動かさない。⑫ ST-7)
+ * guardFrom: 帯に使う利用上限をページが決める(⑫ ST-7)。hideGuard: ホームは帯の枠(利用上限の1行。80%以上で「新しい指示を控える」)を
+ * 自分で出すので、この帯を出さない(⑬ 4-5)
  */
-export function DesktopSessionsFrame({ children, guardFrom }: { children: ReactNode; guardFrom?: { usage: UsageResponse | null } }) {
+export function DesktopSessionsFrame({
+  children,
+  guardFrom,
+  hideGuard = false,
+}: {
+  children: ReactNode
+  guardFrom?: { usage: UsageResponse | null }
+  hideGuard?: boolean
+}) {
   const pathname = usePathname()
   const current = findNavItem(pathname)
   const { data: ownUsage } = useUsage()
@@ -28,7 +37,7 @@ export function DesktopSessionsFrame({ children, guardFrom }: { children: ReactN
       )}
 
       {/* 最新の公式値が80%以上のときの上限ガードの帯(表示のみ) */}
-      <UsageGuardBand guard={usage?.guard} windows={usage?.windows} />
+      {!hideGuard && <UsageGuardBand guard={usage?.guard} windows={usage?.windows} />}
 
       {children}
     </div>

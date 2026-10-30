@@ -4,7 +4,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { UsageContributions } from "@/components/desktopSessions/UsageContributions"
 import { UsageGauge } from "@/components/desktopSessions/UsageGauge"
 import { useUsage } from "@/hooks/useUsage"
-import { costPerPercentOf, formatDollars, formatJst, formatPercent } from "@/lib/usageFormat"
+import { costPerPercentOf, formatDollars, formatJst } from "@/lib/usageFormat"
 import type { UsageResponse } from "@/lib/usageTypes"
 
 function extraUsageText(extra: UsageResponse["extraUsage"]): string | null {
@@ -80,12 +80,8 @@ export function UsagePanel({ showTitle = true }: { showTitle?: boolean }) {
         </Alert>
       )}
 
-      <p className="text-xs text-muted-foreground">
-        {data.accuracy.samples > 0 && data.accuracy.medianAbsError !== null && data.accuracy.p90AbsError !== null
-          ? `推定の精度（直近7日・${data.accuracy.samples}回の公式値との比較）: 中央値 ±${formatPercent(data.accuracy.medianAbsError)}ポイント、90%点 ±${formatPercent(data.accuracy.p90AbsError)}ポイント。`
-          : "推定の精度: 同じ枠の公式値が2点以上たまると、過去の推定とのずれを表示します。"}
-        {data.note}
-      </p>
+      {/* 推定と公式値の差(中央値・90%点)は作る側の確かめなので出さない(⑬ の棚卸しの行19。確かめは自動テストで行う) */}
+      <p className="text-xs text-muted-foreground">{data.note}</p>
     </section>
   )
 }

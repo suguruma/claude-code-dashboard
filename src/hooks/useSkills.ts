@@ -2,7 +2,7 @@
 
 import useSWR, { mutate as globalMutate } from "swr"
 import { apiMutate, fetcher } from "@/lib/fetcher"
-import { ArchivedSkillVersion, SkillMeta } from "@/lib/types"
+import { SkillMeta } from "@/lib/types"
 import { skillTrashKey } from "@/hooks/useSkillTrash"
 
 interface SkillsResponse {
@@ -64,31 +64,6 @@ export function useSkills(projectId: string | null) {
     return skill
   }
 
-  async function archiveSkill(dirName: string) {
-    if (!projectId) throw new Error("プロジェクトが選択されていません")
-    await apiMutate(`/api/skills/${dirName}/archive?projectId=${encodeURIComponent(projectId)}`, "POST")
-  }
-
-  async function archiveAllSkills() {
-    if (!projectId) throw new Error("プロジェクトが選択されていません")
-    // fsへの同時書き込みを避けるため直列で実行する
-    for (const skill of data?.skills ?? []) {
-      await apiMutate(
-        `/api/skills/${skill.dirName}/archive?projectId=${encodeURIComponent(projectId)}`,
-        "POST"
-      )
-    }
-  }
-
-  async function restoreSkillVersion(dirName: string, model: string, switchBackupAt?: number) {
-    if (!projectId) throw new Error("プロジェクトが選択されていません")
-    await apiMutate(`/api/skills/${dirName}/restore?projectId=${encodeURIComponent(projectId)}`, "POST", {
-      model,
-      switchBackupAt,
-    })
-    await mutate()
-  }
-
   async function disableSkill(dirName: string) {
     if (!projectId) throw new Error("プロジェクトが選択されていません")
     await apiMutate(`/api/skills/${dirName}/disable?projectId=${encodeURIComponent(projectId)}`, "POST")
@@ -109,23 +84,7 @@ export function useSkills(projectId: string | null) {
     updateSkill,
     deleteSkill,
     renameSkill,
-    archiveSkill,
-    archiveAllSkills,
-    restoreSkillVersion,
     disableSkill,
     enableSkill,
   }
-}
-
-interface ArchivedVersionsResponse {
-  versions: ArchivedSkillVersion[]
-}
-
-export function useSkillArchiveVersions(projectId: string | null, dirName: string | null) {
-  const key =
-    projectId && dirName
-      ? `/api/skills/${dirName}/archive?projectId=${encodeURIComponent(projectId)}`
-      : null
-  const { data, error, isLoading, mutate } = useSWR<ArchivedVersionsResponse>(key, fetcher)
-  return { versions: data?.versions ?? [], isLoading, error, mutate }
 }

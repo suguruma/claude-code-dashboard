@@ -4,19 +4,9 @@ import useSWR from "swr"
 import { fetcher } from "@/lib/fetcher"
 import {
   SessionDiagnosisMetrics,
-  SessionMetrics,
-  SessionProjectSummary,
   SessionSemanticDiagnosis,
   SessionSummary,
 } from "@/lib/types"
-
-export function useSessionProjects() {
-  const { data, error, isLoading } = useSWR<{ projects: SessionProjectSummary[] }>(
-    "/api/session-monitor/projects",
-    fetcher
-  )
-  return { projects: data?.projects ?? [], isLoading, error }
-}
 
 export function useSessions(dirName: string | null) {
   const key = dirName ? `/api/session-monitor/projects/${encodeURIComponent(dirName)}/sessions` : null
@@ -41,28 +31,6 @@ export function useSessionDiagnosisMetrics(
     refreshInterval: live ? 3000 : 0,
     // 監視対象のタブをバックグラウンドに置いたまま作業するのが主な使い方のため、
     // SWR既定のrefreshWhenHidden:falseだと最も見たい場面で更新が止まってしまう
-    refreshWhenHidden: live,
-  })
-  return { metrics: data?.metrics ?? null, isLoading, error }
-}
-
-/**
- * トークン推移・ツール別集計等を含む全メトリクス。ペイロードが大きい（同条件で数百KB〜）ため、
- * 「詳細データ」を開いたとき（enabled=true）だけ取得する。閉じるとSWRのキーがnullになり、
- * liveがtrueでもポーリングは自動的に止まる。
- */
-export function useSessionDetailMetrics(
-  dirName: string | null,
-  sessionId: string | null,
-  enabled: boolean,
-  live: boolean
-) {
-  const key =
-    enabled && dirName && sessionId
-      ? `/api/session-monitor/projects/${encodeURIComponent(dirName)}/sessions/${encodeURIComponent(sessionId)}?detail=1`
-      : null
-  const { data, error, isLoading } = useSWR<{ metrics: SessionMetrics }>(key, fetcher, {
-    refreshInterval: live ? 3000 : 0,
     refreshWhenHidden: live,
   })
   return { metrics: data?.metrics ?? null, isLoading, error }

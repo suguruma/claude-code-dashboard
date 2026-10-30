@@ -76,25 +76,13 @@ interface OrgLoadingFrameProps {
 }
 
 /**
- * 組織図の枠(読み込み後と同じ並び：4つの数字 → 組織図のカード)。高さは前回と同じにし、組織図が出ても画面がずれにくくする(⑫ ST-6)。
+ * 組織図の枠(読み込み後と同じ並び：組織図のカード。4つの集計は ⑬ でやめた)。高さは前回と同じにし、組織図が出ても画面がずれにくくする(⑫ ST-6)。
  * 棒は「動いている印」で、進み具合ではない(画面の側は答えを待っているだけで、進み具合を知らないため)
  */
 export function OrgLoadingFrame({ height, state, reason, onRetry }: OrgLoadingFrameProps) {
   const busy = state === "loading" || state === "slow"
   return (
     <div className="flex flex-col gap-3" style={{ height }} aria-busy={busy} data-testid="org-loading-frame" data-state={state}>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {["指示（本）", "報告（本）", "報告なしで終了（件）", "作業中（件）"].map((label) => (
-          <div key={label} className="rounded-xl border bg-card px-3 py-2">
-            {state === "failed" || state === "blocked" ? (
-              <span className="block text-sm leading-7 text-muted-foreground">取得できません</span>
-            ) : (
-              <Skeleton className="my-1 h-5 w-9" />
-            )}
-            <span className="text-xs text-muted-foreground">{label}</span>
-          </div>
-        ))}
-      </div>
       <div
         className={cn("flex min-h-0 flex-1 flex-col gap-3 overflow-hidden rounded-xl border bg-card p-4")}
         style={state === "failed" ? { borderColor: "var(--status-critical)" } : undefined}
@@ -135,16 +123,13 @@ export function OrgLoadingFrame({ height, state, reason, onRetry }: OrgLoadingFr
   )
 }
 
-/** グループのタブの行の枠(一覧が来る前。読み込み後のタブの行と同じ高さ) */
+/** グループのタブの行の枠(一覧が来る前。読み込み後のタブの行と同じ高さ。期間・並び順の選択は ⑬ でやめた) */
 export function OrgTabsSkeleton() {
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2" aria-hidden data-testid="org-tabs-skeleton">
       <div className="flex gap-1.5">
         <Skeleton className="h-[30px] w-28 rounded-full" />
         <Skeleton className="h-[30px] w-24 rounded-full" />
-      </div>
-      <div className="ml-auto">
-        <Skeleton className="h-8 w-80" />
       </div>
     </div>
   )

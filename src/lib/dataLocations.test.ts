@@ -12,14 +12,13 @@ import {
   locateData,
   resolveProjectsRoot,
 } from "./dataLocations"
-import { CliProcessWatcher } from "./cliProcesses"
 import { DesktopSessionService } from "./desktopSessionService"
 import { locateDesktopDataDir } from "./desktopSessions"
 import { assistantRow, fakeCliId, humanRow, makeDesktopFixture, makeMeta, tsAt, writeMeta, writeTranscript, type DesktopFixture } from "./desktopFixtures"
 import { FlowService } from "./flowService"
 import { HousekeepingService } from "./housekeepingService"
 import { OrgRulesService } from "./orgRulesService"
-import { listSessionProjects } from "./sessionMonitor"
+import { listSessions } from "./sessionMonitor"
 import { UsageService } from "./usageService"
 
 describe("isAutodetectDisabled", () => {
@@ -178,18 +177,13 @@ describe("自動の探索のスイッチ（⑧-2）", () => {
     expect(list.sessions.map((s) => s.title)).toContain(DECOY_TITLE)
   })
 
-  it("CCD_DESKTOP_AUTODETECT=0 で明示が無いときは、ホーム・AppData の下を1つも開かない（一覧・利用上限・セッション監視・整理）", async () => {
+  it("CCD_DESKTOP_AUTODETECT=0 で明示が無いときは、ホーム・AppData の下を1つも開かない（一覧・利用上限・一覧の詳細の健康・整理）", async () => {
     await plantDecoy()
     process.env[AUTODETECT_ENV] = "0"
     const seen = watchReads()
 
-    // 実行中の claude.exe を調べる処理(PowerShell)も、スイッチで止まる(⑧-3)
-    const runPowerShell = vi.fn(async () => "")
-    const cliProcesses = new CliProcessWatcher({ run: runPowerShell, platform: "win32" })
-    const sessions = new DesktopSessionService({ now: () => NOW, cliProcesses })
+    const sessions = new DesktopSessionService({ now: () => NOW })
     const list = await sessions.list()
-    await cliProcesses.refresh()
-    expect(runPowerShell).not.toHaveBeenCalled()
     expect(list.source).toBe("none")
     expect(list.dataLocation).toEqual({ path: null, origin: "disabled" })
     expect(list.sessions).toEqual([])
@@ -198,7 +192,8 @@ describe("自動の探索のスイッチ（⑧-2）", () => {
     const usageResponse = await usage.get()
     expect(JSON.stringify(usageResponse)).not.toContain(DECOY_TITLE)
 
-    expect(await listSessionProjects()).toEqual([])
+    // セッション一覧の詳細の「健康」(⑬ でセッション監視から移した)も、既定の場所を開かない
+    expect(await listSessions("any-project")).toEqual([])
 
     const housekeeping = new HousekeepingService(sessions, new FlowService(sessions), { now: () => NOW, usage: async () => usage })
     const hk = await housekeeping.get()

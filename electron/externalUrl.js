@@ -3,15 +3,17 @@
  * shell.openExternal に渡すと、任意のアプリやファイルを起動できてしまうため、許可するURLを狭く限る。
  * 許可するURLは、このファイルの ALLOWED_EXTERNAL_URLS の1か所だけに書く(ここに無いURLは、どの経路からも開かない)。
  *
- * 許可しているのは次の2種類で、どちらも「完全に一致するもの」に限る(前方一致や部分一致は許さない)。
+ * 許可しているのは次の3種類で、どれも「完全に一致するもの」に限る(前方一致や部分一致は許さない)。
  * - Claude Desktopでセッションを開く `claude://claude.ai/epitaxy/local_<ID>`
  *   (スキームが claude: であることに加えて、ホスト・パス・セッションIDの形式まで一致するもの。
  *   src/lib/sessionMessaging.ts の sessionDeepLink が作る形式)
  * - ヘルプページが案内する Claude Code の紹介ページ `https://claude.com/claude-code`
+ * - ホームの「クラウドのセッション」のボタンが開く `https://claude.ai/code`(⑬ CL-1。src/lib/cloudSessions.ts の CLOUD_SESSIONS_URL)
  */
 const ALLOWED_EXTERNAL_URLS = [
   /^claude:\/\/claude\.ai\/epitaxy\/local_[A-Za-z0-9_-]{1,100}$/,
   /^https:\/\/claude\.com\/claude-code$/,
+  /^https:\/\/claude\.ai\/code$/,
 ]
 
 function isAllowedExternalUrl(url) {

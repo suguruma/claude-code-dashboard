@@ -29,11 +29,9 @@ import { DELETE as executionLogDelete } from "@/app/api/execution-log/[taskId]/r
 import { POST as suggestedRules } from "@/app/api/execution-log/[taskId]/suggested-rules/route"
 import { PATCH as rulePatch } from "@/app/api/rules/[id]/route"
 import { POST as rulesReorder } from "@/app/api/rules/reorder/route"
-import { POST as skillArchive } from "@/app/api/skills/[dirName]/archive/route"
 import { POST as skillDisable } from "@/app/api/skills/[dirName]/disable/route"
 import { POST as skillEnable } from "@/app/api/skills/[dirName]/enable/route"
 import { POST as skillRename } from "@/app/api/skills/[dirName]/rename/route"
-import { POST as skillRestore } from "@/app/api/skills/[dirName]/restore/route"
 import { DELETE as skillDelete, PATCH as skillPatch } from "@/app/api/skills/[dirName]/route"
 import { POST as skillCreate } from "@/app/api/skills/route"
 import { POST as trashRestore } from "@/app/api/skills-trash/route"
@@ -111,27 +109,6 @@ describe("スキルの API", () => {
     expect((await call(skillDisable, "sample-skill")).status).toBe(409)
     expect((await call(skillEnable, "sample-skill")).status).toBe(200)
   })
-
-  it("退避(アーカイブ): 見つからない → 404／スキル名がフォルダを指さない → 400", async () => {
-    const archive = (dirName: string) => skillArchive(request("POST"), params({ dirName }))
-    expect((await archive("nothing")).status).toBe(404)
-    expect((await archive("..")).status).toBe(400)
-    expect((await archive("a/b")).status).toBe(400)
-    expect((await archive("sample-skill")).status).toBe(200)
-  })
-
-  it("切り替え(restore): モデル名が . だけ → 400／. を含むパスに置き換わる名前・無いモデル・無いスキル → 404", async () => {
-    await writeSkill(state.project!, "sample-skill", "target-model: Model A\n")
-    expect((await skillArchive(request("POST"), params({ dirName: "sample-skill" }))).status).toBe(200)
-    const restore = (dirName: string, model: unknown) => skillRestore(request("POST", { model }), params({ dirName }))
-    for (const model of [".", "..", "...", " .. "]) {
-      expect((await restore("sample-skill", model)).status).toBe(400)
-    }
-    expect((await restore("sample-skill", "./..")).status).toBe(404)
-    expect((await restore("sample-skill", "No Such Model")).status).toBe(404)
-    expect((await restore("nothing", "Model A")).status).toBe(404)
-    expect((await restore("sample-skill", 123)).status).toBe(400)
-  })
 })
 
 describe("削除済みスキル・バックアップの API", () => {
@@ -172,7 +149,6 @@ describe("リクエストの本文", () => {
       ["POST /api/skills", (b) => skillCreate(rawRequest("POST", b))],
       ["PATCH /api/skills/[dirName]", (b) => skillPatch(rawRequest("PATCH", b), params({ dirName: "sample-skill" }))],
       ["POST /api/skills/[dirName]/rename", (b) => skillRename(rawRequest("POST", b), params({ dirName: "sample-skill" }))],
-      ["POST /api/skills/[dirName]/restore", (b) => skillRestore(rawRequest("POST", b), params({ dirName: "sample-skill" }))],
       ["POST /api/skills-trash", (b) => trashRestore(rawRequest("POST", b))],
       ["POST /api/backups/restore", (b) => backupsRestore(rawRequest("POST", b))],
       ["POST /api/rules", (b) => rulesCreate(rawRequest("POST", b))],

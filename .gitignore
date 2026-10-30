@@ -51,11 +51,17 @@ next-env.d.ts
 /config/usage.json
 # dashboard: 組織のルールのページで読む追加のファイルの場所など、利用者ごとの設定（ローカルの絶対パスを含みうる）
 /config/org-rules.json
+# dashboard: 組織の「つながり」の役割の見分け方・担当と指示のファイル・台帳の結び（ローカルの絶対パスを含みうる）
+/config/relations.json
+# dashboard: リソースのページ(⑭)で読む作業計画・待ち行列・CPU の記録の場所（ローカルの絶対パスを含みうる）
+/config/monitor.json
 # dashboard: スマホから見る(⑪)のオン・オフ・登録した端末(鍵のハッシュ)・登録コード(ハッシュ)・待ち受けの状態(利用者ごと)
 /config/lan-access.json
 /config/lan-devices.json
 /config/lan-pairing.json
 /config/lan-status.json
+# dashboard: ページを開いた回数(⑬ FS-7。13ページのパスと日付ごとの回数だけ。利用者ごとの記録)
+/config/page-visits.json
 
 # dashboard: real ~/.claude data provided for local testing (contains personal session logs)
 /sample-data-user/

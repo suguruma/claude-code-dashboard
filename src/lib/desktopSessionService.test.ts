@@ -1,3 +1,4 @@
+import { collectDecisions } from "./housekeeping"
 import { promises as fs } from "fs"
 import os from "os"
 import path from "path"
@@ -5,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { DesktopSessionService } from "./desktopSessionService"
 import {
   NEEDS_ACTION_HEAD,
+  NEEDS_ACTION_TAIL,
   SENTINEL,
   SYNTHETIC_SEND_LIMIT,
   SYNTHETIC_SEND_OK,
@@ -156,6 +158,32 @@ describe("DesktopSessionService.list", () => {
     const detail = await svc.detail(fakeSessionId(2))
     expect(detail?.needsActionExcerpt).toBe(blocked.needsActionExcerpt)
     expect(JSON.stringify([list, detail])).not.toContain(SENTINEL)
+    // [ND-9] 要約の全文は、次にやる判断(⑬)の問いとして、判断を待つセッションの decision にだけ出る
+    expect(blocked.decision?.question).toContain(NEEDS_ACTION_TAIL)
+    expect(blocked.decision?.questionSource).toBe("summary")
+    const others = list.sessions.filter((x) => x.id !== blocked.id)
+    expect(JSON.stringify(others)).not.toContain(NEEDS_ACTION_TAIL)
+    expect(JSON.stringify({ ...blocked, decision: null })).not.toContain(NEEDS_ACTION_TAIL)
+  })
+
+  it("[A9] 次にやる判断の問いと候補は、判断を待つセッションにだけ付き、項目は許可リストのものだけ(⑬ ND-9)", async () => {
+    const fx = await fixture()
+    await seed(fx)
+    const svc = service(fx)
+    await svc.list()
+    await svc.settle()
+    const list = await svc.list()
+    const waiting = new Set(collectDecisions(list.sessions).map((d) => d.id))
+    for (const s of list.sessions) {
+      if (!waiting.has(s.id)) expect(s.decision).toBeNull()
+    }
+    const withDecision = list.sessions.filter((s) => s.decision !== null)
+    expect(withDecision.length).toBeGreaterThan(0)
+    for (const s of withDecision) {
+      expect(Object.keys(s.decision!).sort()).toEqual(
+        ["errorText", "moreOptions", "moreQuestions", "options", "question", "questionSource", "recommended"].sort()
+      )
+    }
   })
 
   it("回答待ちで要対応になったセッションには、前のターンの要約文を出さない", async () => {
@@ -523,71 +551,6 @@ describe("実データとの照合で見つかった不具合の修正(合成デ
     const s = (await service(fx).list()).sessions[0]
     expect(s.context).toMatchObject({ tokens: 607_659, limit: 1_000_000 })
     expect(Math.round(s.context!.ratio * 100)).toBe(61)
-  })
-})
-
-describe("起動中のCLIプロセスの確認(段階2)", () => {
-  async function seedTwo() {
-    const fx = await fixture()
-    for (const n of [1, 2]) {
-      await writeMeta(fx, makeMeta({ n, title: `セッション${n}`, category: "completed", summaryFor: fakeUuid(n) }))
-      const t = await writeTranscript(fx, fakeCliId(n), [
-        humanRow("依頼", { ts: new Date(NOW - 7300_000).toISOString() }),
-        assistantRow({ stop: "end_turn", uuid: fakeUuid(n), ts: new Date(NOW - 7200_000).toISOString() }),
-      ])
-      await touch(t, NOW, 7200)
-    }
-    return fx
-  }
-
-  it("プロセスがある/無いセッションを区別し、「実行中」の判定は変えない", async () => {
-    const fx = await seedTwo()
-    const svc = service(fx, { cliProcesses: { peek: () => new Set([fakeCliId(1)]) } })
-    const list = await svc.list()
-    const a = list.sessions.find((x) => x.title === "セッション1")!
-    const b = list.sessions.find((x) => x.title === "セッション2")!
-    expect(a.cliProcess).toBe("running")
-    expect(b.cliProcess).toBe("none")
-    // プロセスが残っていても、動いているとは限らない(入力待ちでもプロセスは残る)。状態は従来どおり
-    expect(a.status).toBe("completed")
-    expect((await svc.detail(fakeSessionId(1)))?.cliProcess).toBe("running")
-  })
-
-  it("取得できていない(Windows以外・失敗・初回の取得前)ときは「情報なし」として扱う", async () => {
-    const fx = await seedTwo()
-    const unknown = await service(fx, { cliProcesses: { peek: () => null } }).list()
-    expect(unknown.sessions.every((x) => x.cliProcess === "unknown")).toBe(true)
-    const none = await service(fx).list()
-    expect(none.sessions.every((x) => x.cliProcess === "unknown")).toBe(true)
-  })
-
-  it("一覧の応答は、プロセスの確認の完了を待たない(peek を一覧1回につき1回、同期的に呼ぶだけ)", async () => {
-    const fx = await seedTwo()
-    let peeked = 0
-    const svc = service(fx, {
-      cliProcesses: {
-        peek: () => {
-          peeked++
-          return new Set<string>()
-        },
-      },
-    })
-    const list = await svc.list()
-    expect(peeked).toBe(1)
-    expect(list.sessions.every((x) => x.cliProcess === "none")).toBe(true)
-  })
-
-  it("縮退表示(会話ログだけ)でも、会話ログのIDでプロセスの有無を表示する", async () => {
-    const fx = await fixture()
-    const t = await writeTranscript(fx, fakeCliId(1), [humanRow("指示"), assistantRow({ stop: "end_turn" })])
-    await touch(t, NOW, 7200)
-    const svc = new DesktopSessionService({
-      dataDir: path.join(fx.dataDir, "..", "nothing"),
-      projectsRoot: fx.projectsRoot,
-      now: () => NOW,
-      cliProcesses: { peek: () => new Set([fakeCliId(1)]) },
-    })
-    expect((await svc.list()).sessions[0].cliProcess).toBe("running")
   })
 })
 

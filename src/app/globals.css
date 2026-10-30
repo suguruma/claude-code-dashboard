@@ -166,7 +166,6 @@
 
 /*
  * 組織図アニメーション(⑤)。粒・線・脈動の色。指示=青、報告=緑、他のグループ・外部=紫、作業中=橙(--status-serious)。
- * 作業量のバーは量の表示なので、この色ではなく --work-lap-1〜4 を使う(OrgCard)。
  * 色だけに頼らず、線の種類(実線・破線・点線)と文言も併記する。
  */
 :root {
@@ -178,14 +177,6 @@
   --flow-down-text: #2659bd;
   --flow-up-text: #0a6b50;
   --flow-cross-text: #6946bb;
-  /*
-   * 作業量のバーの周の色(100回で1周。4段)。量の表示なので、警告の色(黄・赤・橙)と粒の色(青・緑・紫)を避けた
-   * 青緑(oklch の色相215)の濃淡にし、周が進むほど濃く(ダークでは明るく)する。どれも背景との差は3:1以上
-   */
-  --work-lap-1: #0097b3;
-  --work-lap-2: #00728a;
-  --work-lap-3: #004d60;
-  --work-lap-4: #002e3b;
 }
 
 .dark {
@@ -195,10 +186,6 @@
   --flow-down-text: #73a0ff;
   --flow-up-text: #34c79d;
   --flow-cross-text: #af8eff;
-  --work-lap-1: #008399;
-  --work-lap-2: #0fadc9;
-  --work-lap-3: #5fd3ed;
-  --work-lap-4: #aff1ff;
 }
 
 .org-wires path {
@@ -348,4 +335,9 @@
     animation: none;
     transform: translateX(177%);
   }
+}
+
+/* ホームの次にやる判断を閉じていたら、ハイドレーションの前から中身を隠す(NextDecisions の描画の前のスクリプトが印を付ける) */
+html[data-home-decisions="closed"] #home-decisions-body {
+  display: none;
 }

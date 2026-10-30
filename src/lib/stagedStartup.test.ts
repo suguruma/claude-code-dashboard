@@ -305,24 +305,29 @@ describe("ホームの部品", () => {
     expect(sideNav).not.toMatch(/from "next\/link"/)
   })
 
-  it("[ST-5] 読み込み中の件数・利用上限のカードに「—」「公式値なし」を出さない。答えが来て無いときだけ「—」", async () => {
-    const { HomeSummaryCards } = await import("@/components/home/HomeSummaryCards")
-    const loading = renderToStaticMarkup(
-      createElement(HomeSummaryCards, { sessions: null, usage: null, countsPhase: "loading", usagePhase: "loading", onRetryUsage: async () => {} })
-    )
+  it("[ST-5] [ND-10] 読み込み中の次にやる判断・利用上限の帯に「—」「公式値なし」を出さない。答えが来て無いときだけ「—」(⑬ で件数カードから置き換え)", async () => {
+    const { NextDecisions } = await import("@/components/home/NextDecisions")
+    const { UsageStrip } = await import("@/components/home/HomeBands")
+    const onRetry = async () => {}
+    const loading =
+      renderToStaticMarkup(createElement(NextDecisions, { sessions: null, phase: "loading", now: 0, onRetry })) +
+      renderToStaticMarkup(createElement(UsageStrip, { usage: null, phase: "loading", onRetry }))
     expect(loading).not.toContain("—")
     expect(loading).not.toContain("公式値なし")
     expect(loading).toContain("読み込んでいます")
-    const none = renderToStaticMarkup(createElement(HomeSummaryCards, { sessions: null, usage: null }))
+    const none = renderToStaticMarkup(createElement(UsageStrip, { usage: null, phase: "ready", onRetry }))
     expect(none).toContain("—")
   })
 
-  it("[ST-5, ST-7] 公式値が失敗したら、件数は出し、利用上限のカードは「取得できません」と［もう一度読み込む］", async () => {
-    const { HomeSummaryCards } = await import("@/components/home/HomeSummaryCards")
-    const html = renderToStaticMarkup(
-      createElement(HomeSummaryCards, { sessions: [], usage: null, countsPhase: "ready", usagePhase: "failed", onRetryUsage: async () => {} })
-    )
+  it("[ST-5, ST-7] [ND-10] 利用上限が失敗しても、次にやる判断は出し、利用上限の帯は「取得できません」と［もう一度読み込む］", async () => {
+    const { NextDecisions } = await import("@/components/home/NextDecisions")
+    const { UsageStrip } = await import("@/components/home/HomeBands")
+    const onRetry = async () => {}
+    const html =
+      renderToStaticMarkup(createElement(NextDecisions, { sessions: [], phase: "ready", now: 0, onRetry })) +
+      renderToStaticMarkup(createElement(UsageStrip, { usage: null, phase: "failed", onRetry }))
     expect(html).toContain("0件")
+    expect(html).toContain("いま決めることはありません。")
     expect(html).toContain("取得できません")
     expect(html).toContain("もう一度読み込む")
   })
@@ -374,14 +379,22 @@ describe("起動の見張り（exe）", () => {
   })
 })
 
-describe("portable の展開中の画像", () => {
-  it("[ST-14] electron-builder の portable に、展開中の画像(24ビットの BMP)を指定し、その画像がある", async () => {
+describe("配り方（electron-builder）", () => {
+  it("ユーザーごとに入れる NSIS のインストーラーだけを作る。portable の設定は無く、管理者の権限を求める設定（perMachine・oneClick: false）も無い", async () => {
     const yml = await fs.readFile(path.join(process.cwd(), "electron-builder.yml"), "utf-8")
-    const file = /splashImage:\s*(\S+)/.exec(yml)?.[1]
-    expect(file).toBe("electron/portable-splash.bmp")
-    const bmp = await fs.readFile(path.join(process.cwd(), file!))
-    expect(bmp.subarray(0, 2).toString("latin1")).toBe("BM")
-    expect(bmp.readUInt16LE(28)).toBe(24)
+    expect(yml).toMatch(/- target: nsis/)
+    expect(yml).not.toMatch(/target: portable/)
+    expect(yml).not.toMatch(/^portable:/m)
+    expect(yml).not.toMatch(/perMachine:\s*true/)
+    expect(yml).not.toMatch(/oneClick:\s*false/)
+    expect(yml).toMatch(/artifactName: "\$\{productName\}-\$\{version\}-Setup\.\$\{ext\}"/)
+  })
+
+  it("dist:win は yml の対象（nsis）で作る。--win portable と指定すると yml を上書きして portable を作るので、指定しない", async () => {
+    const pkg = JSON.parse(await fs.readFile(path.join(process.cwd(), "package.json"), "utf-8"))
+    const script: string = pkg.scripts["dist:win"]
+    expect(script).toMatch(/electron-builder --win\b/)
+    expect(script).not.toMatch(/portable/)
   })
 })
 

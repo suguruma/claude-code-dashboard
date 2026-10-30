@@ -1,0 +1,6 @@
+{
+  "workPlanFile": "C:\\sample\\monitor\\work_plan.tsv",
+  "resumeQueueFile": "C:\\sample\\monitor\\resume_queue.tsv",
+  "cpuDir": "C:\\sample\\monitor\\cpu",
+  "samePc": true
+}

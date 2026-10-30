@@ -5,19 +5,30 @@ import type {
   InstructionOrigin,
   TaskStatus,
 } from "./desktopSessionTypes"
-import { WRAP_UP_ACTIONS, kindFromWords, type WrapUpDigest } from "./needsActionKind"
+import { WRAP_UP_ACTIONS, approvalActionsOfLabel, kindFromWords, type WrapUpDigest } from "./needsActionKind"
 import { isPeerMessage, peerBodyOf } from "./peerMessage"
+import { cutAfterMask } from "./secretMask"
 import { SEND_LIMIT, classifySendResult, isSendTool } from "./sessionMessaging"
 
 /**
  * 会話ログ(`.jsonl`)から、セッション一覧に必要な少数の値だけを取り出す「要約(digest)」。
  *
  * - 会話本文は保持しない。保持するのは先頭60文字の抜粋、ステップ名(80文字まで)、数値、フラグのみ。
+ *   例外は次にやる判断(⑬)に使う文だけ：最後のターンの wrap_up の ask とボタンの名前、結果を待っている質問の先頭の問いと
+ *   選択肢の名前、プランの1行目、ツールの呼び出しの先頭40字(秘密らしい文字列は伏せる)。どれも上限で切る。
  * - 追記型のログなので、前回の読み取り位置(offset)から後ろだけを読み足せる。サイズが減っていたら呼び出し側が作り直す。
  * - 初回は末尾だけを読む「暫定の要約」で素早く返し、全体の読み込み(圧縮の回数・フェーズの正確な値)は呼び出し側が後から行う。
  */
 
 export const INSTRUCTION_EXCERPT_CHARS = 60
+/** 次にやる判断(⑬)の問いの文の上限。実データの ask は最大60字なので、ふつうは切らない */
+export const QUESTION_MAX_CHARS = 1000
+/** 答えの候補(ボタン・選択肢の名前)の1つの上限と、持つ数の上限 */
+export const OPTION_MAX_CHARS = 60
+const MAX_OPTIONS = 8
+const MAX_SKILL_CALLS = 100
+/** 許可を待つツールの呼び出しの先頭(⑬ D1。秘密らしい文字列を伏せてから切る) */
+export const TOOL_PREVIEW_CHARS = 40
 const STEP_MAX_CHARS = 80
 const MAX_TASKS = 200
 const MAX_PENDING = 64
@@ -49,6 +60,22 @@ export interface DigestLastRow {
   toolNames: string[]
   /** userのみ。この行が結果を返しているツールの名前(ツール結果の行でなければ null) */
   resultOf: string | null
+}
+
+/** 結果を待っているユーザーへの質問(AskUserQuestion)。先頭の問いの全文と、その選択肢の名前だけを持つ */
+export interface PendingAsk {
+  toolUseId: string | null
+  question: string
+  /** 1回の呼び出しの問いの数(先頭の1問を出し、残りは「ほか n問」) */
+  count: number
+  options: string[]
+}
+
+/** 結果を待っているツールの呼び出し(許可待ちの推定に使う)。ツール名と、秘密を伏せた入力の先頭40字だけ */
+export interface PendingTool {
+  toolUseId: string | null
+  name: string
+  preview: string
 }
 
 /** ターンの終わりを宣言するツール。呼ぶとタスクリストの残りは完了になる */
@@ -100,9 +127,17 @@ export interface TranscriptDigest {
   humanSeen: boolean
   /**
    * 最後のターンの wrap_up の呼び出し(⑩ 要対応の種類の手がかり)。新しい入力(ターンの始まり)で null に戻る。
-   * 保持する文は ask の先頭60文字だけ。recap・actions の label・message は取り込まない
+   * 保持する文は ask(全文。上限あり)とボタンの名前(label)だけ(⑬)。recap・ボタンの message は取り込まない
    */
   lastWrapUp: WrapUpDigest | null
+  /** 結果を待っている AskUserQuestion(⑬)。結果が来るか、新しい入力で null に戻る */
+  pendingAsk: PendingAsk | null
+  /** 結果を待っている ExitPlanMode のプランの1行目(⑬)。結果が来るか、新しい入力で null に戻る */
+  pendingPlan: { toolUseId: string | null; line: string } | null
+  /** 結果を待っている、最後のツールの呼び出し(⑬)。結果が来るか、新しい入力で null に戻る */
+  pendingTool: PendingTool | null
+  /** スキルの呼び出し(関係性マップ ⑬ RM-6)。スキルの名前と時刻だけ。新しい順に最大100件 */
+  skillCalls: Array<{ name: string; at: number | null }>
 }
 
 export function createDigest(): TranscriptDigest {
@@ -133,6 +168,10 @@ export function createDigest(): TranscriptDigest {
     sendLimitStopped: false,
     humanSeen: false,
     lastWrapUp: null,
+    pendingAsk: null,
+    pendingPlan: null,
+    pendingTool: null,
+    skillCalls: [],
   }
 }
 
@@ -419,24 +458,80 @@ function applyQueuedCommand(d: TranscriptDigest, attachment: NonNullable<RawEntr
   const instruction: DigestInstruction = { excerpt: makeExcerpt(text, INSTRUCTION_EXCERPT_CHARS), origin: "human", at }
   d.latestInput = instruction
   d.latestHuman = instruction
-  d.lastWrapUp = null
+  startTurn(d)
 }
 
-/** wrap_up の入力から、要対応の種類に使う値だけを取り出す。ask の全文は言葉の推定にだけ使い、保持しない */
+/** 新しい入力でターンが始まる。前のターンの wrap_up と、結果を待っていた呼び出しは、もう当てはまらない */
+function startTurn(d: TranscriptDigest): void {
+  d.lastWrapUp = null
+  d.pendingAsk = null
+  d.pendingPlan = null
+  d.pendingTool = null
+}
+
+/** ツールの結果が来たら、その呼び出しを「結果待ち」から外す */
+function clearPending(d: TranscriptDigest, toolUseId: string): void {
+  if (d.pendingAsk?.toolUseId === toolUseId) d.pendingAsk = null
+  if (d.pendingPlan?.toolUseId === toolUseId) d.pendingPlan = null
+  if (d.pendingTool?.toolUseId === toolUseId) d.pendingTool = null
+}
+
+/**
+ * wrap_up の入力から、要対応の種類と次にやる判断(⑬)に使う値だけを取り出す。
+ * 承認のボタンは、ボタンの名前(label)の文から決める(⑬ D6。実際のボタンに action のキーは無い)。古い形の action のキーも読む
+ */
 export function wrapUpDigestOf(input: Record<string, unknown>): WrapUpDigest {
   const ask = typeof input.ask === "string" && input.ask.trim() ? input.ask : null
   const allowed: readonly string[] = WRAP_UP_ACTIONS
-  const actions = Array.isArray(input.actions)
-    ? input.actions
-        .map((a) => (a && typeof a === "object" ? (a as Record<string, unknown>).action : undefined))
-        .filter((a): a is string => typeof a === "string" && allowed.includes(a))
+  const buttons = Array.isArray(input.actions)
+    ? input.actions.filter((a): a is Record<string, unknown> => !!a && typeof a === "object")
     : []
+  const actions = new Set<string>()
+  const labels: string[] = []
+  for (const b of buttons) {
+    if (typeof b.action === "string" && allowed.includes(b.action)) actions.add(b.action)
+    if (typeof b.label === "string" && b.label.trim()) {
+      for (const a of approvalActionsOfLabel(b.label)) actions.add(a)
+      if (labels.length < MAX_OPTIONS) labels.push(cutAfterMask(b.label, OPTION_MAX_CHARS))
+    }
+  }
   return {
-    askExcerpt: ask === null ? null : makeExcerpt(ask, INSTRUCTION_EXCERPT_CHARS),
+    askExcerpt: ask === null ? null : cutAfterMask(ask, INSTRUCTION_EXCERPT_CHARS),
+    ask: ask === null ? null : cutAfterMask(ask, QUESTION_MAX_CHARS),
     askWordKind: kindFromWords(ask),
-    actions,
+    actions: [...actions],
+    labels,
     blocked: typeof input.blocked === "boolean" ? input.blocked : null,
   }
+}
+
+/** AskUserQuestion の入力から、先頭の問いの全文と選択肢の名前を取り出す。古い形(question だけ)も読む */
+export function pendingAskOf(input: Record<string, unknown>, toolUseId: string | null): PendingAsk | null {
+  const questions = Array.isArray(input.questions)
+    ? input.questions.filter((q): q is Record<string, unknown> => !!q && typeof q === "object")
+    : []
+  const first = questions[0]
+  const text = typeof first?.question === "string" ? first.question : typeof input.question === "string" ? input.question : ""
+  if (!text.trim()) return null
+  const options = Array.isArray(first?.options)
+    ? first.options
+        .map((o) => (o && typeof o === "object" ? (o as Record<string, unknown>).label : typeof o === "string" ? o : undefined))
+        .filter((l): l is string => typeof l === "string" && l.trim().length > 0)
+        .slice(0, MAX_OPTIONS)
+        .map((l) => cutAfterMask(l, OPTION_MAX_CHARS))
+    : []
+  return { toolUseId, question: cutAfterMask(text, QUESTION_MAX_CHARS), count: Math.max(1, questions.length), options }
+}
+
+/** ツールの入力の先頭(許可待ちの推定で出す)。コマンド・ファイル・URL の順に探し、秘密らしい文字列を伏せてから40字で切る */
+export function toolPreviewOf(input: Record<string, unknown> | null): string {
+  if (!input) return ""
+  for (const key of ["command", "file_path", "path", "url", "pattern", "query"]) {
+    const v = input[key]
+    if (typeof v === "string" && v.trim()) return cutAfterMask(v, TOOL_PREVIEW_CHARS)
+  }
+  const first = Object.values(input).find((v): v is string => typeof v === "string" && v.trim().length > 0)
+  return first ? cutAfterMask(first, TOOL_PREVIEW_CHARS) : ""
 }
 
 // ---------------------------------------------------------------------------
@@ -459,6 +554,7 @@ export function applyEntry(d: TranscriptDigest, entry: RawEntry): void {
           const toolName = d.recentTools.get(result.tool_use_id)
           resultOf = toolName ?? resultOf
           if (toolName && isSendTool(toolName)) applySendResult(d, result)
+          clearPending(d, result.tool_use_id)
         }
         resolveCreatedTaskId(d, result)
       }
@@ -476,8 +572,8 @@ export function applyEntry(d: TranscriptDigest, entry: RawEntry): void {
         at,
       }
       d.latestInput = instruction
-      // 新しい入力でターンが始まる。前のターンの wrap_up は、もう当てはまらない
-      d.lastWrapUp = null
+      // 新しい入力でターンが始まる。前のターンの wrap_up と、結果待ちの呼び出しは、もう当てはまらない
+      startTurn(d)
       if (origin === "human") {
         d.latestHuman = instruction
         resetSendLimit(d)
@@ -520,7 +616,25 @@ export function applyEntry(d: TranscriptDigest, entry: RawEntry): void {
           if (block.name === WRAP_UP_TOOL) completeAllTasks(d)
           const input =
             block.input && typeof block.input === "object" ? (block.input as Record<string, unknown>) : null
+          if (block.name === "Skill") {
+            const skill = typeof input?.skill === "string" ? input.skill : typeof input?.command === "string" ? input.command : ""
+            if (skill.trim()) {
+              d.skillCalls.push({ name: makeExcerpt(skill, OPTION_MAX_CHARS), at })
+              if (d.skillCalls.length > MAX_SKILL_CALLS) d.skillCalls.shift()
+            }
+          }
           if (block.name === WRAP_UP_TOOL) d.lastWrapUp = wrapUpDigestOf(input ?? {})
+          else {
+            // 次にやる判断(⑬)：結果を待っている呼び出し。質問とプランは問いの文に、ほかは許可待ちの推定に使う
+            const toolUseId = typeof block.id === "string" ? block.id : null
+            d.pendingTool = { toolUseId, name: block.name, preview: toolPreviewOf(input) }
+            if (block.name === "AskUserQuestion") d.pendingAsk = pendingAskOf(input ?? {}, toolUseId)
+            if (block.name === "ExitPlanMode") {
+              const plan = typeof input?.plan === "string" ? input.plan : ""
+              const line = plan.split(/\r?\n/).map((l) => l.replace(/^#+\s*/, "").trim()).find((l) => l.length > 0)
+              d.pendingPlan = line ? { toolUseId, line: cutAfterMask(line, QUESTION_MAX_CHARS) } : null
+            }
+          }
           if (!input) continue
           if (block.name === "mcp__ccd_turn__update_plan") applyPlanInput(d, input)
           else if (block.name === "TaskCreate" || block.name === "TaskUpdate") {

@@ -23,14 +23,21 @@ export type NeedsActionSource =
 /** 言葉の推定で決まる種類。待機(standby)も含む */
 export type WordKind = NeedsActionKind | "standby"
 
-/** 最後のターンの wrap_up の呼び出しの入力から、分類に使う値だけを取り出したもの(文は ask の先頭60文字だけ) */
+/**
+ * 最後のターンの wrap_up の呼び出しの入力から、分類と「次にやる判断」(⑬)に使う値だけを取り出したもの。
+ * 文は ask(全文。上限あり)とボタンの名前(label)だけ。recap・ボタンの message は取り込まない
+ */
 export interface WrapUpDigest {
-  /** ask の先頭60文字。ask が無ければ null */
+  /** ask の先頭60文字(秘密らしい文字列は伏せてから切る。ND-5)。ask が無ければ null */
   askExcerpt: string | null
-  /** 承認の判断に使うため、ask の全文から言葉で推定した種類(文は保持しない) */
+  /** ask の全文(空白をつめ、秘密らしい文字列を伏せてから上限で切る。ND-5)。次にやる判断の問いに使う。ask が無ければ null */
+  ask: string | null
+  /** 承認の判断に使うため、ask の全文から言葉で推定した種類 */
   askWordKind: WordKind | null
-  /** actions[].action の値のうち、決まった名前のものだけ */
+  /** ボタンの操作の名前。ボタンの名前(label)の文から決めたもの(⑬ D6)と、古い形の action のキーのうち決まった名前のもの */
   actions: string[]
+  /** ボタンの名前(label)。答えの候補に使う */
+  labels: string[]
   blocked: boolean | null
 }
 
@@ -51,6 +58,21 @@ export const WRAP_UP_ACTIONS = [
 const APPROVAL_ACTIONS = new Set(["commit", "create_pr", "merge"])
 
 /**
+ * ボタンの名前(label)の文から決める承認の操作(⑬ D6・A8)。実際の wrap_up のボタンは `label` と `message` だけで、
+ * `action` のキーは使われていない(2026-10-24 に直近の会話ログ60本のボタン 419個を数えて 0個)ため、文から決める
+ */
+const APPROVAL_LABEL_TABLE: Array<{ action: string; pattern: RegExp }> = [
+  { action: "commit", pattern: /コミット|commit/i },
+  { action: "create_pr", pattern: /プルリク|\bPR\b|pull request/i },
+  { action: "merge", pattern: /マージ|merge/i },
+]
+
+/** ボタンの名前から、承認の操作の名前を返す(当たらなければ空) */
+export function approvalActionsOfLabel(label: string): string[] {
+  return APPROVAL_LABEL_TABLE.filter(({ pattern }) => pattern.test(label)).map(({ action }) => action)
+}
+
+/**
  * 言葉の表。上から順に調べ、最初に当たった種類にする。
  * 「選ぶ・決める」の語を承認の語より先に見る(「4つを決めて。決まったら commit します」は判断待ち)。
  * 疑問符は、承認の語の後ろ・待機の語の前に見る。「コミットしてよいですか？」は承認待ちのまま、
@@ -58,6 +80,8 @@ const APPROVAL_ACTIONS = new Set(["commit", "create_pr", "merge"])
  */
 const WORD_TABLE: Array<{ kind: WordKind; pattern: RegExp }> = [
   { kind: "decision", pattern: /決めて|選んで|選択して|どれ|どちら|どの案|答えて|回答|教えて|方針/ },
+  // 「許可」と承認の操作の語が同じ文にあるときは承認(「『コミットして』と一言でコミットの許可」は承認待ち。⑬ 報告72 の real2・ND-13)
+  { kind: "approval", pattern: /(?=[^。\n]*(?:許可|権限|permission|allow))[^。\n]*(?:コミット|commit|push|プッシュ|マージ|merge|プルリク|\bPR\b|デプロイ|deploy)/i },
   { kind: "permission", pattern: /許可|権限|permission|allow/i },
   { kind: "approval", pattern: /承認|コミット|commit|push|プッシュ|マージ|merge|プルリク|\bPR\b|反映|デプロイ|deploy|公開して|送信して/i },
   { kind: "decision", pattern: /[?？]/ },

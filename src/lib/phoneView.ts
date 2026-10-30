@@ -25,6 +25,16 @@ export function decisionWaitLabel(item: DecisionItem): string {
   return DECISION_REASON_LABEL[first]
 }
 
+/**
+ * 対応待ちの行に出す問いの文(⑬ の D5・ND-15)。LAN の応答では、サーバーが秘密とパスを伏せた問いだけを返す。
+ * 要約から取った問いは「要約：」を付ける(PC のホームと同じ)。問いが無ければ null
+ */
+export function phoneQuestion(session: DesktopSessionSummary | undefined): string | null {
+  const q = session?.decision?.question
+  if (!q) return null
+  return session?.decision?.questionSource === "summary" ? `要約：${q}` : q
+}
+
 /** ホームの対応待ち(上位 limit 件と、全体の件数)。並びは整理ページと同じ(すぐ押せるものが上) */
 export function phoneDecisionRows(
   sessions: DesktopSessionSummary[],

@@ -3,22 +3,17 @@ import { formatTokens } from "./usageFormat"
 
 /**
  * 組織図アニメーション(⑤)の、画面側の純粋な計算。DOM・時計に触れず、APIの応答(FlowResponse)から、
- * ある時刻のカードの状態・再生の時間の変換・新しい出来事の選び方・色の段階などを返す。
- * ライブと振り返りは、同じ「時刻 → 状態」の関数を使う(同じ時刻なら、ライブで積み上げた状態と一致する)。
+ * ある時刻のカードの状態・新しい出来事の選び方・色の段階などを返す。
+ * (振り返りの再生〈⑬ の棚卸しの行5〉と作業量のバー〈行48〉はやめた)
  */
 
 /** 直近これ以内にツール呼び出しがあれば「作業中」 */
 export const WORKING_WINDOW_MS = 60_000
 /** コンテキストが、これ以上増えたときに、増えた分を強調する */
 export const CTX_FLASH_MIN_TOKENS = 1_000
-/** 「空き時間を飛ばす」で、飛ばす対象になる出来事の間隔(実時間)と、その区間の再生にかける上限 */
-export const IDLE_GAP_MS = 120_000
-export const IDLE_PASS_MS = 2_000
 /** 粒の半径(px)。作業量0〜満杯で、最小〜最大 */
 export const PARTICLE_MIN_RADIUS = 4
 export const PARTICLE_MAX_RADIUS = 11
-/** 振り返りの速さ(実時間 ÷ 再生時間) */
-export const PLAYBACK_SPEEDS = [60, 300, 900] as const
 
 // ---------------------------------------------------------------------------
 // タイムライン
@@ -228,33 +223,6 @@ export function workRatio(tools: number): number {
   return Math.max(0, Math.min(1, tools / FLOW_WORK_LAP))
 }
 
-/** 作業量のバーの周と、その周の中で伸びた割合 */
-export interface WorkLap {
-  /** 何周目か(1から)。0回は1周目 */
-  lap: number
-  /** その周の中で伸びた割合(0〜1)。周の回数ちょうど(100・200回…)は1(その周の色で満杯) */
-  ratio: number
-}
-
-/** 0〜100回は1周目、101〜200回は2周目…。100回でちょうど1周目が満杯、101回から2周目の色が伸び始める */
-export function workLap(tools: number): WorkLap {
-  if (!(tools > 0)) return { lap: 1, ratio: 0 }
-  const lap = Math.ceil(tools / FLOW_WORK_LAP)
-  return { lap, ratio: (tools - (lap - 1) * FLOW_WORK_LAP) / FLOW_WORK_LAP }
-}
-
-/** 周の色の数(globals.css の --work-lap-1〜4。1つの色相の濃淡で、周が進むほど濃い。細いバーでも隣の周と見分けられるよう、段の差を大きくして4段にした) */
-export const WORK_LAP_COLOR_COUNT = 4
-
-/**
- * 周の色の番号(1〜4)。4周目までは周の番号のまま。5周目からは3と4を交互に使う
- * (同じ色が続くと、前の周の上に伸びる分が見えなくなるため。何周目かは文字でも出す)
- */
-export function workLapColor(lap: number): number {
-  if (lap <= WORK_LAP_COLOR_COUNT) return Math.max(1, lap)
-  return lap % 2 === 0 ? WORK_LAP_COLOR_COUNT : WORK_LAP_COLOR_COUNT - 1
-}
-
 /** 報告の粒の半径。作業量0〜100回以上を、最小〜最大の線形 */
 export function particleRadius(tools: number): number {
   return PARTICLE_MIN_RADIUS + (PARTICLE_MAX_RADIUS - PARTICLE_MIN_RADIUS) * workRatio(tools)
@@ -347,94 +315,6 @@ export function selectUnseen(events: FlowEvent[], seen: SeenEvents): { fresh: Fl
 /** 前回までに見た時刻より後の、ツール呼び出しのまとまり */
 export function newToolsAfter(tools: ToolPoint[], cursor: number): ToolPoint[] {
   return tools.filter((p) => p.t > cursor)
-}
-
-// ---------------------------------------------------------------------------
-// 振り返り: 再生の時間の変換
-
-export interface PlaybackMap {
-  /** 再生にかかる時間(ms) */
-  totalMs: number
-  /** 再生位置(0〜totalMs) → 実時間の時刻 */
-  toReal: (playMs: number) => number
-  /** 実時間の時刻 → 再生位置 */
-  toPlay: (realMs: number) => number
-}
-
-export interface PlaybackOptions {
-  /** 実時間 ÷ 再生時間(×60なら、60秒の出来事を1秒で再生) */
-  speed: number
-  skipIdle: boolean
-  gapMs?: number
-  passMs?: number
-}
-
-/**
- * 実時間の範囲[start, end]を、速さに応じた再生時間にする。
- * 「空き時間を飛ばす」がオンなら、出来事(指示・報告・ツール呼び出しなど)の間隔が gapMs(120秒)を超える区間は、
- * 再生にかける時間を passMs(2秒)までにする(速さで元々それより短ければ、そのまま)。
- */
-export function buildPlaybackMap(marks: number[], start: number, end: number, options: PlaybackOptions): PlaybackMap {
-  const { speed, skipIdle } = options
-  const gapMs = options.gapMs ?? IDLE_GAP_MS
-  const passMs = options.passMs ?? IDLE_PASS_MS
-  const points = [start, ...marks.filter((m) => m > start && m < end), end].sort((a, b) => a - b)
-
-  interface Segment {
-    realStart: number
-    realEnd: number
-    playStart: number
-    playEnd: number
-  }
-  const segments: Segment[] = []
-  let play = 0
-  for (let i = 0; i + 1 < points.length; i++) {
-    const realStart = points[i]
-    const realEnd = points[i + 1]
-    const gap = realEnd - realStart
-    if (gap <= 0) continue
-    const natural = gap / speed
-    const duration = skipIdle && gap > gapMs ? Math.min(natural, passMs) : natural
-    segments.push({ realStart, realEnd, playStart: play, playEnd: play + duration })
-    play += duration
-  }
-
-  const locate = (list: Segment[], value: number, from: "play" | "real"): Segment | null => {
-    for (const s of list) {
-      const lo = from === "play" ? s.playStart : s.realStart
-      const hi = from === "play" ? s.playEnd : s.realEnd
-      if (value >= lo && value <= hi) return s
-    }
-    return null
-  }
-
-  return {
-    totalMs: play,
-    toReal(playMs) {
-      if (segments.length === 0) return start
-      const clamped = Math.max(0, Math.min(play, playMs))
-      const s = locate(segments, clamped, "play") ?? segments[segments.length - 1]
-      const span = s.playEnd - s.playStart
-      return span <= 0 ? s.realEnd : s.realStart + ((clamped - s.playStart) / span) * (s.realEnd - s.realStart)
-    },
-    toPlay(realMs) {
-      if (segments.length === 0) return 0
-      const clamped = Math.max(start, Math.min(end, realMs))
-      const s = locate(segments, clamped, "real") ?? segments[segments.length - 1]
-      const span = s.realEnd - s.realStart
-      return span <= 0 ? s.playEnd : s.playStart + ((clamped - s.realStart) / span) * (s.playEnd - s.playStart)
-    },
-  }
-}
-
-/** 再生を、壁の時間 dtMs だけ進めたときの、実時間の時刻 */
-export function advanceReal(map: PlaybackMap, realMs: number, dtMs: number): number {
-  return map.toReal(map.toPlay(realMs) + dtMs)
-}
-
-/** タイムラインの、出来事とツール呼び出しの時刻(再生の時間の変換に渡す) */
-export function timelineMarks(timeline: FlowTimeline): number[] {
-  return [...timeline.events.map((e) => e.t), ...timeline.tools.map((p) => p.t)]
 }
 
 // ---------------------------------------------------------------------------

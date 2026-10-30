@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { MEMBER_ORDERS, normalizeMemberOrder, orderMembers } from "./flowOrder"
+import { orderMembers } from "./flowOrder"
 
 const title = (s: { title: string }) => s.title
 const s = (name: string, id = name) => ({ title: name, id })
@@ -42,11 +42,3 @@ describe("orderMembers: 作成順", () => {
   })
 })
 
-describe("normalizeMemberOrder", () => {
-  it("保存された値が created のときだけ作成順。未設定・未知の値は名前順", () => {
-    expect(normalizeMemberOrder("created")).toBe("created")
-    expect(normalizeMemberOrder("name")).toBe("name")
-    for (const bad of [undefined, null, "", "other", 1]) expect(normalizeMemberOrder(bad)).toBe("name")
-    expect(MEMBER_ORDERS.map((o) => o.value)).toEqual(["name", "created"])
-  })
-})

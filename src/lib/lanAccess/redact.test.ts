@@ -78,3 +78,51 @@ describe("スマホへ返す応答のパスを隠す（すき間）", () => {
     expect(lastSegment("\\\\server\\share\\dir")).toBe("dir")
   })
 })
+
+describe("[ND-9] [ND-15] スマホへ返す一覧の次にやる判断は、問いと候補だけを伏せて返す(ゲート2 の L1 → ⑬ の D5)", () => {
+  it("問いと候補の秘密とパスを伏せ、エラーの文は返さない。ほかの項目は今までどおり", () => {
+    const session = {
+      id: "local_1",
+      title: "合成",
+      decision: {
+        question: "DB_PASSWORD=Sup3rS3cret で C:\\Users\\someone\\work\\app を動かしてよいですか",
+        questionSource: "wrap-up",
+        moreQuestions: 1,
+        options: ["はい（token=abc123def）", "いいえ"],
+        moreOptions: 0,
+        recommended: 0,
+        errorText: "合成のエラー sk-ant-api03-0123456789abcdefghij",
+      },
+    }
+    const out = redactForLan({ sessions: [session] }) as { sessions: Array<{ decision: Record<string, unknown> }> }
+    const d = out.sessions[0].decision
+    expect(d).toMatchObject({ questionSource: "wrap-up", moreQuestions: 1, moreOptions: 0, recommended: 0, errorText: null })
+    const json = JSON.stringify(d)
+    for (const leak of ["Sup3rS3cret", "someone", "abc123def", "sk-ant"]) expect(json).not.toContain(leak)
+    expect(d.question).toContain("を動かしてよいですか")
+    // 値は空白まで丸ごと伏せる(安全側。閉じ括弧も値の続きとみなす)
+    expect(d.options).toEqual(["はい（token=●●●●", "いいえ"])
+  })
+
+  it("[ND-15] 要対応の抜粋・最新の指示・作業の文・判断の根拠など、会話から取った文の項目でも秘密を伏せる(⑭ のゲート2 の M1)。ID は伏せない", () => {
+    const leak = "`mysql -u root -phunter2 db` と DB_PASSWORD=Sup3rS3cret! を C:\\Users\\someone\\proj\\.env に書き込む許可をください"
+    const session = {
+      id: "local_0123456789abcdef0123456789abcdef",
+      needsActionExcerpt: leak,
+      needsActionText: leak,
+      statusReason: `要約: ${leak}`,
+      latestInstruction: { origin: "human", excerpt: leak, at: 1 },
+      tasks: [{ content: leak, status: "pending" }],
+      phase: { currentStep: leak, completed: 0, total: 1 },
+      decision: { question: leak, questionSource: "summary", moreQuestions: 0, options: [leak], moreOptions: 0, recommended: null, errorText: leak },
+    }
+    const json = JSON.stringify(redactForLan({ sessions: [session], pending: [{ summary: leak, excerpt: leak }] }))
+    for (const secret of ["hunter2", "Sup3rS3cret", "someone"]) expect(json).not.toContain(secret)
+    expect(json).toContain("local_0123456789abcdef0123456789abcdef")
+  })
+
+  it("判断の無いセッションは null のまま", () => {
+    expect(redactForLan({ sessions: [{ id: "local_2", decision: null }] })).toEqual({ sessions: [{ id: "local_2", decision: null }] })
+  })
+})
+

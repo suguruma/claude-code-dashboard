@@ -3,8 +3,8 @@
 import type { CSSProperties } from "react"
 import { cn } from "@/lib/utils"
 import type { DesktopSessionSummary } from "@/lib/desktopSessionTypes"
-import { formatElapsed, leaderPhaseText, pulseSeconds, workLap, workLapColor, workRatio, type CardPhase, type MemberState } from "@/lib/flowPlayback"
-import { FLOW_WORK_LAP, type FlowMember } from "@/lib/flowTypes"
+import { formatElapsed, leaderPhaseText, pulseSeconds, workRatio, type CardPhase, type MemberState } from "@/lib/flowPlayback"
+import type { FlowMember } from "@/lib/flowTypes"
 import { ContextBar } from "./ContextBar"
 import { SendCountBadge, SendLimitNotice } from "./Messaging"
 import { DesktopStatusBadge } from "./statusMeta"
@@ -39,10 +39,10 @@ interface OrgCardProps {
   /** 一覧のセッション情報(状態バッジ・送信回数・要約)。一覧に無ければ null */
   summary: DesktopSessionSummary | null
   highContextRatio: number
-  /** 「最後の出来事から」の基準になる時刻(ライブでは現在、振り返りでは再生位置) */
+  /** 「最後の出来事から」の基準になる時刻(現在) */
   referenceTime: number
   fx: CardFx | undefined
-  /** 指揮役のカード(上): 作業量バーは無く、指示・報告の件数と作業中の子の数を出す */
+  /** 指揮役のカード(上): 作業中の子の数を状態の文に出す(指示・報告の本数は出さない。⑬ の棚卸しの行51) */
   leader?: { instructs: number; reports: number; working: number }
   onSelect: (id: string) => void
   cardRef: (el: HTMLDivElement | null) => void
@@ -58,8 +58,6 @@ export function OrgCard({ depth, member, state, summary, highContextRatio, refer
     state.ctx !== null && limit
       ? { tokens: state.ctx, limit, ratio: Math.min(1, state.ctx / limit) }
       : null
-  const lap = workLap(state.tools)
-  const lapPercent = Math.round(lap.ratio * 100)
   const working = state.phase === "working"
   const style = {
     "--org-pulse": `${pulseSeconds(state.callsPerMinute).toFixed(2)}s`,
@@ -101,7 +99,10 @@ export function OrgCard({ depth, member, state, summary, highContextRatio, refer
         </div>
 
         <div className="flex min-w-0 flex-wrap items-center gap-1">
-          {summary && <DesktopStatusBadge status={summary.status} reason={summary.statusReason} info={summary.needsActionInfo} standby={summary.standbyInfo} />}
+          {/* 中断の可能性(推定)の印はカードに出さない(⑬ の棚卸しの行49。セッション一覧の状態とホームの1文に残す) */}
+          {summary && summary.status !== "interrupted" && (
+            <DesktopStatusBadge status={summary.status} reason={summary.statusReason} info={summary.needsActionInfo} standby={summary.standbyInfo} />
+          )}
           <SendCountBadge messaging={summary?.messaging ?? null} />
           {member.sideChats > 0 && (
             <span
@@ -118,50 +119,6 @@ export function OrgCard({ depth, member, state, summary, highContextRatio, refer
           <span className={cn("size-2 shrink-0 rounded-full", PHASE_DOT[state.phase])} aria-hidden />
           <span className={cn("truncate", state.phase === "noreport" && "text-muted-foreground")}>{phaseText}</span>
         </p>
-
-        {leader ? (
-          <p className="text-[11px] tabular-nums text-muted-foreground" data-testid="org-leader-counts">
-            指示 {leader.instructs} ／ 報告 {leader.reports}
-          </p>
-        ) : (
-          <div className="space-y-0.5">
-            <div className="flex justify-between gap-1 text-[11px] text-muted-foreground">
-              <span>作業量</span>
-              <span className="tabular-nums text-foreground" data-testid="org-work-count">
-                {state.tools > 0 ? `ツール ${state.tools}回` : "—"}
-                {lap.lap >= 2 && <span className="ml-1 text-muted-foreground">{lap.lap}周目</span>}
-              </span>
-            </div>
-            {/*
-              100回で1周。超えた分は、前の周の色で満杯にした上に、次の周の色で左から伸びる。
-              色は量を示すだけなので、警告の色(黄・赤・橙)と粒の色(青・緑・紫)を避けた、1つの色相の濃淡(周が進むほど濃い)
-            */}
-            <div
-              role="meter"
-              aria-label="作業量"
-              aria-valuemin={0}
-              aria-valuemax={FLOW_WORK_LAP}
-              aria-valuenow={lapPercent}
-              aria-valuetext={state.tools > 0 ? `ツール ${state.tools}回（${lap.lap}周目。1周${FLOW_WORK_LAP}回）` : "ツール 0回"}
-              className="relative h-1.5 w-full overflow-hidden rounded-full bg-muted"
-              data-lap={lap.lap}
-            >
-              {lap.lap >= 2 && (
-                <div
-                  className="absolute inset-0 rounded-full"
-                  style={{ background: `var(--work-lap-${workLapColor(lap.lap - 1)})` }}
-                />
-              )}
-              <div
-                className="relative h-full rounded-full"
-                style={{
-                  width: `${state.tools > 0 ? Math.max(4, lapPercent) : 0}%`,
-                  background: `var(--work-lap-${workLapColor(lap.lap)})`,
-                }}
-              />
-            </div>
-          </div>
-        )}
 
         <div className="relative space-y-0.5">
           <ContextBar context={context} highRatio={highContextRatio} levels compact />

@@ -10,10 +10,13 @@ export function DesktopDataNotices({
   data,
   error,
   isLoading,
+  showLocation = true,
 }: {
   data: DesktopSessionListResponse | null
   error: Error | undefined
   isLoading: boolean
+  /** データの場所の1行を出すか(ホームは、いちばん下に別に出す。⑬) */
+  showLocation?: boolean
 }) {
   return (
     <>
@@ -48,7 +51,7 @@ export function DesktopDataNotices({
         </Alert>
       ))}
 
-      {data?.dataLocation && <DataLocationLine location={data.dataLocation} />}
+      {showLocation && data?.dataLocation && <DataLocationLine location={data.dataLocation} />}
 
       {isLoading && !data && <p className="text-sm text-muted-foreground">読み込み中...</p>}
     </>
@@ -56,7 +59,7 @@ export function DesktopDataNotices({
 }
 
 /** 読んでいるデータの場所の出どころを1行で出す。フォルダのパスは、開いたときだけ出す(画像にパスが写らないように) */
-function DataLocationLine({ location }: { location: DataLocation }) {
+export function DataLocationLine({ location }: { location: DataLocation }) {
   const text = dataLocationText(location)
   if (!location.path) {
     return (

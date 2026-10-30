@@ -1,6 +1,8 @@
 import type { DesktopSessionGroup, DesktopSessionStatus, DesktopSessionSummary } from "./desktopSessionTypes"
+import { collectDecisions } from "./housekeeping"
 
-export type StatusFilter = "all" | DesktopSessionStatus | "highContext"
+/** decisions: 次にやる判断(⑬。整理ページ・ホームと同じ数え方。要対応・送信上限・エラー・届かない送信) */
+export type StatusFilter = "all" | DesktopSessionStatus | "highContext" | "decisions"
 
 export interface DesktopSessionFilters {
   status: StatusFilter
@@ -37,9 +39,12 @@ export function applyFilters(
   filters: DesktopSessionFilters,
   highContextRatio: number
 ): DesktopSessionSummary[] {
+  const decided = filters.status === "decisions" ? new Set(collectDecisions(sessions).map((d) => d.id)) : null
   return sessions.filter((s) => {
     if (!filters.includeArchived && s.isArchived) return false
-    if (filters.status === "highContext") {
+    if (decided) {
+      if (!decided.has(s.id)) return false
+    } else if (filters.status === "highContext") {
       if (!s.context || s.context.ratio < highContextRatio) return false
     } else if (filters.status !== "all" && s.status !== filters.status) {
       return false

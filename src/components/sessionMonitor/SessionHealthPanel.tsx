@@ -9,6 +9,8 @@ import { STATUS_TOKENS, StatusBadge } from "./statusToken"
 
 interface SessionHealthPanelProps {
   report: SessionHealthReport
+  /** 見出し(セッション一覧の詳細の「健康」では「4つの観点の診断」) */
+  title?: string
 }
 
 /** 他セッションとの差を「いつもの◯倍」「いつもより◯ポイント高い」の形で言い換える */
@@ -79,18 +81,18 @@ function DiagnosisRow({ diagnosis }: { diagnosis: SessionDiagnosis }) {
 }
 
 /**
- * 生の数値だけでは判断できないため、8つの観点それぞれに「良好/注意/要対処」と
+ * 生の数値だけでは判断できないため、観点(セッション一覧の詳細の「健康」では4つ)それぞれに「良好/注意/要対処」と
  * 次のアクションを添えて提示する。数字そのものより「何をすべきか」を先に読ませることを優先し、
  * 総合判定と対処案を最上部に置き、個別の根拠は展開して読む構成にしている。
  */
-export function SessionHealthPanel({ report }: SessionHealthPanelProps) {
+export function SessionHealthPanel({ report, title = "このセッションの診断" }: SessionHealthPanelProps) {
   const token = STATUS_TOKENS[report.overall]
 
   return (
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-sm">
-          このセッションの診断
+          {title}
           <StatusBadge severity={report.overall} />
         </CardTitle>
       </CardHeader>
@@ -116,7 +118,7 @@ export function SessionHealthPanel({ report }: SessionHealthPanelProps) {
 
         <div className="space-y-2">
           <h3 className="text-sm font-medium">観点別の診断（クリックで根拠と対処を表示）</h3>
-          <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {report.diagnoses.map((d) => (
               <DiagnosisRow key={d.id} diagnosis={d} />
             ))}

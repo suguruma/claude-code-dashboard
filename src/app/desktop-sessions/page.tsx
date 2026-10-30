@@ -1,17 +1,18 @@
 "use client"
 
-import { Suspense, useMemo } from "react"
+import { useMemo } from "react"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 import { DesktopDataNotices } from "@/components/desktopSessions/DesktopDataNotices"
 import { NotificationToggle } from "@/components/desktopSessions/NotificationToggle"
-import { SessionDetailDialog } from "@/components/desktopSessions/SessionDetailDialog"
+import { SelectedSessionDialog } from "@/components/desktopSessions/SelectedSessionDialog"
 import { SessionRow } from "@/components/desktopSessions/SessionRow"
 import { SummaryCards } from "@/components/desktopSessions/SummaryCards"
 import { useDesktopSessions } from "@/hooks/useDesktopSessions"
 import { usePersistedState } from "@/hooks/useLocalStorage"
-import { useSelectedSession } from "@/hooks/useSelectedSession"
+import { useSelectSession } from "@/hooks/useSelectedSession"
+import { collectDecisions } from "@/lib/housekeeping"
 import {
   DEFAULT_FILTERS,
   applyFilters,
@@ -26,6 +27,7 @@ const FILTER_STORAGE_KEY = "ccd:desktop-sessions:filters"
 
 const STATUS_OPTIONS: Array<{ value: DesktopSessionFilters["status"]; label: string }> = [
   { value: "all", label: "すべての状態" },
+  { value: "decisions", label: "次にやる判断" },
   { value: "running", label: "実行中（推定）" },
   { value: "blocked", label: "要対応" },
   { value: "standby", label: "待機" },
@@ -46,21 +48,13 @@ const VIEW_OPTIONS: Array<{ value: DesktopSessionFilters["view"]; label: string 
 const selectClass =
   "h-8 min-w-0 rounded-lg border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
 
+/** ページ全体は Suspense で包まない。`?session=` を読むのは詳細のダイアログだけ(SelectedSessionDialog) */
 export default function DesktopSessionsPage() {
-  // useSearchParams を使うため、静的生成時のためにSuspenseで包む
-  return (
-    <Suspense fallback={<p className="text-sm text-muted-foreground">読み込み中...</p>}>
-      <DesktopSessionsContent />
-    </Suspense>
-  )
-}
-
-function DesktopSessionsContent() {
   const { data, error, isLoading } = useDesktopSessions()
   const [stored, setFilters] = usePersistedState<DesktopSessionFilters>(FILTER_STORAGE_KEY, DEFAULT_FILTERS)
   // 保存された値に新しい項目が無い場合や、組織図が別ページになる前の値が残っている場合に備えて、今の形に直す
   const filters = useMemo(() => normalizeFilters(stored), [stored])
-  const [selectedId, setSelectedId] = useSelectedSession()
+  const setSelectedId = useSelectSession()
 
   const sessions = useMemo(() => data?.sessions ?? [], [data])
   // サイドチャットの印に出す、親のセッションのタイトル
@@ -98,6 +92,7 @@ function DesktopSessionsContent() {
         <>
           <SummaryCards
             counts={data.counts}
+            decisions={collectDecisions(data.sessions).length}
             highContextRatio={highContextRatio}
             selected={filters.status}
             onSelect={(status) => update({ status })}
@@ -220,11 +215,7 @@ function DesktopSessionsContent() {
         </>
       )}
 
-      <SessionDetailDialog
-        sessionId={selectedId}
-        highContextRatio={highContextRatio}
-        onClose={() => setSelectedId(null)}
-      />
+      <SelectedSessionDialog highContextRatio={highContextRatio} />
     </div>
   )
 }

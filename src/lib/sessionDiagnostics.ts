@@ -136,7 +136,23 @@ export function diagnoseSession(
     diagnoseMcp(s, metrics),
     diagnoseAutonomy(s, others),
   ]
+  return summarizeDiagnoses(diagnoses)
+}
 
+/**
+ * セッション一覧の詳細の「健康」に出す4つの観点(⑬ の棚卸しの行25)。整理の再開コストで言えない、無限ループ(沼)の兆候・
+ * ワークフローの安定性・拡張機能(MCP)の稼働・セッションの寿命だけ。コストと応答速度は整理の再開コストと同じなので出さず、
+ * 読み取りの精度・作業の分業・お任せ度は、オーナーの判断が書けないので出さない
+ */
+export const HEALTH_ASPECT_IDS: readonly string[] = ["error-loop", "hooks", "mcp", "lifespan"]
+
+/** 「健康」の欄の報告。4つの観点だけで、総合判定・対処・一言を組み立て直す */
+export function diagnoseHealth(metrics: SessionDiagnosisMetrics, otherSessions: SessionSummary[] = []): SessionHealthReport {
+  const all = diagnoseSession(metrics, otherSessions).diagnoses
+  return summarizeDiagnoses(HEALTH_ASPECT_IDS.map((id) => all.find((d) => d.id === id)).filter((d): d is SessionDiagnosis => !!d))
+}
+
+function summarizeDiagnoses(diagnoses: SessionDiagnosis[]): SessionHealthReport {
   const overall = diagnoses.reduce<DiagnosisSeverity>((worst, d) => {
     return SEVERITY_RANK[d.severity] > SEVERITY_RANK[worst] ? d.severity : worst
   }, "good")

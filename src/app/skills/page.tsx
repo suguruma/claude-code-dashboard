@@ -1,14 +1,13 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Archive, Plus, Trash2 } from "lucide-react"
+import { Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { useProjects } from "@/hooks/useProjects"
 import { useSkills } from "@/hooks/useSkills"
 import { useSkillTrash } from "@/hooks/useSkillTrash"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { CategorySection } from "@/components/skills/CategorySection"
 import { SkillListCard } from "@/components/skills/SkillListCard"
 import { SkillFormDialog } from "@/components/skills/SkillFormDialog"
@@ -28,9 +27,6 @@ export default function SkillsPage() {
     updateSkill,
     deleteSkill,
     renameSkill,
-    archiveSkill,
-    archiveAllSkills,
-    restoreSkillVersion,
     disableSkill,
     enableSkill,
   } = useSkills(selectedProjectId)
@@ -48,8 +44,6 @@ export default function SkillsPage() {
   const [formKey, setFormKey] = useState(0)
   // カテゴリはデフォルトで折りたたみ、クリックした分だけ展開してスクロール量を減らす
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
-  const [archiveAllOpen, setArchiveAllOpen] = useState(false)
-  const [archivingAll, setArchivingAll] = useState(false)
 
   function toggleCategory(slug: string) {
     setExpandedCategories((prev) => {
@@ -115,19 +109,6 @@ export default function SkillsPage() {
     }
   }
 
-  async function handleArchiveAll() {
-    setArchivingAll(true)
-    try {
-      await archiveAllSkills()
-      toast.success(`${skills.length}件のスキルをアーカイブしました`)
-      setArchiveAllOpen(false)
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "一括アーカイブに失敗しました")
-    } finally {
-      setArchivingAll(false)
-    }
-  }
-
   const groupedSkills = [...SKILL_CATEGORIES, UNCATEGORIZED].map((category) => ({
     category,
     skills: skills.filter((s) => (s.category ?? "") === category.slug),
@@ -168,10 +149,6 @@ export default function SkillsPage() {
             <Trash2 className="size-4" />
             削除済みスキル{trashItems.length > 0 && `（${trashItems.length}）`}
           </Button>
-          <Button variant="outline" onClick={() => setArchiveAllOpen(true)} disabled={skills.length === 0}>
-            <Archive className="size-4" />
-            すべてアーカイブ
-          </Button>
           <Button onClick={openCreateDialog}>
             <Plus className="size-4" />
             スキルを追加
@@ -209,11 +186,8 @@ export default function SkillsPage() {
                 <SkillListCard
                   key={skill.dirName}
                   skill={skill}
-                  projectId={selectedProjectId}
                   onEdit={openEditDialog}
                   onDelete={deleteSkill}
-                  onArchive={archiveSkill}
-                  onRestore={restoreSkillVersion}
                   onToggleEnabled={handleToggleEnabled}
                 />
               ))}
@@ -239,15 +213,6 @@ export default function SkillsPage() {
         onRestore={restoreTrashedSkill}
       />
 
-      <ConfirmDialog
-        open={archiveAllOpen}
-        onOpenChange={setArchiveAllOpen}
-        title="すべてのスキルをアーカイブしますか？"
-        description={`表示中の${skills.length}件のスキルについて、現在のバージョンをそれぞれの対象モデル配下にアーカイブします。対象モデルに既にアーカイブが存在する場合は上書きされます。`}
-        confirmLabel="アーカイブする"
-        confirming={archivingAll}
-        onConfirm={handleArchiveAll}
-      />
     </div>
   )
 }

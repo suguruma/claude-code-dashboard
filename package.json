@@ -1,6 +1,6 @@
 {
   "name": "claude-code-dashboard",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Claude Code の CLAUDE.md・スキル・実行ログ等をローカルで可視化・編集するダッシュボード",
   "author": "Claude Code Dashboard Contributors",
   "private": true,
@@ -12,7 +12,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "electron:dev": "next build && node scripts/prepare-standalone.mjs && electron .",
-    "dist:win": "next build && node scripts/prepare-standalone.mjs && electron-builder --win portable --x64",
+    "dist:win": "next build && node scripts/prepare-standalone.mjs && electron-builder --win --x64",
     "package:sample-data": "node scripts/package-sample-data.mjs"
   },
   "dependencies": {

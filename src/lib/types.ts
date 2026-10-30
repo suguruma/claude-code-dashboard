@@ -109,17 +109,6 @@ export interface SimilarSkillPair {
   score: number
 }
 
-/** `skills-archive/<model>/<dirName>/` に退避されているスキルの1バージョン */
-export interface ArchivedSkillVersion {
-  model: string
-  updatedAt?: string
-  /**
-   * 「切り替え前の自動退避」のときだけ付く、退避した時刻(epoch ms)。同じモデルのアーカイブへ切り替えるとき、
-   * 切り替え前の今の内容をアーカイブ一覧に残したもの。モデル別のアーカイブ（1モデルに1件）には付かない
-   */
-  switchBackupAt?: number
-}
-
 /** 削除したスキルの退避(`skills-trash/<名前>-<日時>/`)。復元は画面の「削除済みスキル」から行う */
 export interface TrashedSkill {
   /** 退避先のフォルダ名。復元の指定に使う */
@@ -261,23 +250,7 @@ export interface MemoryEntry {
   body: string
 }
 
-/** `.claude/tasks/<sessionId>/*.json` から読み込むタスク実行履歴（TaskCreate/TaskUpdateの実データ） */
-export interface TaskRecord {
-  id: string
-  subject: string
-  description: string
-  activeForm?: string
-  status: "pending" | "in_progress" | "completed" | "deleted" | string
-  blocks: string[]
-  blockedBy: string[]
-}
-
-export interface TaskSession {
-  sessionId: string
-  tasks: TaskRecord[]
-}
-
-/** `.claude/settings.json` の読み取り専用ビュー（未知のフィールドも raw として保持） */
+/** `.claude/settings.json` の読み取り専用ビュー（未知のフィールドも raw として保持。画面からの直接の編集はやめた。⑬ の棚卸しの行36） */
 export interface SettingsView {
   raw: Record<string, unknown>
 }
@@ -306,14 +279,6 @@ export interface BackupEntry {
    * （復元すると、フォルダ名はそのまま、`name:` だけが古い名前に戻る）
    */
   skillName?: string
-}
-
-/** `.claude/plugins/blocklist.json` */
-export interface BlockedPlugin {
-  plugin: string
-  added_at: string
-  reason: string
-  text: string
 }
 
 /**
@@ -373,17 +338,6 @@ export interface ImportDiffResult {
 
 export interface ImportApplyResult {
   backups: string[]
-}
-
-/**
- * `~/.claude/projects/<dirName>/` 配下に `*.jsonl`（Claude Codeのセッション実行ログ）を
- * 持つプロジェクトディレクトリ。dirNameは元パスの独自エンコードで、メモリ機能と同様
- * 完全な逆変換はできないためそのまま識別子として扱う。
- */
-export interface SessionProjectSummary {
-  dirName: string
-  sessionCount: number
-  lastActivityAt: string | null
 }
 
 /**
