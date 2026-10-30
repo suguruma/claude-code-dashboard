@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { usePersistedState } from "@/hooks/useLocalStorage"
 import { useMonitorAlerts } from "@/hooks/useMonitor"
+import { useStatusMarks } from "@/hooks/useStatusMarks"
+import { StatusMarkBadge } from "@/components/desktopSessions/statusMeta"
 import { HoverPrefetchLink, LinkPendingHint } from "./HoverPrefetchLink"
 import { HELP_ITEM, NAV_GROUPS, type NavItem } from "./navConfig"
 
@@ -130,6 +132,7 @@ function NavRow({
       <Icon className="size-4 shrink-0" />
       {!iconOnly && <span className="truncate">{item.label}</span>}
       {item.mark === "pc-alert" && <PcAlertMark iconOnly={iconOnly} />}
+      {item.mark === "decisions" && <DecisionCountMark iconOnly={iconOnly} />}
       {!iconOnly && <LinkPendingHint />}
     </HoverPrefetchLink>
   )
@@ -145,6 +148,28 @@ function NavRow({
       <TooltipTrigger render={<div />}>{content}</TooltipTrigger>
       <TooltipContent side="right">{tooltipLabel}</TooltipContent>
     </Tooltip>
+  )
+}
+
+/** サイドバーの取り方：30秒ごと、見えないときは取らない(⑮ A15。セッション系のページは、ページの側が5秒ごとに取る) */
+const NAV_SWR = { refreshInterval: 30_000, refreshWhenHidden: false }
+
+/** 次にやる判断の件数「？ 判断 n」(⑮ OR-2・A3)。ホームの次にやる判断と同じ数。0件のときは出さない */
+function DecisionCountMark({ iconOnly }: { iconOnly: boolean }) {
+  const marks = useStatusMarks(NAV_SWR)
+  const n = marks ? [...marks.values()].filter((m) => m.decision).length : 0
+  if (n === 0) return null
+  if (iconOnly) {
+    return (
+      <span className="absolute top-0 right-0 text-xs font-bold" style={{ color: "var(--status-critical-text)" }} aria-label={`次にやる判断 ${n}件`}>
+        {n}
+      </span>
+    )
+  }
+  return (
+    <span className="ml-auto" title={`次にやる判断 ${n}件`} data-testid="nav-decisions">
+      <StatusMarkBadge mark={{ symbol: "？", text: `判断 ${n}`, tone: "red", estimated: false, decision: true }} />
+    </span>
   )
 }
 
