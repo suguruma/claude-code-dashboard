@@ -49,7 +49,7 @@ export function SessionRow({ session: s, highContextRatio, onSelect, parentTitle
         <div className="grid gap-x-4 gap-y-2 md:grid-cols-[minmax(0,1fr)_240px]">
           <div className="min-w-0 space-y-1.5">
             <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-              <DesktopStatusBadge status={s.status} reason={s.statusReason} info={s.needsActionInfo} standby={s.standbyInfo} />
+              <DesktopStatusBadge id={s.id} status={s.status} reason={s.statusReason} standby={s.standbyInfo} />
               <span className="min-w-0 truncate text-sm font-medium">{s.title}</span>
               {s.pinned && <Pin className="size-3.5 shrink-0 text-muted-foreground" aria-label="ピン留め" />}
               {s.isSideChat && (

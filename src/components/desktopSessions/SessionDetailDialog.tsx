@@ -64,7 +64,7 @@ export function SessionDetailDialog({ sessionId, highContextRatio, onClose }: Se
           <div className="space-y-4">
             <div className="space-y-1">
               <div className="flex flex-wrap items-center gap-2">
-                <DesktopStatusBadge status={detail.status} info={detail.needsActionInfo} standby={detail.standbyInfo} />
+                <DesktopStatusBadge id={detail.id} status={detail.status} standby={detail.standbyInfo} />
                 {detail.group && <Badge variant="secondary">{detail.group.name}</Badge>}
                 <SendCountBadge messaging={detail.messaging} />
               </div>

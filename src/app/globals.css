@@ -97,6 +97,9 @@
   --status-warning-text: #7a570c;
   --status-serious-text: #904a11;
   --status-critical-text: #ab3030;
+  /* 状態の印の「作業中」(⑮ OR-2)。文字は白地で 4.5:1 以上 */
+  --status-info: #3b82f6;
+  --status-info-text: #1d4ed8;
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
@@ -142,6 +145,8 @@
   --status-warning-text: #fab219;
   --status-serious-text: #ee8935;
   --status-critical-text: #e38989;
+  --status-info: #60a5fa;
+  --status-info-text: #93c5fd;
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
