@@ -213,6 +213,18 @@
 .org-particle {
   filter: drop-shadow(0 0 4px currentColor);
 }
+/* リソース［負荷］のつながりの図の粒(⑮ OR-6)。色・大きさは組織図の粒(報告の向き)にそろえる(「粒＝流れ」の読み方を1つに)。
+   位置は transform のアニメーションだけで動かし、画面の合成の側で描く */
+.flow-particle {
+  position: absolute;
+  left: -4px;
+  top: -4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--flow-up);
+  will-change: transform;
+}
 
 .org-card {
   transition: border-color 0.3s, box-shadow 0.3s;

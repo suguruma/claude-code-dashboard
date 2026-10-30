@@ -1,16 +1,12 @@
 "use client"
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react"
-import { buildFlow, frameWait, lapMs, shouldAnimate, type FlowModel } from "@/lib/monitor/connectionFlow"
+import { buildFlow, flowKeyframes, lapMs, shouldAnimate, type FlowModel } from "@/lib/monitor/connectionFlow"
 import { hhmm, pct, type Metric } from "@/lib/monitor/loadView"
 import type { MonitorSnapshotResponse } from "@/lib/monitor/monitorTypes"
 
 const ROW_H = 32
-const SVG_NS = "http://www.w3.org/2000/svg"
 const REDUCED_QUERY = "(prefers-reduced-motion: reduce)"
-/** 粒の色・大きさは、ホームの組織図の粒(報告の向き)にそろえる(「粒＝流れ」の読み方を1つに) */
-const PARTICLE_COLOR = "var(--flow-up)"
-const PARTICLE_R = 4
 
 function subscribeReduced(listener: () => void) {
   const q = window.matchMedia(REDUCED_QUERY)
@@ -26,7 +22,9 @@ function subscribeHidden(listener: () => void) {
 /**
  * つながりの図「どこに CPU を使っているか」(⑭ WC-13)。左にセッションの点(名前と %)、右に PC 全体の点。
  * 線の太さと、線を流れる粒の数・速さが、PC 全体に対する割合。セッションの外は点線。数は必ず文字でも出す。
- * 粒は setTimeout で 30回／秒まで動かし、動きを減らす設定・［動きを止める］・窓が隠れている・図が画面の外のときは止める(A21)。
+ * 粒は、線の上の位置を図を作るときに1度だけ計算し、transform のアニメーションにして画面の合成の側で動かす(⑮ OR-6)。
+ * 描くたびに SVG を書き換えないので、描画のスレッドは粒のために働かない。動きを減らす設定・［動きを止める］・窓が隠れている・
+ * 図が画面の外のときは粒を消す(A21)。
  */
 export function ConnectionFlow({ snap, metric }: { snap: MonitorSnapshotResponse; metric: Metric }) {
   const model = buildFlow(snap, metric)
@@ -83,7 +81,7 @@ export function ConnectionFlow({ snap, metric }: { snap: MonitorSnapshotResponse
             </li>
           ))}
         </ul>
-        <div ref={boxRef} className="h-full" style={{ height: h }}>
+        <div ref={boxRef} className="relative h-full" style={{ height: h }}>
           <FlowLines model={model} width={width} height={h} animate={animate} />
         </div>
         <div className="text-sm">
@@ -101,78 +99,68 @@ export function ConnectionFlow({ snap, metric }: { snap: MonitorSnapshotResponse
 }
 
 function FlowLines({ model, width, height, animate }: { model: FlowModel; width: number; height: number; animate: boolean }) {
-  const particlesRef = useRef<SVGGElement>(null)
+  const particlesRef = useRef<HTMLDivElement>(null)
   const pathsRef = useRef<Map<string, SVGPathElement>>(new Map())
   const rightY = height / 2
 
   // 粒を動かす。数(線の太さと粒の数)が変わったときと、動かす・止めるが変わったときだけ作り直す
   const signature = model.nodes.map((n) => `${n.key}:${n.particles}`).join("|") + `|${model.speed}|${width}|${height}`
   useEffect(() => {
-    const group = particlesRef.current
-    if (!group) return
-    group.replaceChildren()
+    const layer = particlesRef.current
+    if (!layer) return
+    layer.replaceChildren()
     if (!animate) return
     const lap = lapMs(model.speed)
-    const dots: Array<{ el: SVGCircleElement; path: SVGPathElement; offset: number; len: number }> = []
+    const animations: Animation[] = []
     for (const n of model.nodes) {
       const path = pathsRef.current.get(n.key)
       if (!path || n.particles === 0) continue
       const len = path.getTotalLength()
+      const keyframes = flowKeyframes((at) => path.getPointAtLength(at * len))
       for (let i = 0; i < n.particles; i++) {
-        const el = document.createElementNS(SVG_NS, "circle")
-        el.setAttribute("r", String(PARTICLE_R))
-        el.setAttribute("fill", PARTICLE_COLOR)
+        const el = document.createElement("span")
+        el.className = "flow-particle"
         el.dataset.testid = "flow-particle"
-        group.appendChild(el)
-        dots.push({ el, path, offset: i / n.particles, len })
+        layer.appendChild(el)
+        // 粒どうしの間隔は、1周の中の開始の位置をずらして作る(負の delay で途中から始める)
+        animations.push(el.animate(keyframes, { duration: lap, iterations: Infinity, delay: -(i / n.particles) * lap, easing: "linear" }))
       }
     }
-    let timer = 0
-    const start = performance.now()
-    const tick = () => {
-      const now = performance.now()
-      const phase = ((now - start) % lap) / lap
-      for (const d of dots) {
-        const p = d.path.getPointAtLength((((phase + d.offset) % 1) * d.len))
-        d.el.setAttribute("cx", p.x.toFixed(1))
-        d.el.setAttribute("cy", p.y.toFixed(1))
-      }
-      timer = window.setTimeout(tick, frameWait(performance.now(), now))
-    }
-    tick()
     return () => {
-      window.clearTimeout(timer)
-      group.replaceChildren()
+      for (const a of animations) a.cancel()
+      layer.replaceChildren()
     }
     // signature に数と大きさをまとめている
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signature, animate])
 
   return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden className="block overflow-visible">
-      {model.nodes.map((n, i) => {
-        const y = i * ROW_H + ROW_H / 2
-        const d = `M0,${y} C${width * 0.5},${y} ${width * 0.5},${rightY} ${width},${rightY}`
-        return (
-          <path
-            key={n.key}
-            ref={(el) => {
-              if (el) pathsRef.current.set(n.key, el)
-              else pathsRef.current.delete(n.key)
-            }}
-            d={d}
-            fill="none"
-            stroke="var(--muted-foreground)"
-            strokeOpacity={n.kind === "session" ? 0.55 : 0.4}
-            strokeWidth={n.width}
-            strokeDasharray={n.kind === "outside" ? "4 4" : undefined}
-            strokeLinecap="round"
-            data-testid="flow-line"
-          />
-        )
-      })}
-      <circle cx={width} cy={rightY} r="7" fill="var(--foreground)" />
-      <g ref={particlesRef} />
-    </svg>
+    <>
+      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden className="block overflow-visible">
+        {model.nodes.map((n, i) => {
+          const y = i * ROW_H + ROW_H / 2
+          const d = `M0,${y} C${width * 0.5},${y} ${width * 0.5},${rightY} ${width},${rightY}`
+          return (
+            <path
+              key={n.key}
+              ref={(el) => {
+                if (el) pathsRef.current.set(n.key, el)
+                else pathsRef.current.delete(n.key)
+              }}
+              d={d}
+              fill="none"
+              stroke="var(--muted-foreground)"
+              strokeOpacity={n.kind === "session" ? 0.55 : 0.4}
+              strokeWidth={n.width}
+              strokeDasharray={n.kind === "outside" ? "4 4" : undefined}
+              strokeLinecap="round"
+              data-testid="flow-line"
+            />
+          )
+        })}
+        <circle cx={width} cy={rightY} r="7" fill="var(--foreground)" />
+      </svg>
+      <div ref={particlesRef} aria-hidden className="pointer-events-none absolute inset-0" />
+    </>
   )
 }

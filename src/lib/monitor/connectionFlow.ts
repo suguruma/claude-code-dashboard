@@ -12,17 +12,20 @@ import type { MonitorSnapshotResponse } from "./monitorTypes"
 
 export const MAX_PARTICLES = 40
 export const MAX_PER_LINE = 6
-/** 粒を描く回数の上限(回／秒)。数(線の太さ)は記録の間隔(約1分)で変わるだけ */
-export const MAX_FPS = 30
-const FRAME_MS = 1000 / MAX_FPS
+/** 粒の通り道を区切る点の数。線(3次のベジェ曲線)の上の点を、図を作るときに1度だけ計算する */
+export const KEYFRAME_POINTS = 48
 
 /**
- * 次に粒を描くまでの待ち(ms。⑭ のゲート2 の L3)。粒は requestAnimationFrame でなく setTimeout で 1/30 秒ごとに描く。
- * requestAnimationFrame を毎フレーム呼んで間引くと、描かないフレームでも起き(60回／秒)、小数の差で 33.3ms の書き換えを
- * 飛ばして約22回／秒に落ちていた。SVG の属性の書き換えは、次の画面の書き換えでまとめて描かれる
+ * 粒の1周分の transform のキーフレーム(⑮ OR-6・A10)。pointAt(0〜1) は線の長さに対する位置の点を返す。
+ * v0.4.0 は 1/30 秒ごとに getPointAtLength で位置を求めて SVG の属性を書き換えており、描くたびに描画のスレッドが
+ * 図を描き直していた(配る版で［負荷］を開いたまま 1コアの平均 6.97%)。キーフレームにすると、粒は画面の合成の側で動き、
+ * 描画のスレッドは働かない。点と点の間はまっすぐ進む(48点で曲線との差は目に見えない)
  */
-export function frameWait(now: number, lastDrawn: number): number {
-  return Math.max(0, lastDrawn + FRAME_MS - now)
+export function flowKeyframes(pointAt: (at: number) => { x: number; y: number }): Keyframe[] {
+  return Array.from({ length: KEYFRAME_POINTS + 1 }, (_, i) => {
+    const p = pointAt(i / KEYFRAME_POINTS)
+    return { transform: `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px)` }
+  })
 }
 
 export type FlowNodeKind = "session" | "others" | "outside"
