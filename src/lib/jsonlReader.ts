@@ -8,14 +8,18 @@ const MAX_CARRY_BYTES = 64 * 1024 * 1024
  * JSONLファイルの fromOffset から endSize までを読み、完結した行ごとに onLine を呼ぶ。戻り値は次回の読み取り位置。
  * 改行で終わっていない最後の行は書き込み途中とみなし、読み取り位置を進めない(次回に回す)。
  * ファイル全体をメモリに載せず、chunkBytes ずつ読む。
+ * needle を渡すと、その文字列(UTF-8 のバイト列)を含む行だけを文字列にして onLine に渡す(含まない行は文字列にしない。
+ * 巨大なツールの出力の行を、文字に直さずに飛ばすため。⑯ A11)
  */
 export async function readJsonlFrom(
   filePath: string,
   fromOffset: number,
   endSize: number,
   onLine: (line: string) => void,
-  chunkBytes: number = CHUNK_BYTES
+  chunkBytes: number = CHUNK_BYTES,
+  needle?: string
 ): Promise<number> {
+  const needleBytes = needle ? Buffer.from(needle, "utf-8") : null
   const handle = await fs.open(filePath, "r")
   try {
     let position = fromOffset
@@ -39,9 +43,13 @@ export async function readJsonlFrom(
         }
         continue
       }
-      const complete = data.subarray(0, lastNewline).toString("utf-8")
-      for (const line of complete.split("\n")) {
-        if (line) onLine(line)
+      if (needleBytes) {
+        emitMatching(data.subarray(0, lastNewline), needleBytes, onLine)
+      } else {
+        const complete = data.subarray(0, lastNewline).toString("utf-8")
+        for (const line of complete.split("\n")) {
+          if (line) onLine(line)
+        }
       }
       carry = Buffer.from(data.subarray(lastNewline + 1))
       committed = position - carry.length
@@ -49,5 +57,19 @@ export async function readJsonlFrom(
     return committed
   } finally {
     await handle.close()
+  }
+}
+
+/** buf(改行で区切られた完結した行の並び)のうち、needle を含む行だけを文字列にして onLine に渡す */
+function emitMatching(buf: Buffer, needle: Buffer, onLine: (line: string) => void): void {
+  let from = 0
+  while (from < buf.length) {
+    const hit = buf.indexOf(needle, from)
+    if (hit < 0) return
+    const start = hit === 0 ? 0 : buf.lastIndexOf(0x0a, hit - 1) + 1
+    const nextNewline = buf.indexOf(0x0a, hit)
+    const end = nextNewline < 0 ? buf.length : nextNewline
+    if (end > start) onLine(buf.subarray(start, end).toString("utf-8"))
+    from = end + 1
   }
 }

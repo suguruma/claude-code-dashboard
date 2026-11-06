@@ -29,15 +29,19 @@ export interface UsageServiceOptions {
 export class UsageService {
   private readonly opts: UsageServiceOptions
   private readonly ledger: UsageLedger
-  private readonly prices: PriceBook
+  /** 価格表(予定タスクのタブ ⑯ も同じ物で重さを出す) */
+  readonly prices: PriceBook
+  /** 会話ログのルート(予定タスクのタブ ⑯ も同じ場所を読む)。自動の探索を止めていて、明示も無いときは null */
+  readonly projectsRoot: string | null
   private snapshotCache: { mtimeMs: number; size: number; result: SnapshotReadResult } | null = null
 
   constructor(options: UsageServiceOptions = {}) {
     this.opts = options
     this.prices = new PriceBook(options.prices ?? {})
+    this.projectsRoot = resolveProjectsRoot(options.projectsRoot)
     this.ledger = new UsageLedger({
       // 自動の探索を止めていて、明示も無いときは null(会話ログからの集計はしない)
-      projectsRoot: resolveProjectsRoot(options.projectsRoot),
+      projectsRoot: this.projectsRoot,
       now: options.now,
     })
   }

@@ -92,6 +92,21 @@ interface BuiltSession {
   lastCompactionAt: number | null
   /** 関係性マップ(⑬)だけに使う値。一覧の応答には入れない */
   relation: SessionRelationData
+  /** 予定タスクの集計(⑯)だけに使う値。一覧の応答には入れない */
+  scheduled: ScheduledLink | null
+}
+
+/** 予定タスクの回(⑯ AG-1・AG-6)：予定タスクの名前と、使用量を合計する会話記録の ID(本体と前の会話記録) */
+export interface ScheduledLink {
+  taskId: string
+  cliSessionIds: string[]
+}
+
+/** 予定タスクの回の1件(⑯)。summary は一覧と同じ物(状態の印を一覧と同じに作るため) */
+export interface ScheduledRunSource {
+  summary: DesktopSessionSummary
+  taskId: string
+  cliSessionIds: string[]
 }
 
 /** 関係性マップ(⑬ RM-5〜RM-7)に使う、セッションごとの値(ブランチ・送ったメッセージの届き具合・スキルの呼び出し) */
@@ -474,6 +489,19 @@ export class DesktopSessionService {
     return map
   }
 
+  /**
+   * 予定タスクの回(⑯)。アーカイブ済みを含む。sessions は一覧の全セッション(状態の印を一覧と同じ集め方で作るため)。
+   * 会話記録の ID は、メタデータの cliSessionId と priorCliSessionIds(会話記録が見つからなくても返す)
+   */
+  async scheduledRuns(): Promise<{ sessions: DesktopSessionSummary[]; runs: ScheduledRunSource[] }> {
+    const list = await this.list()
+    const runs: ScheduledRunSource[] = []
+    for (const b of this.built.values()) {
+      if (b.scheduled) runs.push({ summary: b.summary, taskId: b.scheduled.taskId, cliSessionIds: b.scheduled.cliSessionIds })
+    }
+    return { sessions: list.sessions, runs }
+  }
+
   private countSessions(sessions: DesktopSessionSummary[], highContextRatio: number): DesktopSessionCounts {
     const active = sessions.filter((s) => !s.isArchived)
     return {
@@ -605,7 +633,13 @@ export class DesktopSessionService {
       peerReceipts: meta?.peerReceipts ?? [],
       skillCalls: digest?.skillCalls ?? [],
     }
-    return { summary, tasks, ref, lastCompactionAt: digest?.lastCompactionAt ?? null, relation }
+    const scheduled: ScheduledLink | null = meta?.scheduledTaskId
+      ? {
+          taskId: meta.scheduledTaskId,
+          cliSessionIds: [...new Set([...(meta.cliSessionId ? [meta.cliSessionId] : []), ...(meta.priorCliSessionIds ?? [])])],
+        }
+      : null
+    return { summary, tasks, ref, lastCompactionAt: digest?.lastCompactionAt ?? null, relation, scheduled }
   }
 }
 

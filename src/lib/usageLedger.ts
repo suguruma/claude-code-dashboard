@@ -37,6 +37,9 @@ function count(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0
 }
 
+/** 使用量の行に必ず含まれる文字列。これを含まない行は文字列にせずに飛ばす(読み取りを速くするため。⑯ A11) */
+const USAGE_NEEDLE = '"usage"'
+
 /** 解析対象になりうる行だけをJSONとして解釈する(巨大なツール出力などの解析コストを避ける) */
 function mayBeUsageLine(line: string): boolean {
   return line.includes('"usage"') && (line.includes('"type":"assistant"') || line.includes('"type": "assistant"'))
@@ -94,7 +97,7 @@ interface FileState {
   rows: Map<string, UsageRow>
 }
 
-interface TranscriptFile {
+export interface TranscriptFile {
   filePath: string
   dirName: string
   sessionKey: string
@@ -107,6 +110,11 @@ export interface UsageLedgerOptions {
   /** この期間より古い応答は保持しない。既定は15日(週の枠+較正に使う直近7日分の枠) */
   horizonMs?: number
   now?: () => number
+  /**
+   * 読む会話記録を絞る(⑯ 予定タスクの回だけを30日まで読む台帳で使う)。false のファイルは開かず、行も返さない。
+   * 毎回の読み足しで判定するので、後から対象になったファイルはその時に読む
+   */
+  include?: (file: { sessionKey: string; subagent: boolean }) => boolean
 }
 
 const DEFAULT_HORIZON_MS = 15 * 24 * 60 * 60 * 1000
@@ -195,7 +203,9 @@ export class UsageLedger {
       this.discovery = { at: now, files: this.opts.projectsRoot ? await listTranscriptFiles(this.opts.projectsRoot) : [] }
     }
     const cutoff = now - this.horizonMs
+    const include = this.opts.include
     for (const file of this.discovery.files) {
+      if (include && !include(file)) continue
       let stat
       try {
         stat = await fs.stat(file.filePath)
@@ -224,7 +234,7 @@ export class UsageLedger {
           const row: UsageRow = { ...parsed, sessionKey: file.sessionKey, dirName: file.dirName, subagent: file.subagent }
           const existing = target.rows.get(row.id)
           target.rows.set(row.id, existing ? preferRow(existing, row) : row)
-        })
+        }, undefined, USAGE_NEEDLE)
         target.size = stat.size
         this.version++
       } catch {
@@ -233,14 +243,23 @@ export class UsageLedger {
     }
   }
 
+  /** 最後の探索で見つけた会話記録のうち、読む対象のもの(⑯ サブエージェントの本数と種類に使う)。refresh() の後に呼ぶ */
+  files(): TranscriptFile[] {
+    const include = this.opts.include
+    const files = this.discovery?.files ?? []
+    return include ? files.filter((f) => include(f)) : files
+  }
+
   /** 重複を除いた応答の一覧(時刻順)。期間より古いものは含めない。refresh() の後に呼ぶ */
   rows(): UsageRow[] {
     const now = this.now()
     if (this.cache && this.cache.version === this.version && now - this.cache.builtAt < 1_000) return this.cache.rows
     const cutoff = now - this.horizonMs
+    const include = this.opts.include
     const merged = new Map<string, UsageRow>()
     for (const state of this.states.values()) {
       for (const row of state.rows.values()) {
+        if (include && !include(row)) continue
         if (row.at < cutoff) continue
         const existing = merged.get(row.id)
         merged.set(row.id, existing ? preferRow(existing, row) : row)
