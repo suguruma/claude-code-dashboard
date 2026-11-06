@@ -6,6 +6,9 @@ import { Button } from "@/components/ui/button"
 import { HomeStageMarks } from "@/components/home/HomeStageMarks"
 import { ProjectSwitcher } from "./ProjectSwitcher"
 import { ThemeToggle } from "./ThemeToggle"
+import { InboxBell } from "./InboxBell"
+import { JumpPalette } from "./JumpPalette"
+import { UsageChip } from "./UsageChip"
 import { findNavItem, showsProjectSwitcher } from "./navConfig"
 
 interface TopBarProps {
@@ -18,8 +21,9 @@ export function TopBar({ onMenuClick }: TopBarProps) {
 
   return (
     // 上のバーの幅(サイドバーの開閉でも変わる)で並べ方を決めるため、画面の幅ではなくコンテナクエリ(@container)を使う。
-    // 幅が 42rem 未満のときは、プロジェクトの切り替えを2段目に回して、ページ名とボタンが重ならないようにする
-    <header className="@container sticky top-0 z-10 flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b bg-background px-4 py-3 sm:px-6">
+    // 幅が 42rem 未満のときは、プロジェクトの切り替えを2段目に回して、ページ名とボタンが重ならないようにする。
+    // 押せる所はすべて 36px(⑮ 4-2)。右の並びは 探す・利用上限の札・知らせの鐘・テーマ
+    <header className="@container sticky top-0 z-10 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b bg-background px-4 py-2.5 sm:px-6">
       <div className="flex min-w-0 flex-1 items-center gap-2 text-sm text-muted-foreground">
         <Button
           variant="ghost"
@@ -45,7 +49,12 @@ export function TopBar({ onMenuClick }: TopBarProps) {
           <ProjectSwitcher />
         </div>
       )}
-      <ThemeToggle />
+      <div className="flex shrink-0 items-center gap-2" data-testid="topbar-tools">
+        <JumpPalette />
+        <UsageChip />
+        <InboxBell />
+        <ThemeToggle />
+      </div>
     </header>
   )
 }

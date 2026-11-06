@@ -27,6 +27,16 @@ function readRaw(key: string): string | null {
  * localStorageに永続化されるstate。useSyncExternalStoreを使い、ハイドレーション不一致
  * （サーバーは常にinitialを返し、クライアントは保存値を読む差異）を安全に扱う。
  */
+/** フックの外から値を書き、同じタブで読んでいる usePersistedState にも知らせる(⑮ 探すからグループで絞る) */
+export function writePersisted<T>(key: string, value: T): void {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    // localStorageが使えない環境では永続化のみ諦める
+  }
+  notify(key)
+}
+
 export function usePersistedState<T>(key: string, initial: T): [T, (value: T) => void] {
   const getSnapshot = useCallback(() => readRaw(key), [key])
   const getServerSnapshot = useCallback(() => null, [])

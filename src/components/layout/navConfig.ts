@@ -28,8 +28,11 @@ export interface NavItem {
    * 「グローバル設定」の印を出す(⑧。ページごとの出す・出さないは、この1か所で変えられる)
    */
   usesProject?: boolean
-  /** 名前の横に出す印。pc-alert：今日 PC の警告(CPU・メモリ)があったら文字「！」(⑭ WC-6) */
-  mark?: "pc-alert"
+  /**
+   * 名前の横に出す印。pc-alert：今日 PC の警告(CPU・メモリ)があったら文字「！」(⑭ WC-6)。
+   * decisions：次にやる判断の件数「？ 判断 n」(⑮ OR-2)
+   */
+  mark?: "pc-alert" | "decisions"
 }
 
 export interface NavGroup {
@@ -44,6 +47,7 @@ export const NAV_GROUPS: NavGroup[] = [
         href: "/",
         label: "ホーム",
         icon: Home,
+        mark: "decisions",
         description:
           "いまあなたが決めることを急ぐ順に上に出し、その下に組織図を出します（読み取り専用）。",
       },

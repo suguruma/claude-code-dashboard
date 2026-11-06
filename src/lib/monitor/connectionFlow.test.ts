@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs"
 import path from "node:path"
 import { describe, expect, it } from "vitest"
-import { buildFlow, frameWait, lineWidth, MAX_FPS, MAX_PARTICLES, particleCount, shouldAnimate } from "./connectionFlow"
+import { buildFlow, flowKeyframes, KEYFRAME_POINTS, lineWidth, MAX_PARTICLES, particleCount, shouldAnimate } from "./connectionFlow"
 import type { MonitorSnapshotResponse, SnapshotSession } from "./monitorTypes"
 
 // 値はどれも合成
@@ -58,32 +58,31 @@ describe("[WC-13] つながりの図(A20・A21・A23・A29)", () => {
     expect(flow.nodes[1].share).toBeCloseTo(3.125)
   })
 
-  it("動きを減らす設定・止める・隠れている・画面の外のときは動かさない。粒は30回／秒まで", () => {
+  it("動きを減らす設定・止める・隠れている・画面の外のときは動かさない", () => {
     const base = { reducedMotion: false, paused: false, hidden: false, onScreen: true }
     expect(shouldAnimate(base)).toBe(true)
     expect(shouldAnimate({ ...base, reducedMotion: true })).toBe(false)
     expect(shouldAnimate({ ...base, paused: true })).toBe(false)
     expect(shouldAnimate({ ...base, hidden: true })).toBe(false)
     expect(shouldAnimate({ ...base, onScreen: false })).toBe(false)
-    expect(MAX_FPS).toBe(30)
-    // 動かさないときはタイマーを始めない(effect の最初で返す)
+    // 動かさないときは粒を作らない(effect の最初で返す)
     const code = readFileSync(path.resolve(__dirname, "../../components/resources/ConnectionFlow.tsx"), "utf-8")
     expect(code).toMatch(/if \(!animate\) return\s+const lap/)
   })
 
-  // ⑭ のゲート2 の L3：requestAnimationFrame を使わず、タイマーで 1/30 秒ごとに描く。タイマーが遅れても30回／秒を超えない
-  it.each([0, 1, 4])("粒はタイマーが %dms 遅れても、1秒に30回まで(描くのにかかった時間は次の待ちから引く)", (lateMs) => {
-    let t = 0
-    let draws = 0
-    while (t < 999.99) {
-      draws += 1
-      const drawn = t
-      t = drawn + 0.5 + frameWait(drawn + 0.5, drawn) + lateMs
-    }
-    expect(draws).toBeLessThanOrEqual(30)
-    expect(draws).toBeGreaterThanOrEqual(lateMs === 0 ? 30 : 26)
-    expect(frameWait(100, 0)).toBe(0)
+  // ⑮ OR-6(A10)：粒は描くたびに SVG を書き換えず、1度だけ作った transform のキーフレームで動かす(描画のスレッドを使わない)
+  it("[OR-6] 粒の通り道は、線の上の点を1度だけ計算したキーフレーム(始めと終わりは線の両端)", () => {
+    const calls: number[] = []
+    const frames = flowKeyframes((at) => {
+      calls.push(at)
+      return { x: at * 100, y: 10 + at * 20 }
+    })
+    expect(frames).toHaveLength(KEYFRAME_POINTS + 1)
+    expect(calls).toHaveLength(KEYFRAME_POINTS + 1)
+    expect(frames[0]).toEqual({ transform: "translate(0.0px, 10.0px)" })
+    expect(frames[KEYFRAME_POINTS]).toEqual({ transform: "translate(100.0px, 30.0px)" })
     const code = readFileSync(path.resolve(__dirname, "../../components/resources/ConnectionFlow.tsx"), "utf-8")
-    expect(code).not.toMatch(/requestAnimationFrame\(/)
+    expect(code).not.toMatch(/requestAnimationFrame\(|setTimeout\(|setAttribute\("c[xy]"/)
+    expect(code).toMatch(/\.animate\(keyframes/)
   })
 })

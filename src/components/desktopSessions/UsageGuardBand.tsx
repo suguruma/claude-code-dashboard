@@ -27,13 +27,9 @@ export function UsageGuardBand({ guard, windows }: { guard: UsageGuard | null | 
         style={{ color: high ? "var(--status-serious)" : "var(--status-warning)" }}
         aria-hidden
       />
-      <p>
-        <span className="font-medium">
-          {high ? "上限ガード中：新しい指示は保留中です" : "上限に近づいています"}
-        </span>
-        <span className="ml-2 text-foreground/80">
-          {guard.windowLabel}の公式値 {guard.percent}%（{estimateNote ? `${estimateNote}。` : ""}ガードの判断は運用ルール側で行い、ここは表示のみです）
-        </span>
+      {/* 数は上のバーの利用上限の札に出すので、帯は判断の語だけの1行にする(⑮ 中2。同じ数を3か所に出さない) */}
+      <p className="font-medium" title={`${guard.windowLabel}の公式値 ${guard.percent}%${estimateNote ? `（${estimateNote}）` : ""}`}>
+        {high ? "上限ガード中：新しい指示を控える" : "上限に近づいています：新しい指示を控える"}
       </p>
     </div>
   )

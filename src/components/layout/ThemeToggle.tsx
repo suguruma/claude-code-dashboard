@@ -27,7 +27,7 @@ export function ThemeToggle() {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger render={<Button variant="ghost" size="icon" aria-label="テーマを切り替え" />}>
+      <DropdownMenuTrigger render={<Button variant="ghost" size="icon-lg" aria-label="テーマを切り替え" />}>
         <Icon className="size-4" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-44">

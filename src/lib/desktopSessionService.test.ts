@@ -112,6 +112,45 @@ async function seed(fx: DesktopFixture) {
   return { t1, t2 }
 }
 
+describe("[A12] 一覧の抜粋は、秘密らしい文字列を伏せてから切る(PC も LAN と同じ。⑮)", () => {
+  it("最新の指示の抜粋と、タスクリストの今の作業の文", async () => {
+    const fx = await fixture()
+    await writeMeta(fx, makeMeta({ n: 7, title: "秘密の入った作業", category: "completed" }))
+    await writeTranscript(fx, fakeCliId(7), [
+      planRow({ items: [{ content: "password: Synth3ticPass で試す", status: "in_progress" }], scope: "first_task" }, { ts: tsAt(1) }),
+      humanRow("DB_PASSWORD=Synth3ticValue を使って確認してください", { ts: tsAt(2) }),
+    ])
+    const svc = service(fx)
+    await svc.list()
+    await svc.settle()
+    const s = (await svc.list()).sessions.find((x) => x.title === "秘密の入った作業")!
+    expect(s.latestInstruction?.excerpt).toBe("DB_PASSWORD=●●●● を使って確認してください")
+    expect(s.phase?.currentStep).toBe("password: ●●●● で試す")
+    expect(JSON.stringify(s)).not.toContain("Synth3tic")
+  })
+
+  it("鍵が切る位置(指示60字・タスク80字)をまたいでも、先頭の一部が残らない。題名の代わりの抜粋と詳細のタスクも伏せる", async () => {
+    const fx = await fixture()
+    const KEY = "NdlTokQ7x9A1b2C3d4E5f6G7h8J9k0"
+    const STEP_KEY = "StpTokB3n5M7q9s1u3w5y7a9c1e3g5"
+    await writeMeta(fx, makeMeta({ n: 8, title: "", category: "completed" }))
+    await writeTranscript(fx, fakeCliId(8), [
+      planRow({ items: [{ content: `${"段".repeat(70)}${STEP_KEY}`, status: "in_progress" }], scope: "first_task" }, { ts: tsAt(1) }),
+      humanRow(`${"指".repeat(50)}${KEY} で確かめる`, { ts: tsAt(2) }),
+    ])
+    const svc = service(fx)
+    await svc.list()
+    await svc.settle()
+    const s = (await svc.list()).sessions.find((x) => x.id === fakeSessionId(8))!
+    expect(s.latestInstruction?.excerpt).toBe(`${"指".repeat(50)}●●●● で確かめる`)
+    expect(s.title).toBe(s.latestInstruction?.excerpt)
+    expect(s.phase?.currentStep).toBe(`${"段".repeat(60)}…`)
+    const detail = await svc.detail(fakeSessionId(8))
+    expect(detail?.tasks?.[0]?.content).toBe(`${"段".repeat(70)}●●●●`)
+    for (const head of ["NdlTok", "StpTok"]) expect(JSON.stringify([s, detail])).not.toContain(head)
+  })
+})
+
 describe("DesktopSessionService.list", () => {
   it("Desktopのメタデータを主データに、状態・モデル・グループ・コンテキスト・フェーズ・最新の指示を組み立てる", async () => {
     const fx = await fixture()

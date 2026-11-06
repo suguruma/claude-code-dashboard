@@ -81,14 +81,14 @@ export function ProjectSwitcher() {
     <div className="flex min-w-0 flex-1 items-center gap-2 @2xl:flex-none">
       <FolderGit2 className="size-4 text-muted-foreground shrink-0" />
       {isLoading || !selectedProjectId ? (
-        <div className="h-7 min-w-0 flex-1 rounded-md border border-input bg-transparent @2xl:w-[180px] @2xl:flex-none" />
+        <div className="h-9 min-w-0 flex-1 rounded-md border border-input bg-transparent @2xl:w-[180px] @2xl:flex-none" />
       ) : (
         <Select
           value={selectedProjectId}
           onValueChange={(id) => id && selectProject(id)}
           disabled={projects.length === 0}
         >
-          <SelectTrigger size="sm" className="min-w-0 flex-1 @2xl:w-[180px] @2xl:flex-none">
+          <SelectTrigger size="sm" className="min-w-0 flex-1 data-[size=sm]:h-9 @2xl:w-[180px] @2xl:flex-none">
             <SelectValue placeholder="プロジェクトを選択">
               {(value: string) => projects.find((p) => p.id === value)?.name ?? value}
             </SelectValue>
@@ -131,7 +131,7 @@ export function ProjectSwitcher() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogTrigger
           render={
-            <Button variant="outline" size="icon" aria-label="プロジェクトを追加">
+            <Button variant="outline" size="icon-lg" aria-label="プロジェクトを追加">
               <Plus className="size-4" />
             </Button>
           }
@@ -234,7 +234,7 @@ function EditProjectDialog({ project, onSave, onDelete }: EditProjectDialogProps
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger
         render={
-          <Button variant="outline" size="icon" aria-label="プロジェクトを編集">
+          <Button variant="outline" size="icon-lg" aria-label="プロジェクトを編集">
             <Pencil className="size-4" />
           </Button>
         }

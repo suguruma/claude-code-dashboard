@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils"
 import { DesktopDataNotices } from "@/components/desktopSessions/DesktopDataNotices"
 import { NotificationToggle } from "@/components/desktopSessions/NotificationToggle"
 import { SelectedSessionDialog } from "@/components/desktopSessions/SelectedSessionDialog"
+import { SessionBoard } from "@/components/desktopSessions/SessionBoard"
 import { SessionRow } from "@/components/desktopSessions/SessionRow"
 import { SummaryCards } from "@/components/desktopSessions/SummaryCards"
 import { useDesktopSessions } from "@/hooks/useDesktopSessions"
@@ -15,6 +16,7 @@ import { useSelectSession } from "@/hooks/useSelectedSession"
 import { collectDecisions } from "@/lib/housekeeping"
 import {
   DEFAULT_FILTERS,
+  FILTER_STORAGE_KEY,
   applyFilters,
   bucketByGroup,
   collectOptions,
@@ -23,7 +25,6 @@ import {
   type DesktopSessionFilters,
 } from "@/lib/desktopSessionFilters"
 
-const FILTER_STORAGE_KEY = "ccd:desktop-sessions:filters"
 
 const STATUS_OPTIONS: Array<{ value: DesktopSessionFilters["status"]; label: string }> = [
   { value: "all", label: "すべての状態" },
@@ -43,10 +44,33 @@ const STATUS_OPTIONS: Array<{ value: DesktopSessionFilters["status"]; label: str
 const VIEW_OPTIONS: Array<{ value: DesktopSessionFilters["view"]; label: string }> = [
   { value: "list", label: "一覧" },
   { value: "group", label: "グループ別" },
+  { value: "board", label: "看板" },
 ]
 
 const selectClass =
   "h-8 min-w-0 rounded-lg border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+
+/** 一覧・グループ別・看板の切り替え */
+function ViewSwitch({ view, onChange }: { view: DesktopSessionFilters["view"]; onChange: (view: DesktopSessionFilters["view"]) => void }) {
+  return (
+    <div className="inline-flex overflow-hidden rounded-lg border" role="group" aria-label="表示の切り替え">
+      {VIEW_OPTIONS.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          aria-pressed={view === o.value}
+          onClick={() => onChange(o.value)}
+          className={cn(
+            "min-h-9 px-3 py-1.5 text-sm transition-colors",
+            view === o.value ? "bg-primary text-primary-foreground" : "bg-card text-foreground hover:bg-muted"
+          )}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  )
+}
 
 /** ページ全体は Suspense で包まない。`?session=` を読むのは詳細のダイアログだけ(SelectedSessionDialog) */
 export default function DesktopSessionsPage() {
@@ -82,13 +106,39 @@ export default function DesktopSessionsPage() {
     setFilters({ ...filters, ...patch })
   }
 
+  // 看板(⑮ OR-3)のときは、一覧の頭の部品(通知のスイッチ・データの場所・4つの数)と、一覧用の絞り込みを出さない。
+  // 絞り込みはグループだけ(名前で探すのは Ctrl+K)。読めないときのお知らせは出す
+  const board = filters.view === "board"
+  const boardSessions = useMemo(
+    () => (board ? sessions.filter((s) => filters.group === "all" || (filters.group === "none" ? !s.group : s.group?.id === filters.group)) : []),
+    [board, sessions, filters.group]
+  )
+
   return (
     <div className="space-y-6">
-      <NotificationToggle />
+      {!board && <NotificationToggle />}
 
-      <DesktopDataNotices data={data} error={error} isLoading={isLoading} />
+      {(!board || !data || data.source === "none" || error) && <DesktopDataNotices data={data} error={error} isLoading={isLoading} />}
 
-      {data && data.source !== "none" && (
+      {data && data.source !== "none" && board && (
+        <>
+          <ViewSwitch view={filters.view} onChange={(view) => update({ view })} />
+          {groupOptions.length > 0 && (
+            <select aria-label="グループで絞り込む" className={selectClass} value={filters.group} onChange={(e) => update({ group: e.target.value })}>
+              <option value="all">すべてのグループ</option>
+              {groupOptions.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}（{g.count}）
+                </option>
+              ))}
+              <option value="none">グループなし</option>
+            </select>
+          )}
+          <SessionBoard sessions={boardSessions} generatedAt={data.generatedAt} onSelect={setSelectedId} />
+        </>
+      )}
+
+      {data && data.source !== "none" && !board && (
         <>
           <SummaryCards
             counts={data.counts}
@@ -98,22 +148,7 @@ export default function DesktopSessionsPage() {
             onSelect={(status) => update({ status })}
           />
 
-          <div className="inline-flex overflow-hidden rounded-lg border" role="group" aria-label="表示の切り替え">
-            {VIEW_OPTIONS.map((o) => (
-              <button
-                key={o.value}
-                type="button"
-                aria-pressed={filters.view === o.value}
-                onClick={() => update({ view: o.value })}
-                className={cn(
-                  "px-3 py-1.5 text-sm transition-colors",
-                  filters.view === o.value ? "bg-primary text-primary-foreground" : "bg-card text-foreground hover:bg-muted"
-                )}
-              >
-                {o.label}
-              </button>
-            ))}
-          </div>
+          <ViewSwitch view={filters.view} onChange={(view) => update({ view })} />
 
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <select
