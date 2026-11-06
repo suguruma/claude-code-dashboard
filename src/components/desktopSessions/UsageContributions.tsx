@@ -1,3 +1,4 @@
+import { breakdownText } from "@/lib/scheduledActivityText"
 import { formatLimitShare, formatPercent, formatTokens } from "@/lib/usageFormat"
 import type { UsageContribution, UsageContributionSet } from "@/lib/usageTypes"
 
@@ -39,10 +40,13 @@ export function UsageContributions({
   title,
   set,
   costPerPercent,
+  showModels = false,
 }: {
   title: string
   set: UsageContributionSet
   costPerPercent: number | null
+  /** セッションの行の下に、モデル別の内訳とサブエージェントの本数を出す(⑯ AG-4。今週の消費) */
+  showModels?: boolean
 }) {
   const bars = groupBars(set.items)
   const grand = bars.reduce((sum, b) => sum + b.total, 0)
@@ -88,14 +92,25 @@ export function UsageContributions({
                 ))}
               </div>
               <ul className="space-y-0.5 text-xs text-muted-foreground">
-                {bar.items.slice(0, 3).map((item) => (
-                  <li key={item.sessionKey} className="flex justify-between gap-2">
-                    <span className="min-w-0 truncate">{item.title}</span>
-                    <span className="shrink-0 tabular-nums">
-                      {share(item.costUsd)} / {formatTokens(totalTokens(item))}トークン
-                    </span>
-                  </li>
-                ))}
+                {bar.items.slice(0, 3).map((item) => {
+                  const breakdown = showModels ? breakdownText(item.models, item.subagents) : null
+                  return (
+                    <li key={item.sessionKey}>
+                      <div className="flex justify-between gap-2">
+                        <span className="min-w-0 truncate">{item.title}</span>
+                        <span className="shrink-0 tabular-nums">
+                          {share(item.costUsd)} / {formatTokens(totalTokens(item))}トークン
+                        </span>
+                      </div>
+                      {/* 新しく足す文は14px 以上 */}
+                      {breakdown && (
+                        <p className="truncate text-sm tabular-nums" data-testid="usage-model-breakdown" title={breakdown}>
+                          {breakdown}
+                        </p>
+                      )}
+                    </li>
+                  )
+                })}
                 {bar.items.length > 3 && <li>ほか{bar.items.length - 3}件</li>}
               </ul>
             </li>

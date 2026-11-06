@@ -67,7 +67,7 @@ export function UsagePanel({ showTitle = true }: { showTitle?: boolean }) {
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <UsageContributions title="直近5時間" set={data.contributions.fiveHour} costPerPercent={coefficientOfWindow("five_hour")} />
-        <UsageContributions title="今週" set={data.contributions.week} costPerPercent={coefficientOfWindow("weekly_all")} />
+        <UsageContributions title="今週" set={data.contributions.week} costPerPercent={coefficientOfWindow("weekly_all")} showModels />
       </div>
 
       {data.unregisteredModels.length > 0 && (

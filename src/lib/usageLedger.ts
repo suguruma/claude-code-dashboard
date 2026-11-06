@@ -24,6 +24,8 @@ export interface UsageRow {
   /** `~/.claude/projects/` 直下のフォルダ名 */
   dirName: string
   subagent: boolean
+  /** サブエージェントの記録の名前(`agent-…`。本数を数えるため。⑯ AG-4)。本体の行は無し */
+  agent?: string
   input: number
   output: number
   cacheRead: number
@@ -31,7 +33,7 @@ export interface UsageRow {
   cacheWrite1h: number
 }
 
-export type ParsedUsage = Omit<UsageRow, "sessionKey" | "dirName" | "subagent">
+export type ParsedUsage = Omit<UsageRow, "sessionKey" | "dirName" | "subagent" | "agent">
 
 function count(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0
@@ -235,6 +237,7 @@ export class UsageLedger {
           const parsed = parseUsageLine(line)
           if (!parsed) return
           const row: UsageRow = { ...parsed, sessionKey: file.sessionKey, dirName: file.dirName, subagent: file.subagent }
+          if (file.subagent) row.agent = path.basename(file.filePath, ".jsonl")
           const existing = target.rows.get(row.id)
           target.rows.set(row.id, existing ? preferRow(existing, row) : row)
         }, undefined, USAGE_NEEDLE)

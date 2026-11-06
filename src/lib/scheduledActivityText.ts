@@ -1,6 +1,6 @@
 import { formatTokens } from "./usageFormat"
 import { addDays, shortDay, type Comparison, type Side } from "./scheduledActivity"
-import type { FamilyLabel, RunTokens, ScheduledRun } from "./scheduledActivityTypes"
+import type { FamilyLabel, ScheduledRun } from "./scheduledActivityTypes"
 
 /**
  * 予定タスクのタブ(⑯)の画面の文。言葉は要件メモの言葉の表のとおり(回・本体・サブエージェント・重さ・最後の状態)。
@@ -66,9 +66,15 @@ export function typesLine(c: Comparison): string {
   return `種類（1回あたり）：前 ${one(c.before)} → 後 ${one(c.after)}`
 }
 
-/** 日ごとの表のトークンの文「Opus 2.4M・サブ Haiku 680K」 */
-export function tokensText(tokens: RunTokens[]): string {
+/** モデル別のトークンの文「Opus 2.4M・サブ Haiku 680K」(日ごとの表・［利用上限］の今週の消費・セッションの詳細で共通) */
+export function tokensText(tokens: { family: string; subagent: boolean; tokens: number }[]): string {
   return tokens.map((t) => `${t.subagent ? "サブ " : ""}${t.family} ${formatTokens(t.tokens)}`).join("・")
+}
+
+/** モデル別の内訳とサブエージェントの本数「Opus 2.4M・サブ Haiku 680K・サブエージェント 3本」(⑯ AG-4・AG-5) */
+export function breakdownText(models: { family: string; subagent: boolean; tokens: number }[] | undefined, subagents: number | undefined): string | null {
+  if (!models || models.length === 0) return null
+  return `${tokensText(models)}・サブエージェント ${subagents ?? 0}本`
 }
 
 /** 日ごとの表のサブエージェントの欄「2（Sonnet）」 */

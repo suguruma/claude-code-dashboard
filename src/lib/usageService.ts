@@ -3,11 +3,11 @@ import path from "path"
 import { getAppDataRoot } from "./fileIO"
 import { defaultSnapshotsPath, locateData, resolveProjectsRoot } from "./dataLocations"
 import { getDesktopSessionService } from "./desktopSessionService"
-import { FIVE_HOUR_MS, USAGE_NOTE, WEEK_MS, buildContributions, buildUsage, type SessionIdentity } from "./usageEstimate"
+import { FIVE_HOUR_MS, USAGE_NOTE, WEEK_MS, buildContributions, buildSessionBreakdown, buildUsage, type SessionIdentity } from "./usageEstimate"
 import { UsageLedger } from "./usageLedger"
 import { PriceBook, parsePriceOverrides, type PriceResolution } from "./usagePricing"
 import { readSnapshots, type SnapshotReadResult } from "./usageSnapshots"
-import type { UsagePrice, UsageResponse } from "./usageTypes"
+import type { UsagePrice, UsageResponse, UsageSessionBreakdown } from "./usageTypes"
 
 /**
  * 利用上限の可視化(⑥)のサービス。公式値の記録(読み取りのみ)と会話記録の台帳から、画面に出す値を組み立てる。
@@ -71,6 +71,16 @@ export class UsageService {
     // 読めなかったときは、更新時刻を覚えず、次の取得で読み直す
     if (result.found) this.snapshotCache = { mtimeMs: stat.mtimeMs, size: stat.size, result }
     return result
+  }
+
+  /**
+   * セッション1件(会話ログの ID)の直近7日のモデル別の内訳とサブエージェントの本数(⑯ AG-5。セッションの詳細の1行)。
+   * ［利用上限］と同じ台帳から数えるので、「今週の消費」と食い違わない
+   */
+  async sessionBreakdown(sessionKey: string): Promise<UsageSessionBreakdown> {
+    const now = this.now()
+    await this.ledger.refresh()
+    return buildSessionBreakdown(this.ledger.rows(), new Set([sessionKey]), now - WEEK_MS, now, this.prices)
   }
 
   /** モデルの単価(設定ファイルの上書きを含む価格表から引く)。整理ページ(⑦)が再開コストを出すために使う */
