@@ -62,6 +62,8 @@ next-env.d.ts
 /config/lan-status.json
 # dashboard: ページを開いた回数(⑬ FS-7。13ページのパスと日付ごとの回数だけ。利用者ごとの記録)
 /config/page-visits.json
+# dashboard: 知らせの鐘の既読の記録(⑮。見た時刻・セッションの ID・知らせの種類だけ。利用者ごと)
+/config/inbox-read.json
 
 # dashboard: real ~/.claude data provided for local testing (contains personal session logs)
 /sample-data-user/
