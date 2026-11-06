@@ -26,6 +26,9 @@ export const DEFAULT_FILTERS: DesktopSessionFilters = {
   view: "list",
 }
 
+/** 絞り込みの保存先(localStorage)。セッション一覧と、探すのグループ(⑮ OR-5)で同じものを使う */
+export const FILTER_STORAGE_KEY = "ccd:desktop-sessions:filters"
+
 /**
  * 保存された絞り込みを、今の形に直す。項目が足りなければ既定値で埋める。
  * 組織図が別ページになる前に保存された `view: "org"` や、未知の値は、一覧に戻す。

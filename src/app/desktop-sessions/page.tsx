@@ -15,6 +15,7 @@ import { useSelectSession } from "@/hooks/useSelectedSession"
 import { collectDecisions } from "@/lib/housekeeping"
 import {
   DEFAULT_FILTERS,
+  FILTER_STORAGE_KEY,
   applyFilters,
   bucketByGroup,
   collectOptions,
@@ -23,7 +24,6 @@ import {
   type DesktopSessionFilters,
 } from "@/lib/desktopSessionFilters"
 
-const FILTER_STORAGE_KEY = "ccd:desktop-sessions:filters"
 
 const STATUS_OPTIONS: Array<{ value: DesktopSessionFilters["status"]; label: string }> = [
   { value: "all", label: "すべての状態" },

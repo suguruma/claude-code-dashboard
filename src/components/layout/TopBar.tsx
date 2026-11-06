@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { HomeStageMarks } from "@/components/home/HomeStageMarks"
 import { ProjectSwitcher } from "./ProjectSwitcher"
 import { ThemeToggle } from "./ThemeToggle"
+import { JumpPalette } from "./JumpPalette"
 import { UsageChip } from "./UsageChip"
 import { findNavItem, showsProjectSwitcher } from "./navConfig"
 
@@ -48,6 +49,7 @@ export function TopBar({ onMenuClick }: TopBarProps) {
         </div>
       )}
       <div className="flex shrink-0 items-center gap-2" data-testid="topbar-tools">
+        <JumpPalette />
         <UsageChip />
         <ThemeToggle />
       </div>

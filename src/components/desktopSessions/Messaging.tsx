@@ -1,11 +1,11 @@
 "use client"
 
 import { ExternalLink, OctagonAlert, Send } from "lucide-react"
-import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import type { DesktopSessionMessaging } from "@/lib/desktopSessionTypes"
 import { SEND_LIMIT, sendLevel, sessionDeepLink, type SendLevel } from "@/lib/sessionMessaging"
+import { openInDesktop } from "@/lib/openInDesktop"
 
 // color: アイコンの色。textColor: 文字の色(AA。アイコン・枠より暗い/明るい文字用のトークン)
 const LEVEL_STYLE: Record<Exclude<SendLevel, "none">, { className: string; color: string; textColor: string }> = {
@@ -71,14 +71,7 @@ export function OpenSessionButton({ sessionId, className }: { sessionId: string;
   if (!link) return null
 
   async function open() {
-    if (!link) return
-    const api = window.electronAPI
-    if (api?.openExternal) {
-      const result = await api.openExternal(link)
-      if (!result.ok) toast.error("セッションを開けませんでした。Claude Desktopが起動しているか確認してください")
-      return
-    }
-    window.location.href = link
+    if (link) await openInDesktop(link)
   }
 
   return (
