@@ -140,8 +140,8 @@ describe("[AG-3][A3][A14] 7日の平均どうしの比べ", () => {
   it("[A12] 上限の約％は係数が決まるときだけ、前と後に同じ係数で出す", () => {
     const c = compareRuns(runs, "2026-11-07", now, horizonStart)
     expect(limitPercents(c, null)).toBeNull()
-    expect(limitPercents(c, { costPerPercentLow: 0.1, costPerPercentHigh: null })).toBeNull()
-    const p = limitPercents(c, { costPerPercentLow: 0.1, costPerPercentHigh: 0.3 })
+    expect(limitPercents(c, { costPerPercentLow: 0.1, costPerPercentHigh: null, mode: "single", samples: 1 })).toBeNull()
+    const p = limitPercents(c, { costPerPercentLow: 0.1, costPerPercentHigh: 0.3, mode: "intersect", samples: 2 })
     expect(p?.before).toBeCloseTo(5)
     expect(p?.after).toBeCloseTo(4)
   })

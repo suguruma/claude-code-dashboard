@@ -1,5 +1,7 @@
 import type { StatusMark } from "./statusMark"
+import { costPerPercentOf } from "./usageFormat"
 import { familyOf } from "./usagePricing"
+import type { UsageCalibration } from "./usageTypes"
 import type { DefaultSelection, FamilyLabel, ScheduledRun } from "./scheduledActivityTypes"
 
 /**
@@ -8,6 +10,13 @@ import type { DefaultSelection, FamilyLabel, ScheduledRun } from "./scheduledAct
  * - 比べは7日の平均どうし。平均は「使用量が読めて、終わった回」だけ。どちらかが3回未満なら差を出さない
  * - 重さは前の7日の平均を100とした値(価格表による推定)
  */
+
+/**
+ * 予定タスク(Claude Desktop の scheduled task)の画面の呼び方。リソースのタブの名前と、セッション一覧の印で同じ語を使う(要件メモの言葉の表・A15)。
+ * Claude Desktop の日本語の画面は「スケジュール済みタスク」と呼んでいる(2026-11-07 に同梱のファイルで数えた)。
+ * オーナーの承認(ゲート1 の問1)は［予定タスク］。呼び方を合わせると決めたら、ここだけを直す
+ */
+export const SCHEDULED_TASK_LABEL = "予定タスク"
 
 export const DAY_MS = 24 * 60 * 60 * 1000
 export const RECENT_DAYS = 14
@@ -52,10 +61,10 @@ export function isDayKey(value: unknown): value is string {
   return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && dayKey(dayStart(value)) === value
 }
 
-/** 「M/D」 */
+/** 「M/DD」(11/03) */
 export function shortDay(key: string): string {
   const [, m, d] = key.split("-").map(Number)
-  return `${m}/${d}`
+  return `${m}/${pad(d)}`
 }
 
 // ---------------------------------------------------------------------------
@@ -311,12 +320,11 @@ export function indexOf(cost: number, comparison: Comparison): number | null {
  */
 export function limitPercents(
   comparison: Comparison,
-  calibration: { costPerPercentLow: number; costPerPercentHigh: number | null } | null
+  calibration: UsageCalibration | null
 ): { before: number; after: number } | null {
-  if (!calibration || calibration.costPerPercentHigh === null) return null
-  const perPercent = (calibration.costPerPercentLow + calibration.costPerPercentHigh) / 2
+  const perPercent = costPerPercentOf(calibration)
   const { before, after } = comparison
-  if (!(perPercent > 0) || before.avgCost === null || after.avgCost === null) return null
+  if (perPercent === null || before.avgCost === null || after.avgCost === null) return null
   return { before: before.avgCost / perPercent, after: after.avgCost / perPercent }
 }
 

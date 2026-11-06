@@ -9,6 +9,7 @@ import { InstructionPendingBadge } from "./InstructionPendingBadge"
 import { SendCountBadge, SendLimitNotice } from "./Messaging"
 import { DesktopStatusBadge, NEEDS_ACTION_ICON } from "./statusMeta"
 import { ORIGIN_LABEL, formatAgo } from "./format"
+import { SCHEDULED_TASK_LABEL } from "@/lib/scheduledActivity"
 
 interface SessionRowProps {
   session: DesktopSessionSummary
@@ -70,7 +71,7 @@ export function SessionRow({ session: s, highContextRatio, onSelect, parentTitle
               {s.isRoutine && (
                 <Badge variant="outline" className="shrink-0">
                   <CalendarClock aria-hidden />
-                  定期実行
+                  {SCHEDULED_TASK_LABEL}
                 </Badge>
               )}
               <SendCountBadge messaging={s.messaging} />

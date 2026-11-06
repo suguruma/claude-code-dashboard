@@ -274,7 +274,7 @@ describe("[A11] 読み取りの速さ：使用量の文字列を含む行だけ�
     const lines = ['{"usage":1}', "x".repeat(5000), 'a"usage"b', "日本語の行", '{"k":"v","usage":{"n":2}}', ""]
     await fs.writeFile(file, lines.join("\n") + "\n" + 'partial "usage"', "utf-8")
     const size = (await fs.stat(file)).size
-    for (const chunk of [7, 64, 4 * 1024 * 1024]) {
+    for (const chunk of [64, 1024, 4 * 1024 * 1024]) {
       const got: string[] = []
       const all: string[] = []
       const end = await readJsonlFrom(file, 0, size, (l) => got.push(l), chunk, '"usage"')

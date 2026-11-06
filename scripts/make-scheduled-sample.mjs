@@ -6,7 +6,7 @@
  * 使い方:
  *   node scripts/make-scheduled-sample.mjs [--scale <倍率>] [--boundary-ago <日>] <出力先のフォルダ>
  *   --scale        会話記録の大きさの倍率（既定 1。1 で予定タスクの回の会話記録が合計 約150MB。A11 の測定用）
- *   --boundary-ago 境目の日（daily-genai-watch 相当が Sonnet を使い始めた日）を今日の何日前にするか（既定 3）
+ *   --boundary-ago 境目の日（sample-genai-watch が Sonnet を使い始めた日）を今日の何日前にするか（既定 3）
  * 出力先に data/（Desktop のデータ）・projects/（会話記録）・scheduled-tasks/（予定タスクの定義のフォルダ）・expected.json ができる。
  * 表示する設定を、config/desktop-sessions.json と config/usage.json に書いて、CCD_DESKTOP_AUTODETECT=0 でサーバーを起動する。
  *
@@ -154,7 +154,18 @@ export function makeScheduledSample(outDir, { scale = 1, boundaryAgo = 3, now = 
       at += 5_000
       lines.push(toolResultLine(at))
     }
-    return { lines, end: at }
+    // 最後は本文だけの応答(ターンの終わり)。この uuid を、メタデータのターン後の要約に対応させる
+    at += 15_000
+    const lastUuid = `a-${++msgSeq}-end`
+    lines.push(
+      JSON.stringify({
+        type: "assistant",
+        uuid: lastUuid,
+        timestamp: new Date(at).toISOString(),
+        message: { id: `msg_sample_end_${msgSeq}`, model, role: "assistant", content: [{ type: "text", text: "合成の結び。" }], usage: { input_tokens: 5, output_tokens: 200, cache_read_input_tokens: 40_000 } },
+      })
+    )
+    return { lines, end: at, lastUuid }
   }
 
   const write = async () => {
@@ -173,8 +184,10 @@ export function makeScheduledSample(outDir, { scale = 1, boundaryAgo = 3, now = 
       const start = running ? now - 25 * MIN : r.at
       const conv = conversation(start, r.main, Math.round(60 * (r.mainScale ?? 1)), 1)
       if (running) {
-        // 作業中：最後の行を数秒前にそろえる
+        // 作業中：最後の結びの行を外し、最後の行(ツールの結果)を数秒前にそろえる
+        conv.lines.pop()
         conv.end = now - 5_000
+        conv.lines[conv.lines.length - 1] = conv.lines[conv.lines.length - 1].replace(/"timestamp":"[^"]+"/, `"timestamp":"${new Date(conv.end).toISOString()}"`)
       }
       if (!r.noTranscript) {
         const file = path.join(projectDir, `${cli(r.n)}.jsonl`)
@@ -186,7 +199,7 @@ export function makeScheduledSample(outDir, { scale = 1, boundaryAgo = 3, now = 
           const dir = path.join(projectDir, cli(r.n), "subagents")
           await mkdir(dir, { recursive: true })
           const agent = `agent-${String(r.n).padStart(6, "0")}${k}`
-          const sub = conversation(start + (k + 1) * 60_000, r.sub, 25, 0.8)
+          const sub = conversation(start + (k + 1) * 60_000, r.sub, r.sub === SONNET ? 12 : 25, 0.8)
           const subBody = sub.lines.join("\n") + "\n"
           totalBytes += Buffer.byteLength(subBody)
           await writeFile(path.join(dir, `${agent}.jsonl`), subBody, "utf-8")
@@ -214,8 +227,10 @@ export function makeScheduledSample(outDir, { scale = 1, boundaryAgo = 3, now = 
       }
       if (!running) {
         meta.postTurnSummary = r.blocked
-          ? { status_category: "blocked", needs_action: "合成の要対応", summarizes_uuid: "x" }
-          : { status_category: "completed", summarizes_uuid: "x" }
+          ? { status_category: "blocked", needs_action: "合成の要対応", summarizes_uuid: conv.lastUuid }
+          : { status_category: "completed", summarizes_uuid: conv.lastUuid }
+        meta.postTurnSummaryFor = conv.lastUuid
+        meta.lastAssistantUuid = conv.lastUuid
       }
       if (r.error) {
         meta.error = "合成のエラー"
