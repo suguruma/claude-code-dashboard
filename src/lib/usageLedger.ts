@@ -205,7 +205,10 @@ export class UsageLedger {
     const cutoff = now - this.horizonMs
     const include = this.opts.include
     for (const file of this.discovery.files) {
-      if (include && !include(file)) continue
+      if (include && !include(file)) {
+        this.states.delete(file.filePath)
+        continue
+      }
       let stat
       try {
         stat = await fs.stat(file.filePath)

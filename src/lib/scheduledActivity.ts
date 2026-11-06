@@ -90,7 +90,9 @@ function byTask(runs: ScheduledRun[]): Map<string, ScheduledRun[]> {
  * 直近14日に「新しいモデルの系統」が最初に出た回がいちばん新しい予定タスク。境目の日はその回の日。
  * - 系統で比べる(版の違いは同じ系統)。本体とサブエージェントのどちらに出ても同じに数える
  * - それより前の読める回のどれにも無かった系統だけ。前の回が読めない回(初回・読める範囲の最初の回)は数えない
- * - その系統が、最初に出た回から後の回の過半数で使われていること(時々だけ使う物は拾わない)
+ * - その系統が、最初に出た回から後の回の過半数で使われていること(時々だけ使う物は拾わない)。
+ *   最初に出た回が最後の回(後の回がその1回だけ)のときは、その回が24時間以内のときだけ数える(1回だけでは使い続けたか分からないため。
+ *   画面は、初めて出した既定の選択を覚えるので、次の日に替わることはない)
  * 該当が無ければ、直近14日の重さの合計が大きい順の1件目(境目は今日の7日前＝null)
  */
 export function chooseDefault(runs: ScheduledRun[], now: number): DefaultSelection | null {
@@ -106,7 +108,8 @@ export function chooseDefault(runs: ScheduledRun[], now: number): DefaultSelecti
           if (seen.has(f)) continue
           const later = readable.slice(i)
           const used = later.filter((r) => familiesOf(r).has(f)).length
-          if (used * 2 > later.length && run.startedAt >= since && run.startedAt <= now) {
+          const fresh = later.length > 1 || now - run.startedAt <= DAY_MS
+          if (used * 2 > later.length && fresh && run.startedAt >= since && run.startedAt <= now) {
             if (!best || run.startedAt > best.at) best = { taskId, at: run.startedAt }
           }
         }
@@ -236,11 +239,11 @@ export interface Comparison {
   after: Side
   /** 前の7日の平均を100とした値。前の平均が無いときは null */
   index: {
-    before: { total: number; main: number; min: number; max: number } | null
-    after: { total: number; main: number; min: number; max: number } | null
+    before: { total: number; main: number | null; min: number; max: number } | null
+    after: { total: number; main: number | null; min: number; max: number } | null
   }
   /** 差(後 − 前。前を100とした値)。出さないときは null */
-  diff: { total: number; main: number } | null
+  diff: { total: number; main: number | null } | null
   /** 差を出さない理由 */
   blocked: "few" | "out-of-record" | null
   /** 後の7日が途中なら、何日目とあと何日。終わっていれば null */
@@ -289,7 +292,8 @@ export function compareRuns(runs: ScheduledRun[], boundary: string, now: number,
     base && base > 0 && s.avgCost !== null
       ? {
           total: (s.avgCost / base) * 100,
-          main: mainBase && mainBase > 0 && s.avgMainCost !== null ? (s.avgMainCost / mainBase) * 100 : 0,
+          // 前の7日の本体の重さが0なら、本体は比べられない(「―」)
+          main: mainBase && mainBase > 0 && s.avgMainCost !== null ? (s.avgMainCost / mainBase) * 100 : null,
           min: ((s.minCost ?? 0) / base) * 100,
           max: ((s.maxCost ?? 0) / base) * 100,
         }
@@ -300,7 +304,10 @@ export function compareRuns(runs: ScheduledRun[], boundary: string, now: number,
   else if (before.valid < MIN_RUNS_FOR_DIFF || after.valid < MIN_RUNS_FOR_DIFF) blocked = "few"
   const diff =
     blocked === null && index.before && index.after
-      ? { total: index.after.total - index.before.total, main: index.after.main - index.before.main }
+      ? {
+          total: index.after.total - index.before.total,
+          main: index.after.main !== null && index.before.main !== null ? index.after.main - index.before.main : null,
+        }
       : null
   const today = dayKey(now)
   const day = diffDays(today, boundary) + 1

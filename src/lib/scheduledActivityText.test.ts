@@ -59,7 +59,7 @@ describe("[AG-3] 結論の2行目と比べの文", () => {
     expect(subagentText(c.after)).toBe("2.0本（Sonnet）")
     expect(typesLine(c)).toBe("種類（1回あたり）：前 web-fetch 1.0 → 後 general-purpose 2.0")
     expect(signed(c.diff!.total)).toBe("−22")
-    expect(signed(c.diff!.main)).toBe("−36")
+    expect(signed(c.diff!.main!)).toBe("−36")
   })
 
   it("差が出ないときは理由(回数が少ない・記録の外)", () => {

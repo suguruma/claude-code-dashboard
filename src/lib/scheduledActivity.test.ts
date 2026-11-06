@@ -258,3 +258,27 @@ describe("[A13] 既定で選ぶ予定タスクと初めの境目の日", () => {
     expect(initialBoundary("inbox", null, sel, now)).toBe("2026-11-03")
   })
 })
+
+describe("[A13] 新しい系統が最後の回に初めて出たとき", () => {
+  it("その回が24時間以内なら選び、24時間より前なら選ばない(1回だけでは使い続けたか分からない)", () => {
+    const runs = [
+      run("steady", "2026-11-05 07:00"),
+      run("steady", "2026-11-06 07:00"),
+      run("sometimes", "2026-11-05 09:00"),
+      run("sometimes", "2026-11-08 09:00", { sub: ["Haiku"] }),
+    ]
+    expect(chooseDefault(runs, jst("2026-11-08 20:00"))).toMatchObject({ taskId: "sometimes", boundaryDay: "2026-11-08" })
+    expect(chooseDefault(runs, jst("2026-11-10 12:00"))).toMatchObject({ reason: "weight" })
+  })
+
+  it("前の7日の本体の重さが0なら、本体は比べない(―)", () => {
+    const now = jst("2026-11-10 12:00")
+    const runs = [
+      ...["11-01", "11-02", "11-03"].map((d) => run("w", `2026-${d} 07:00`, { cost: 1, mainCost: 0 })),
+      ...["11-07", "11-08", "11-09"].map((d) => run("w", `2026-${d} 07:00`, { cost: 1, mainCost: 0.5 })),
+    ]
+    const c = compareRuns(runs, "2026-11-07", now, now - 30 * 86_400_000)
+    expect(c.index.after?.main).toBeNull()
+    expect(c.diff).toEqual({ total: 0, main: null })
+  })
+})

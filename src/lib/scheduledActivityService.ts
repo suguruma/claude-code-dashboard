@@ -163,7 +163,9 @@ export class ScheduledActivityService {
       }
       let mainFamilies = [...mainByFamily.entries()].sort((a, b) => b[1] - a[1]).map(([f]) => f)
       if (mainFamilies.length === 0 && s.model) mainFamilies = [familyLabel(s.model)]
-      const firstAt = rows.length > 0 ? Math.min(...rows.map((r) => r.at)) : null
+      // 作成時刻が無いときだけ、最初の応答の時刻を探す(行が多くても引数の上限に当たらないよう、ループで)
+      let firstAt: number | null = null
+      if (s.createdAt === null) for (const r of rows) if (firstAt === null || r.at < firstAt) firstAt = r.at
       built.push({
         desktopId: s.id,
         taskId: src.taskId,
@@ -183,13 +185,14 @@ export class ScheduledActivityService {
       })
     }
 
-    // 読む期間の中の回と、各予定タスクの最後の回(一覧の「最後の回」に使う)
+    // 読む期間の中の回と、その前の7日の回(比べで「記録の外」と数えるため)と、各予定タスクの最後の回(一覧の「最後の回」に使う)
     built.sort((a, b) => b.startedAt - a.startedAt)
+    const keepFrom = horizonStart - 7 * DAY_MS
     const latestSeen = new Set<string>()
     const runs = built.filter((r) => {
       const latest = !latestSeen.has(r.taskId)
       latestSeen.add(r.taskId)
-      return latest || r.startedAt >= horizonStart
+      return latest || r.startedAt >= keepFrom
     })
 
     return {
@@ -198,7 +201,8 @@ export class ScheduledActivityService {
       horizonStart,
       runs,
       definitions: definitions.sort(),
-      defaultSelection: chooseDefault(runs, now),
+      // 既定の選択は、読む期間の中の回だけで決める(期間の外の回は使用量が読めていない)
+      defaultSelection: chooseDefault(runs.filter((r) => r.startedAt >= horizonStart), now),
     }
   }
 }

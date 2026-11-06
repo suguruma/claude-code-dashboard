@@ -47,7 +47,8 @@ export function conclusionLine2(taskId: string, c: Comparison, mainFamily: Famil
   const tail = progress ? `・${progress}` : ""
   if (c.diff && c.index.after) {
     const main = mainFamily ? `本体 ${mainFamily}` : "本体"
-    return `${taskId}：後の7日は1回あたりの重さ ${Math.round(c.index.after.total)}・${main} ${Math.round(c.index.after.main)}（前の7日を100）・${c.after.valid}回と${c.before.valid}回の平均（推定）${tail}`
+    const mainValue = c.index.after.main === null ? "―" : String(Math.round(c.index.after.main))
+    return `${taskId}：後の7日は1回あたりの重さ ${Math.round(c.index.after.total)}・${main} ${mainValue}（前の7日を100）・${c.after.valid}回と${c.before.valid}回の平均（推定）${tail}`
   }
   return `${taskId}：${blockedText(c, horizonDays) ?? "比べられる回がない"}${tail}`
 }

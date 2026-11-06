@@ -1,11 +1,11 @@
 "use client"
 
-import { useMemo, useState, type KeyboardEvent } from "react"
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import { SessionDetailDialog } from "@/components/desktopSessions/SessionDetailDialog"
 import { StatusMarkBadge } from "@/components/desktopSessions/statusMeta"
 import { RetryNotice, Skeleton } from "@/components/home/HomeLoading"
 import { Button } from "@/components/ui/button"
-import { usePersistedState } from "@/hooks/useLocalStorage"
+import { usePersistedState, writePersisted } from "@/hooks/useLocalStorage"
 import { useScheduledActivity } from "@/hooks/useScheduledActivity"
 import { useUsage } from "@/hooks/useUsage"
 import {
@@ -18,6 +18,7 @@ import {
   initialBoundary,
   isDayKey,
   limitPercents,
+  addDays,
   summarizeTasks,
   usualMainFamily,
   type Comparison,
@@ -38,6 +39,7 @@ import {
   typesLine,
 } from "@/lib/scheduledActivityText"
 import type { ScheduledActivityResponse, ScheduledRun } from "@/lib/scheduledActivityTypes"
+import { costPerPercentOf } from "@/lib/usageFormat"
 import type { UsageCalibration } from "@/lib/usageTypes"
 import { cn } from "@/lib/utils"
 
@@ -70,9 +72,15 @@ const SHADES = [0.85, 0.6, 0.4, 0.25]
 export function ScheduledView() {
   const { data, error, isLoading, isValidating, reload } = useScheduledActivity()
   const usage = useUsage()
-  // 保存した選択(サーバーの描画では空。画面に出てから保存した値を読む)
-  const [raw, update] = usePersistedState<unknown>(STORE_KEY, {})
-  const stored = useMemo(() => sanitize(raw), [raw])
+  // 保存した選択(サーバーの描画では空。画面に出てから保存した値を読む)。
+  // 画面の中の状態を正にし、ブラウザの保存は控え(保存できない窓でも、選んだ物はその場で替わる)
+  const [raw] = usePersistedState<unknown>(STORE_KEY, {})
+  const [local, setLocal] = useState<Stored | null>(null)
+  const stored = useMemo(() => local ?? sanitize(raw), [local, raw])
+  const update = (next: Stored) => {
+    setLocal(next)
+    writePersisted(STORE_KEY, next)
+  }
   const [openId, setOpenId] = useState<string | null>(null)
 
   if (isLoading && !data) return <ScheduledSkeleton />
@@ -91,6 +99,7 @@ export function ScheduledView() {
   const calibration = usage.data?.windows.find((w) => w.id === "weekly_all")?.calibration ?? null
   return (
     <>
+      {error && <RetryNotice className="mb-4" phase="failed" text="！ 予定タスクの記録を読み直せませんでした。前に読んだ値を出しています。" onRetry={async () => reload()} />}
       <ScheduledBody data={data} stored={stored} onStore={update} onOpen={setOpenId} calibration={calibration} usageReady={usage.data !== null} />
       <SessionDetailDialog sessionId={openId} highContextRatio={0.8} onClose={() => setOpenId(null)} />
     </>
@@ -123,6 +132,14 @@ function ScheduledBody({
   const mainFamily = usualMainFamily(taskRuns)
   const summary = summarizeTasks(list.rows, now)
 
+  // 既定の選び方で出した予定タスクと境目の日は、初めて出したときに覚える(次の日から既定の選び方の結果が替わっても、黙って替えない。4-2)
+  const remembered = useRef(false)
+  useEffect(() => {
+    if (remembered.current || stored.taskId || !data.defaultSelection) return
+    remembered.current = true
+    onStore({ ...stored, taskId, boundaries: { ...stored.boundaries, [taskId]: boundary } })
+  }, [stored, data.defaultSelection, taskId, boundary, onStore])
+
   const select = (id: string) => onStore({ ...stored, taskId: id })
   const setBoundary = (day: string) => onStore({ ...stored, taskId, boundaries: { ...stored.boundaries, [taskId]: day } })
 
@@ -150,6 +167,7 @@ function ScheduledBody({
         comparison={comparison}
         mainFamily={mainFamily}
         today={dayKey(now)}
+        minBoundary={addDays(dayKey(data.horizonStart), 1)}
         onBoundary={setBoundary}
         calibration={calibration}
         usageReady={usageReady}
@@ -172,6 +190,7 @@ function CompareSection({
   comparison: c,
   mainFamily,
   today,
+  minBoundary,
   onBoundary,
   calibration,
   usageReady,
@@ -181,6 +200,7 @@ function CompareSection({
   comparison: Comparison
   mainFamily: string | null
   today: string
+  minBoundary: string
   onBoundary: (day: string) => void
   calibration: UsageCalibration | null
   usageReady: boolean
@@ -201,6 +221,7 @@ function CompareSection({
             type="date"
             className="h-9 rounded-md border bg-background px-2 text-sm"
             value={c.boundary}
+            min={minBoundary}
             max={today}
             onChange={(e) => {
               if (isDayKey(e.target.value)) onBoundary(e.target.value)
@@ -214,9 +235,11 @@ function CompareSection({
       <p className="text-sm text-muted-foreground" data-testid="scheduled-period">
         {periodText(c)}。前の7日を100とした値（推定）
         {usageReady &&
-          (percents
-            ? `・週（全モデル）の上限で 約${percents.before.toFixed(1)}% → 約${percents.after.toFixed(1)}%（${signed(percents.after - percents.before)}ポイント）`
-            : "。上限の約％は、公式値の記録が7日以内に無いため出せません")}
+          (costPerPercentOf(calibration) === null
+            ? "。上限の約％は、公式値の記録が7日以内に無いため出せません"
+            : percents && c.diff
+              ? `・週（全モデル）の上限で 約${percents.before.toFixed(1)}% → 約${percents.after.toFixed(1)}%（${signed(percents.after - percents.before)}ポイント）`
+              : "")}
       </p>
       <table className="w-full text-sm" data-testid="scheduled-compare-table">
         <thead className="text-left text-muted-foreground">
@@ -262,7 +285,7 @@ function CompareSection({
                 <td className="py-1.5 pr-3">
                   <strong>{signed(c.diff.total)}</strong>
                 </td>
-                <td className="py-1.5 pr-3">{signed(c.diff.main)}</td>
+                <td className="py-1.5 pr-3">{c.diff.main === null ? "―" : signed(c.diff.main)}</td>
                 <td className="py-1.5" />
               </>
             ) : (
@@ -358,7 +381,6 @@ function DailySection({
                       )}
                       onClick={() => onOpen(run.desktopId)}
                       onKeyDown={(e) => open(e, run.desktopId)}
-                      aria-label={`${dayText(row.day)} ${timeText(run.startedAt)} の回の詳細を開く`}
                       data-testid="scheduled-day-run"
                     >
                       <td className="py-1.5 pr-3 whitespace-nowrap">
@@ -413,7 +435,7 @@ function TaskListSection({
       <h3 id="scheduled-list-title" className="text-base font-medium">
         {SCHEDULED_TASK_LABEL}の一覧
       </h3>
-      <table className="w-full text-sm" role="grid" aria-label={`${SCHEDULED_TASK_LABEL}の一覧（行を選ぶと、比べと日ごとの表が替わります）`}>
+      <table className="w-full text-sm" role="grid" aria-label={`${SCHEDULED_TASK_LABEL}の一覧（上下の矢印で行を動き、Enter で選ぶと、比べと日ごとの表が替わります）`}>
         <thead className="text-left text-muted-foreground">
           <tr className="border-b">
             <th className="py-1.5 pr-3 font-normal whitespace-nowrap">{SCHEDULED_TASK_LABEL}</th>
@@ -425,13 +447,14 @@ function TaskListSection({
           </tr>
         </thead>
         <tbody className="tabular-nums">
-          {rows.map((row) => {
+          {rows.map((row, index) => {
             const isSelected = row.taskId === selected
+            const focusable = isSelected || (index === 0 && !rows.some((r) => r.taskId === selected))
             return (
               <tr
                 key={row.taskId}
                 aria-selected={isSelected}
-                tabIndex={0}
+                tabIndex={focusable ? 0 : -1}
                 className={cn(
                   "cursor-pointer border-b outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring",
                   isSelected && "bg-muted/40"
@@ -441,6 +464,10 @@ function TaskListSection({
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault()
                     onSelect(row.taskId)
+                  } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                    e.preventDefault()
+                    const next = e.key === "ArrowDown" ? e.currentTarget.nextElementSibling : e.currentTarget.previousElementSibling
+                    if (next instanceof HTMLElement) next.focus()
                   }
                 }}
                 data-testid="scheduled-task-row"

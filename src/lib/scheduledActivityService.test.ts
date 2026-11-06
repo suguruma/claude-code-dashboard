@@ -10,6 +10,7 @@ import { projectMeta } from "./desktopSessions"
 import type { DesktopSessionMessaging } from "./desktopSessionTypes"
 import { readJsonlFrom } from "./jsonlReader"
 import { LAN_HEADER } from "./lanAccess/config"
+import { compareRuns, dayKey } from "./scheduledActivity"
 import { ScheduledActivityService } from "./scheduledActivityService"
 import { buildMarks } from "./statusMark"
 import { UsageLedger } from "./usageLedger"
@@ -250,12 +251,69 @@ describe("[AG-1][AG-5][AG-6] 予定タスクの集計", () => {
     expect(res.definitions).toEqual([])
   })
 
-  it("[A13] 既定の選択を返す(alpha は20日前の回の後、2日前の回で Haiku を初めて使った)", async () => {
+  it("[A13] 新しい系統が最後の回に初めて出て、その回が24時間より前なら選ばない(重さの順になる)", async () => {
     const fx = await fixture()
     await seed(fx)
     const { service } = makeService(fx)
     const res = await service.get()
-    expect(res.defaultSelection).toEqual({ taskId: "alpha", reason: "new-family", boundaryDay: "2026-11-08" })
+    // alpha は20日前の回の後、2日前の回(最後の回)で Haiku を初めて使った。1回だけでは使い続けたか分からない
+    expect(res.defaultSelection).toMatchObject({ reason: "weight", boundaryDay: null })
+  })
+
+  it("[A13] 同じ系統で版だけ違うモデルに替わっても、新しい系統と数えない(モデル ID からの通し)", async () => {
+    const fx = await fixture()
+    await seed(fx)
+    // gamma：3日前は claude-opus-5-0、12時間前は claude-opus-5-5
+    for (const [n, ago, model] of [[5, 3 * DAY, "claude-opus-5-0"], [6, 12 * HOUR, "claude-opus-5-5"]] as const) {
+      const t = NOW - ago
+      await writeMeta(fx, makeMeta({ n, scheduledTaskId: "gamma", createdAt: t, lastActivityAt: t + HOUR, isArchived: true, category: "completed" }))
+      await writeTranscript(path.join(fx.projectDir, `${fakeCliId(n)}.jsonl`), usageLines(t + 60_000, model), t + HOUR)
+    }
+    // delta：3日前は Opus、12時間前に Sonnet を初めて使った(24時間以内なので選ばれる)
+    for (const [n, ago, model] of [[7, 3 * DAY, "claude-opus-5-5"], [8, 12 * HOUR, "claude-sonnet-5-5"]] as const) {
+      const t = NOW - ago
+      await writeMeta(fx, makeMeta({ n, scheduledTaskId: "delta", createdAt: t, lastActivityAt: t + HOUR, isArchived: true, category: "completed" }))
+      await writeTranscript(path.join(fx.projectDir, `${fakeCliId(n)}.jsonl`), usageLines(t + 60_000, model), t + HOUR)
+    }
+    const { service } = makeService(fx)
+    const res = await service.get()
+    expect(res.runs.filter((r) => r.taskId === "gamma").map((r) => r.mainFamilies)).toEqual([["Opus"], ["Opus"]])
+    expect(res.defaultSelection).toEqual({ taskId: "delta", reason: "new-family", boundaryDay: "2026-11-10" })
+  })
+
+  it("[A11] 読む期間を15日に戻すと、前の7日の回が期間の外に出たとき「記録の外」で差を出さない", async () => {
+    const fx = await fixture()
+    await seed(fx)
+    const desktop = new DesktopSessionService({ dataDir: fx.dataDir, projectsRoot: fx.projectsRoot, now: () => NOW })
+    const service = new ScheduledActivityService({ projectsRoot: fx.projectsRoot, prices: new PriceBook(), runs: () => desktop.scheduledRuns(), now: () => NOW, horizonDays: 15 })
+    const res = await service.get()
+    expect(res.horizonDays).toBe(15)
+    // 20日前の回は、使用量は読まないが、比べで「記録の外」と数えるために返す
+    const old = res.runs.find((r) => r.desktopId === fakeSessionId(2))
+    expect(old).toMatchObject({ hasUsage: false })
+    const alpha = res.runs.filter((r) => r.taskId === "alpha")
+    const c = compareRuns(alpha, dayKey(NOW - 16 * DAY), NOW, res.horizonStart)
+    expect(c.before.outOfRecord).toBe(1)
+    expect(c.diff).toBeNull()
+    expect(c.blocked).toBe("out-of-record")
+  })
+
+  it("[A7] 集計の間に外部への通信が無い(fetch・http・https・net を呼ばない)", async () => {
+    const fx = await fixture()
+    await seed(fx)
+    const http = (await import("http")).default
+    const https = (await import("https")).default
+    const net = (await import("net")).default
+    const spies = [
+      vi.spyOn(globalThis, "fetch"),
+      vi.spyOn(http, "request"),
+      vi.spyOn(https, "request"),
+      vi.spyOn(net, "connect"),
+      vi.spyOn(net, "createConnection"),
+    ]
+    const { service } = makeService(fx)
+    await service.get()
+    for (const s of spies) expect(s).not.toHaveBeenCalled()
   })
 })
 
