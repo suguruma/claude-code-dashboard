@@ -242,7 +242,7 @@ function CompareSection({
               <td className="py-1.5 pr-3">{countText(side)}</td>
               <td className="py-1.5 pr-3 whitespace-nowrap">
                 <strong>{idx(index?.total)}</strong>
-                {index && side.valid > 1 && (
+                {index && side.valid > 1 && Math.round(index.min) !== Math.round(index.max) && (
                   <span className="text-muted-foreground">
                     （幅 {Math.round(index.min)}〜{Math.round(index.max)}）
                   </span>
@@ -286,7 +286,7 @@ function TokenBar({ run }: { run: ScheduledRun }) {
   const total = run.tokens.reduce((s, t) => s + t.tokens, 0)
   if (total === 0) return null
   return (
-    <span className="flex h-3 w-24 shrink-0 overflow-hidden rounded-sm bg-muted" aria-hidden>
+    <span className="flex h-3 w-16 shrink-0 overflow-hidden rounded-sm bg-muted" aria-hidden>
       {run.tokens.map((t, i) => (
         <span
           key={`${t.subagent ? "s" : "m"}${t.family}`}
@@ -331,7 +331,7 @@ function DailySection({
             <th className="py-1.5 pr-3 font-normal whitespace-nowrap">最後の状態</th>
             <th className="py-1.5 pr-3 font-normal whitespace-nowrap">サブエージェント</th>
             <th className="py-1.5 pr-3 font-normal whitespace-nowrap">重さ</th>
-            <th className="py-1.5 font-normal whitespace-nowrap">トークン（モデル別。キャッシュの読み出しを含む）</th>
+            <th className="py-1.5 font-normal whitespace-nowrap">トークン（キャッシュの読み出しを含む）</th>
           </tr>
         </thead>
         <tbody className="tabular-nums">
@@ -367,11 +367,14 @@ function DailySection({
                       </td>
                       <td className="py-1.5 pr-3">{timeText(run.startedAt)}</td>
                       <td className="py-1.5 pr-3 whitespace-nowrap">
-                        <StatusMarkBadge mark={run.mark} />
-                        {run.stopReason && <span className="ml-1 text-muted-foreground">{run.stopReason}</span>}
+                        {/* 印の中の「（推定）」が次の行へ落ちないよう、印の幅は中身の幅にする(1024 で行を折らない。A8) */}
+                        <span className="inline-block w-max">
+                          <StatusMarkBadge mark={run.mark} />
+                          {run.stopReason && <span className="ml-1 text-muted-foreground">{run.stopReason}</span>}
+                        </span>
                       </td>
                       <td className="py-1.5 pr-3 whitespace-nowrap">{runSubagentText(run)}</td>
-                      <td className="py-1.5 pr-3">{run.hasUsage ? (w === null ? "―" : Math.round(w)) : "― 記録なし"}</td>
+                      <td className="py-1.5 pr-3 whitespace-nowrap">{w === null ? "―" : Math.round(w)}</td>
                       <td className="py-1.5">
                         {run.hasUsage ? (
                           <span className="flex items-center gap-2 whitespace-nowrap">
@@ -449,8 +452,10 @@ function TaskListSection({
                 <td className="py-1.5 pr-3 whitespace-nowrap">{dateTimeText(row.lastRun.startedAt)}</td>
                 <td className="py-1.5 pr-3 whitespace-nowrap">{agoText(row.lastRun.startedAt, now)}</td>
                 <td className="py-1.5 pr-3 whitespace-nowrap">
-                  <StatusMarkBadge mark={row.lastRun.mark} />
-                  {row.lastRun.stopReason && <span className="ml-1 text-muted-foreground">{row.lastRun.stopReason}</span>}
+                  <span className="inline-block w-max">
+                    <StatusMarkBadge mark={row.lastRun.mark} />
+                    {row.lastRun.stopReason && <span className="ml-1 text-muted-foreground">{row.lastRun.stopReason}</span>}
+                  </span>
                 </td>
                 <td className="py-1.5 pr-3">{row.recentRuns}</td>
                 <td className="py-1.5">{row.mainFamily ?? "―"}</td>
