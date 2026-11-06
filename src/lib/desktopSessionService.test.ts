@@ -128,6 +128,27 @@ describe("[A12] 一覧の抜粋は、秘密らしい文字列を伏せてから�
     expect(s.phase?.currentStep).toBe("password: ●●●● で試す")
     expect(JSON.stringify(s)).not.toContain("Synth3tic")
   })
+
+  it("鍵が切る位置(指示60字・タスク80字)をまたいでも、先頭の一部が残らない。題名の代わりの抜粋と詳細のタスクも伏せる", async () => {
+    const fx = await fixture()
+    const KEY = "NdlTokQ7x9A1b2C3d4E5f6G7h8J9k0"
+    const STEP_KEY = "StpTokB3n5M7q9s1u3w5y7a9c1e3g5"
+    await writeMeta(fx, makeMeta({ n: 8, title: "", category: "completed" }))
+    await writeTranscript(fx, fakeCliId(8), [
+      planRow({ items: [{ content: `${"段".repeat(70)}${STEP_KEY}`, status: "in_progress" }], scope: "first_task" }, { ts: tsAt(1) }),
+      humanRow(`${"指".repeat(50)}${KEY} で確かめる`, { ts: tsAt(2) }),
+    ])
+    const svc = service(fx)
+    await svc.list()
+    await svc.settle()
+    const s = (await svc.list()).sessions.find((x) => x.id === fakeSessionId(8))!
+    expect(s.latestInstruction?.excerpt).toBe(`${"指".repeat(50)}●●●● で確かめる`)
+    expect(s.title).toBe(s.latestInstruction?.excerpt)
+    expect(s.phase?.currentStep).toBe(`${"段".repeat(60)}…`)
+    const detail = await svc.detail(fakeSessionId(8))
+    expect(detail?.tasks?.[0]?.content).toBe(`${"段".repeat(70)}●●●●`)
+    for (const head of ["NdlTok", "StpTok"]) expect(JSON.stringify([s, detail])).not.toContain(head)
+  })
 })
 
 describe("DesktopSessionService.list", () => {

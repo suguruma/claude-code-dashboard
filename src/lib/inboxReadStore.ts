@@ -53,7 +53,7 @@ export class InboxReadStore {
     const unread = (input as { unread?: unknown }).unread === true
     const run = this.writing.then(async () => {
       const { reads } = await this.readFile()
-      const next: InboxReadData = { reads: unread ? markUnread(reads, targets) : markRead(reads, targets, this.now()) }
+      const next: InboxReadData = { reads: unread ? markUnread(reads, targets, this.now()) : markRead(reads, targets, this.now()) }
       await writeJsonFile(this.filePath(), next)
       return next
     })

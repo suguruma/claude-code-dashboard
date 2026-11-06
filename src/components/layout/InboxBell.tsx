@@ -46,7 +46,14 @@ export function InboxBell() {
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next)
+        // 開いたら「見た」(基準の時刻を今に。画面は見る前の値のまま)
+        if (next) void inbox.see()
+      }}
+    >
       <PopoverTrigger
         className="relative inline-flex h-9 shrink-0 items-center gap-1 rounded-lg border px-2.5 text-sm outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
         aria-label={inbox.unread > 0 ? `知らせ 未読 ${inbox.unread}件` : "知らせ（未読なし）"}
@@ -54,7 +61,7 @@ export function InboxBell() {
       >
         <Bell className="size-4" aria-hidden />
         {inbox.unread > 0 && (
-          <span className="rounded-full bg-[var(--status-critical-text)] px-1.5 text-xs leading-5 font-bold text-background tabular-nums" data-testid="inbox-count" aria-hidden>
+          <span className="rounded-full bg-[var(--status-critical-text)] px-1.5 text-sm leading-5 font-bold text-background tabular-nums" data-testid="inbox-count" aria-hidden>
             {countText(inbox.unread)}
           </span>
         )}
@@ -63,7 +70,7 @@ export function InboxBell() {
         <div className="flex items-baseline justify-between gap-3 border-b px-4 py-2.5">
           <PopoverTitle>知らせ（未読 {inbox.unread}）</PopoverTitle>
           {inbox.unread > 0 && (
-            <button type="button" className="text-primary hover:underline" onClick={() => void inbox.mark(inbox.items.filter(inbox.isUnread))} data-testid="inbox-read-all">
+            <button type="button" className="text-primary hover:underline" onClick={() => void inbox.markAll()} data-testid="inbox-read-all">
               すべて既読にする
             </button>
           )}

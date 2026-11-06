@@ -1,11 +1,12 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { StatusMarkBadge } from "@/components/desktopSessions/statusMeta"
 import { useInbox } from "@/hooks/useInbox"
 import { useMonitorPlan } from "@/hooks/useMonitor"
 import type { DesktopSessionSummary } from "@/lib/desktopSessionTypes"
 import { agoText, cardAnchor } from "@/lib/inbox"
+import { redactPathsInText } from "@/lib/lanAccess/redact"
 import { PLAN_STATE_LABEL, type PlanItem } from "@/lib/monitor/monitorTypes"
 import { buildBoard, holdOrder, type BoardColumn } from "@/lib/sessionBoard"
 import { buildMarks, quietMark, type MarkTone, type StatusMark } from "@/lib/statusMark"
@@ -36,6 +37,17 @@ const COLUMN_HEAD: Record<Exclude<BoardColumn, "stopped">, { title: string; mark
 export function SessionBoard({ sessions, generatedAt, onSelect }: { sessions: DesktopSessionSummary[]; generatedAt: number; onSelect: (id: string) => void }) {
   const inbox = useInbox()
   const unreadAt = inbox.unreadAt
+  // 看板を開いたら「見た」(指示56 案1)。画面は見る前の基準のままにし、離れていた間に終わった物を未読で出す
+  const seen = useRef(false)
+  const { baseReady, see } = inbox
+  useEffect(() => {
+    if (!baseReady || seen.current) return
+    seen.current = true
+    // 記録がまだ読めていなければ、次に see が替わったとき(読めたとき)にもう一度
+    void see(true).then((ok) => {
+      if (!ok) seen.current = false
+    })
+  }, [baseReady, see])
   const plan = useMonitorPlan(true)
   const marks = useMemo(() => buildMarks(sessions, generatedAt), [sessions, generatedAt])
   const board = useMemo(
@@ -188,7 +200,11 @@ function BoardCard({
   focused: boolean
   onSelect: (id: string) => void
 }) {
-  const excerpt = s.needsActionExcerpt ?? s.latestInstruction?.excerpt ?? null
+  // 抜粋は伏せてある(サーバーの側)。作業フォルダのパスは最後の名前にする(要件メモ 15 の 3.)
+  const raw = s.needsActionExcerpt ?? s.latestInstruction?.excerpt ?? null
+  const excerpt = raw === null ? null : redactPathsInText(raw)
+  // 題名の無いセッションは、題名の代わりに指示の抜粋が入るので、題名もパスを隠す
+  const title = redactPathsInText(s.title)
   return (
     <button
       type="button"
@@ -202,9 +218,9 @@ function BoardCard({
       data-testid="board-card"
       data-unread={unread ? "true" : "false"}
     >
-      <span className={cn("block truncate font-semibold", unread && "font-bold")} title={s.title}>
+      <span className={cn("block truncate font-semibold", unread && "font-bold")} title={title}>
         {unread && <span className="mr-1 text-[var(--status-info-text)]">● 未読</span>}
-        {s.title}
+        {title}
       </span>
       <span className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-muted-foreground">
         <StatusMarkBadge mark={mark} />
@@ -216,7 +232,7 @@ function BoardCard({
       {excerpt && <span className="mt-1 block truncate">{excerpt}</span>}
       {plan && (
         <span className="mt-1 block truncate" data-testid="board-now">
-          今：{plan.task}［{PLAN_STATE_LABEL[plan.state]}］
+          今：{redactPathsInText(plan.task)}［{PLAN_STATE_LABEL[plan.state]}］
         </span>
       )}
     </button>

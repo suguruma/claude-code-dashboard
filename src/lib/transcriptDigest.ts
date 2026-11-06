@@ -325,7 +325,7 @@ function applyPlanInput(d: TranscriptDigest, input: Record<string, unknown>): vo
       .slice(0, MAX_TASKS)
       .filter((i): i is Record<string, unknown> => !!i && typeof i === "object")
       .map((i) => ({
-        content: makeExcerpt(typeof i.content === "string" ? i.content : "", STEP_MAX_CHARS),
+        content: cutAfterMask(typeof i.content === "string" ? i.content : "", STEP_MAX_CHARS),
         status: normalizeStatus(i.status),
       }))
     return
@@ -364,7 +364,7 @@ function applyLegacyTaskTool(
       d.legacyNextId = 1
     }
     // IDはツール結果の「Task #N created」で確定する。結果が来るまでは仮の番号を使う
-    const task: DigestTask = { id: String(d.legacyNextId), content: makeExcerpt(subject, STEP_MAX_CHARS), status: "pending" }
+    const task: DigestTask = { id: String(d.legacyNextId), content: cutAfterMask(subject, STEP_MAX_CHARS), status: "pending" }
     if (d.tasks.length < MAX_TASKS) d.tasks.push(task)
     d.legacyNextId++
     if (toolUseId) {
@@ -382,7 +382,7 @@ function applyLegacyTaskTool(
       return
     }
     if (typeof input.status === "string") d.tasks[idx].status = normalizeStatus(input.status)
-    if (typeof input.subject === "string") d.tasks[idx].content = makeExcerpt(input.subject, STEP_MAX_CHARS)
+    if (typeof input.subject === "string") d.tasks[idx].content = cutAfterMask(input.subject, STEP_MAX_CHARS)
   }
 }
 
@@ -428,7 +428,7 @@ function applyTaskReminder(d: TranscriptDigest, content: unknown): void {
     .filter((c) => c.status !== "deleted")
     .map((c) => ({
       id: c.id === undefined ? undefined : String(c.id),
-      content: makeExcerpt(typeof c.subject === "string" ? c.subject : "", STEP_MAX_CHARS),
+      content: cutAfterMask(typeof c.subject === "string" ? c.subject : "", STEP_MAX_CHARS),
       status: normalizeStatus(c.status),
     }))
 }
@@ -455,7 +455,7 @@ function applyQueuedCommand(d: TranscriptDigest, attachment: NonNullable<RawEntr
   resetSendLimit(d)
   const text = queuedPromptText(attachment.prompt)
   if (SYSTEM_WRAPPER.test(text) || text.startsWith(CONTINUATION_MARK) || !text.trim()) return
-  const instruction: DigestInstruction = { excerpt: makeExcerpt(text, INSTRUCTION_EXCERPT_CHARS), origin: "human", at }
+  const instruction: DigestInstruction = { excerpt: cutAfterMask(text, INSTRUCTION_EXCERPT_CHARS), origin: "human", at }
   d.latestInput = instruction
   d.latestHuman = instruction
   startTurn(d)
@@ -567,7 +567,7 @@ export function applyEntry(d: TranscriptDigest, entry: RawEntry): void {
       // 他セッションからの入力は、前置きの一文・包みのタグ・末尾の署名を除いた本文を、抜粋にする(組織図の指示の要約と同じ関数)
       const body = origin === "peer" ? peerBodyOf(text) : text
       const instruction: DigestInstruction = {
-        excerpt: origin === "notification" ? "" : makeExcerpt(body, INSTRUCTION_EXCERPT_CHARS),
+        excerpt: origin === "notification" ? "" : cutAfterMask(body, INSTRUCTION_EXCERPT_CHARS),
         origin,
         at,
       }

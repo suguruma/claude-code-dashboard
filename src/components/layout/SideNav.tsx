@@ -161,7 +161,7 @@ function DecisionCountMark({ iconOnly }: { iconOnly: boolean }) {
   if (n === 0) return null
   if (iconOnly) {
     return (
-      <span className="absolute top-0 right-0 text-xs font-bold" style={{ color: "var(--status-critical-text)" }} aria-label={`次にやる判断 ${n}件`}>
+      <span className="absolute top-0 right-0 text-sm leading-none font-bold" style={{ color: "var(--status-critical-text)" }} aria-label={`次にやる判断 ${n}件`}>
         {n}
       </span>
     )

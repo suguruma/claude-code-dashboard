@@ -4,10 +4,25 @@ import path from "path"
 import { afterEach, describe, expect, it } from "vitest"
 import { makeSessionSummary } from "./desktopFixtures"
 import type { DesktopSessionMessaging } from "./desktopSessionTypes"
-import { buildInbox, countText, isUnread, markRead, markUnread, parseReadTargets, pruneReads, unreadCount, type InboxRead } from "./inbox"
+import {
+  BASE_TARGET,
+  baseSeenAt,
+  bellCoversSinceBase,
+  buildInbox,
+  countText,
+  isUnread,
+  markRead,
+  markUnread,
+  parseReadTargets,
+  pruneReads,
+  unreadCount,
+  viewBase,
+  type InboxRead,
+} from "./inbox"
 import { InboxReadStore } from "./inboxReadStore"
 import { LAN_HEADER } from "./lanAccess/config"
 import type { MonitorAlertSummary } from "./monitor/monitorTypes"
+import { buildBoard } from "./sessionBoard"
 import { buildMarks } from "./statusMark"
 import type { UsageResponse, UsageWindowView } from "./usageTypes"
 
@@ -61,6 +76,100 @@ describe("[OR-4] 知らせの鐘", () => {
     expect(countText(5)).toBe("5")
     expect(countText(99)).toBe("99")
     expect(countText(100)).toBe("99+")
+  })
+})
+
+describe("[OR-3][OR-4] 基準の時刻(最後に看板か鐘を見た時刻。指示56 案1)", () => {
+  const BASE = { target: BASE_TARGET, kind: "turn-end" as const }
+  const old = makeSessionSummary("old3", { title: "3日前の完了", status: "completed", lastActivityAt: NOW - 3 * DAY })
+  const unknown = makeSessionSummary("unk", { title: "不明", status: "unknown", lastActivityAt: NOW - 2 * 60 * MIN })
+  /** 看板の列(鐘と同じ判定。base は画面で使う基準の時刻) */
+  const columnOfOld = (reads: InboxRead[], base: number | null, now = NOW) => {
+    const all = [old, unknown]
+    const board = buildBoard(all, buildMarks(all, now), (x) => x.lastActivityAt !== null && isUnread({ target: x.id, kind: "turn-end", at: x.lastActivityAt }, reads, base), now)
+    return (Object.keys(board) as Array<keyof typeof board>).find((c) => board[c].some((x) => x.id === "old3"))
+  }
+
+  it("既読の記録が無くても、基準より前に終わった物は既読とみなし、24時間より前なら静かに入る", () => {
+    // 4日前に看板を見た → 3日前に終わった物は、見た後に終わったので未読(閉じていた間の分も出る)
+    expect(columnOfOld([], NOW - 4 * DAY)).toBe("done")
+    // 2日前に看板を見た → 見る前に終わっていたので既読 → 静か
+    const reads = markRead([], [BASE], NOW - 2 * DAY)
+    expect(baseSeenAt(reads)).toBe(NOW - 2 * DAY)
+    expect(columnOfOld(reads, viewBase(reads, NOW))).toBe("quiet")
+    // 初めて(基準の行が無い)ときは24時間前を基準にし、それより前に終わった物は未読として並べない
+    expect(viewBase([], NOW)).toBe(NOW - 24 * 60 * MIN)
+    expect(columnOfOld([], viewBase([], NOW))).toBe("quiet")
+  })
+
+  it("鐘に出ない24時間より前の物も、すべて既読(基準を今に)で既読になり、静かへ移る", () => {
+    const watched = NOW - 4 * DAY
+    expect(columnOfOld([], watched)).toBe("done")
+    // すべて既読：鐘の未読の行と基準の行を今の時刻で書く
+    const inbox = buildInbox({ ...sources, sessions: [old], marks: buildMarks([old], NOW) })
+    expect(inbox.some((i) => i.target === "old3")).toBe(false)
+    const reads = markRead([], [...inbox.filter((i) => isUnread(i, [], watched)), BASE], NOW)
+    expect(columnOfOld(reads, viewBase(reads, NOW))).toBe("quiet")
+  })
+
+  it("見た記録が30日で消えても、基準の行は残るので、静かの物は完了(未読)へ戻らない", async () => {
+    // 31日前に見た(既読の行)。基準も同じ時刻
+    const seen = NOW - 31 * DAY
+    const old32 = { ...old, lastActivityAt: NOW - 32 * DAY }
+    const reads = pruneReads(markRead([], [{ target: "old3", kind: "turn-end" }, BASE], seen), NOW)
+    expect(reads.some((r) => r.target === "old3")).toBe(false)
+    expect(reads).toEqual([{ target: BASE_TARGET, kind: "turn-end", seenAt: seen }])
+    const all = [old32]
+    const board = buildBoard(all, buildMarks(all, NOW), (x) => isUnread({ target: x.id, kind: "turn-end", at: x.lastActivityAt! }, reads, viewBase(reads, NOW)), NOW)
+    expect(board.quiet.map((x) => x.id)).toEqual(["old3"])
+  })
+
+  it("状態「不明」も鐘の「ターンが終わった」に入り、既読にできる", () => {
+    const items = buildInbox({ ...sources, sessions: [unknown], marks: buildMarks([unknown], NOW) })
+    expect(items.map((i) => `${i.kind}:${i.target}`)).toContain("turn-end:unk")
+    const reads = markRead([], [{ target: "unk", kind: "turn-end" }], NOW)
+    expect(unreadCount(items.filter((i) => i.target === "unk"), reads)).toBe(0)
+  })
+
+  it("基準より前に終わった物も「未読に戻す」で未読になり、30日(戻した時刻から)で印が消える", () => {
+    const BASE_AT = NOW - 1 * 60 * MIN
+    const item = { target: "unk", kind: "turn-end" as const, at: NOW - 2 * 60 * MIN }
+    let reads = markRead([], [BASE, { target: "unk", kind: "turn-end" }], BASE_AT)
+    expect(isUnread(item, reads, viewBase(reads, NOW))).toBe(false)
+    reads = markUnread(reads, [{ target: "unk", kind: "turn-end" }], NOW)
+    expect(isUnread(item, reads, viewBase(reads, NOW))).toBe(true)
+    // 印は形が同じ(見た時刻・対象・種類だけ)で、30日は残る
+    expect(pruneReads(reads, NOW + 29 * DAY).some((r) => r.target === "unk")).toBe(true)
+    expect(pruneReads(reads, NOW + 31 * DAY).some((r) => r.target === "unk")).toBe(false)
+    // もう一度見れば既読
+    reads = markRead(reads, [{ target: "unk", kind: "turn-end" }], NOW + MIN)
+    expect(isUnread(item, reads, viewBase(reads, NOW + MIN))).toBe(false)
+  })
+
+  it("鐘を開いても、鐘に出ない古い物は見たことにしない(基準が24時間より前なら進めない)。鐘から看板へ移っても未読のまま", () => {
+    const stored = markRead([], [BASE], NOW - 4 * DAY)
+    const items = buildInbox(sources)
+    expect(bellCoversSinceBase(stored, items, NOW)).toBe(false)
+    // 鐘で進めなかったので、看板を開いたときの基準は4日前のまま → 3日前に終わった物は未読(完了の列)
+    expect(columnOfOld(stored, viewBase(stored, NOW))).toBe("done")
+    // 基準が鐘の範囲(24時間)の中なら、鐘を開いた時刻へ進めてよい
+    expect(bellCoversSinceBase(markRead([], [BASE], NOW - 3 * 60 * MIN), items, NOW)).toBe(true)
+    // 初めて(基準の行が無い)は24時間前を基準にするので、進めてよい
+    expect(bellCoversSinceBase([], items, NOW)).toBe(true)
+  })
+
+  it("鐘が20件で切れているときは、20件目より前に基準があっても進めない", () => {
+    const many = Array.from({ length: 25 }, (_, i) => makeSessionSummary(`m${i}`, { title: `完了${i}`, status: "completed", lastActivityAt: NOW - (i + 1) * 10 * MIN }))
+    const items = buildInbox({ ...sources, sessions: many, marks: buildMarks(many, NOW), alerts: null, usage: null })
+    expect(items).toHaveLength(25)
+    // 20件目は200分前。基準が5時間前だと、その間の5件が鐘に出ていない
+    expect(bellCoversSinceBase(markRead([], [BASE], NOW - 5 * 60 * MIN), items, NOW)).toBe(false)
+    expect(bellCoversSinceBase(markRead([], [BASE], NOW - 150 * MIN), items, NOW)).toBe(true)
+  })
+
+  it("基準の行は既読の記録と同じ形(見た時刻・対象・種類だけ)で、知らせの対象にはならない", () => {
+    expect(parseReadTargets({ items: [BASE] })).toEqual([BASE])
+    expect(buildInbox(sources).some((i) => i.target === BASE_TARGET)).toBe(false)
   })
 })
 
