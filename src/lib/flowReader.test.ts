@@ -57,6 +57,11 @@ describe("peer行（他のセッションから届いた入力）", () => {
     ])
   })
 
+  it("[A12] 要約は、秘密らしい文字列を伏せてから20文字で切る(⑮)", () => {
+    const s = signalsOf([peerRow("token=Synth3ticValue123 で確認して", FROM_LEADER, 1)])
+    expect(s.peers[0].summary).toBe("token=●●●● で確認して")
+  })
+
   it("実データの形（前置きの一文＋タグ＋本文＋末尾の署名）でも、要約は本文の先頭20文字になる（前置き・タグ・署名が残らない）", () => {
     const real = (body: string, attrs = 'from="local_x" name="00_name"') =>
       `Another Claude session sent a message:\n<cross-session-message ${attrs}>\n${body}\n\n送信元：00_name\n</cross-session-message>`

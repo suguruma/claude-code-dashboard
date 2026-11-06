@@ -4,7 +4,7 @@ import { emptySignals, type PeerSource, type SessionSignals } from "./flowEvents
 import { FLOW_SUMMARY_CHARS } from "./flowTypes"
 import { peerBodyOf } from "./peerMessage"
 import { isSendTool } from "./sessionMessaging"
-import { makeExcerpt } from "./transcriptDigest"
+import { cutAfterMask } from "./secretMask"
 
 /**
  * 会話ログ(`.jsonl`)から、組織図アニメーション用の「信号」(他のセッションから届いた入力・送信の記録・ツール呼び出し・
@@ -64,9 +64,9 @@ function bodyText(content: RawBlock[] | string | undefined): string {
   return content.find((b) => b.type === "text" && typeof b.text === "string")?.text ?? ""
 }
 
-/** 前置きの一文・包みのタグ・末尾の署名を除いた本文(`peerBodyOf`)の、先頭20文字 */
+/** 前置きの一文・包みのタグ・末尾の署名を除いた本文(`peerBodyOf`)の、先頭20文字。秘密らしい文字列は伏せてから切る(⑮ A12) */
 function summaryOf(text: string): string {
-  return makeExcerpt(peerBodyOf(text), FLOW_SUMMARY_CHARS)
+  return cutAfterMask(peerBodyOf(text), FLOW_SUMMARY_CHARS)
 }
 
 /** 送信ツールの入力から、宛先の候補(ID・名前)を取り出す */

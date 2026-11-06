@@ -139,6 +139,7 @@ describe("normalizeFilters", () => {
 
   it("組織図が別ページになる前に保存された view: org や、未知の値は、一覧に戻す", () => {
     expect(normalizeFilters({ view: "org" }).view).toBe("list")
+    expect(normalizeFilters({ view: "board" }).view).toBe("board")
     expect(normalizeFilters({ view: "unknown" }).view).toBe("list")
     expect(normalizeFilters({ view: "list" }).view).toBe("list")
   })

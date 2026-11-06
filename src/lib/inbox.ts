@@ -54,9 +54,13 @@ export interface InboxReadData {
 const DONE: DesktopSessionStatus[] = ["completed", "standby", "waiting", "review_ready"]
 const USAGE_LEVELS = [95, 80]
 
-/** 押したときの行き先。セッションは看板の該当カード(段5 で看板を足すまでは詳細) */
+/** 押したときの行き先。セッションは看板の該当カード(#card-<ID>。看板が受け取って、そのカードへ送り、枠で目立たせる) */
 export function sessionHref(sessionId: string): string {
-  return `/desktop-sessions?session=${encodeURIComponent(sessionId)}`
+  return `/desktop-sessions#${cardAnchor(sessionId)}`
+}
+
+export function cardAnchor(sessionId: string): string {
+  return `card-${sessionId}`
 }
 
 export interface InboxSources {

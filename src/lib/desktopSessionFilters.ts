@@ -13,8 +13,8 @@ export interface DesktopSessionFilters {
   /** "all" | 作業フォルダ名 */
   folder: string
   includeArchived: boolean
-  /** list: 一覧 / group: グループ別。組織図はホーム(/) */
-  view: "list" | "group"
+  /** list: 一覧 / group: グループ別 / board: 看板(⑮ OR-3)。組織図はホーム(/) */
+  view: "list" | "group" | "board"
 }
 
 export const DEFAULT_FILTERS: DesktopSessionFilters = {
@@ -34,7 +34,7 @@ export const FILTER_STORAGE_KEY = "ccd:desktop-sessions:filters"
  * 組織図が別ページになる前に保存された `view: "org"` や、未知の値は、一覧に戻す。
  */
 export function normalizeFilters(stored: Partial<Omit<DesktopSessionFilters, "view">> & { view?: string }): DesktopSessionFilters {
-  return { ...DEFAULT_FILTERS, ...stored, view: stored.view === "group" ? "group" : "list" }
+  return { ...DEFAULT_FILTERS, ...stored, view: stored.view === "group" || stored.view === "board" ? stored.view : "list" }
 }
 
 export function applyFilters(

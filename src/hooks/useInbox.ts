@@ -3,7 +3,7 @@
 import { useCallback, useMemo } from "react"
 import useSWR from "swr"
 import { fetcher } from "@/lib/fetcher"
-import { buildInbox, isUnread, type InboxItem, type InboxReadData } from "@/lib/inbox"
+import { buildInbox, isUnread, type InboxItem, type InboxKind, type InboxReadData } from "@/lib/inbox"
 import { buildMarks } from "@/lib/statusMark"
 import { useDesktopSessions } from "./useDesktopSessions"
 import { useMonitorAlerts } from "./useMonitor"
@@ -17,6 +17,8 @@ export interface InboxView {
   items: InboxItem[]
   unread: number
   isUnread: (item: InboxItem) => boolean
+  /** その対象・種類を、その時刻より後に見ていないか(看板の完了の列の「未読」) */
+  unreadAt: (target: string, kind: InboxKind, at: number) => boolean
   /** 既読にする(unread: true なら未読に戻す)。画面は先に変え、書けなかったら読み直す */
   mark: (items: InboxItem[], unread?: boolean) => Promise<void>
   ready: boolean
@@ -38,6 +40,10 @@ export function useInbox(): InboxView {
   )
   const reads = useMemo(() => readData?.reads ?? [], [readData])
   const check = useCallback((item: InboxItem) => isUnread(item, reads), [reads])
+  const unreadAt = useCallback(
+    (target: string, kind: InboxKind, at: number) => isUnread({ target, kind, at } as InboxItem, reads),
+    [reads]
+  )
 
   const mark = useCallback(
     async (targets: InboxItem[], unread = false) => {
@@ -58,6 +64,7 @@ export function useInbox(): InboxView {
     items,
     unread: items.filter(check).length,
     isUnread: check,
+    unreadAt,
     mark,
     ready: list !== null,
     error: !list && !!listError,

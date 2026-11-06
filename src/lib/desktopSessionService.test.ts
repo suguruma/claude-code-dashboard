@@ -112,6 +112,24 @@ async function seed(fx: DesktopFixture) {
   return { t1, t2 }
 }
 
+describe("[A12] 一覧の抜粋は、秘密らしい文字列を伏せてから切る(PC も LAN と同じ。⑮)", () => {
+  it("最新の指示の抜粋と、タスクリストの今の作業の文", async () => {
+    const fx = await fixture()
+    await writeMeta(fx, makeMeta({ n: 7, title: "秘密の入った作業", category: "completed" }))
+    await writeTranscript(fx, fakeCliId(7), [
+      planRow({ items: [{ content: "password: Synth3ticPass で試す", status: "in_progress" }], scope: "first_task" }, { ts: tsAt(1) }),
+      humanRow("DB_PASSWORD=Synth3ticValue を使って確認してください", { ts: tsAt(2) }),
+    ])
+    const svc = service(fx)
+    await svc.list()
+    await svc.settle()
+    const s = (await svc.list()).sessions.find((x) => x.title === "秘密の入った作業")!
+    expect(s.latestInstruction?.excerpt).toBe("DB_PASSWORD=●●●● を使って確認してください")
+    expect(s.phase?.currentStep).toBe("password: ●●●● で試す")
+    expect(JSON.stringify(s)).not.toContain("Synth3tic")
+  })
+})
+
 describe("DesktopSessionService.list", () => {
   it("Desktopのメタデータを主データに、状態・モデル・グループ・コンテキスト・フェーズ・最新の指示を組み立てる", async () => {
     const fx = await fixture()

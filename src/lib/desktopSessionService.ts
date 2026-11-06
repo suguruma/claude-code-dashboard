@@ -28,6 +28,7 @@ import {
   type TranscriptRef,
 } from "./desktopSessions"
 import { buildDecisionDetail } from "./decisionDetail"
+import { cutAfterMask } from "./secretMask"
 import { DEFAULT_HOUSEKEEPING_THRESHOLDS, type HousekeepingThresholds } from "./housekeepingTypes"
 import type { SessionIdentity } from "./usageEstimate"
 import { resolveProjectsRoot, type DataLocation } from "./dataLocations"
@@ -35,7 +36,6 @@ import {
   INSTRUCTION_EXCERPT_CHARS,
   advanceDigest,
   createDigest,
-  makeExcerpt,
   messagingOf,
   readTailDigest,
   type TranscriptDigest,
@@ -528,7 +528,7 @@ export class DesktopSessionService {
       phase = {
         completed: tasks.filter((t) => t.status === "completed").length,
         total: tasks.length,
-        currentStep: current ? makeExcerpt(current.content, STEP_EXCERPT_CHARS) : null,
+        currentStep: current ? cutAfterMask(current.content, STEP_EXCERPT_CHARS) : null,
       }
     }
 
@@ -573,7 +573,7 @@ export class DesktopSessionService {
       compactionCount: digest?.complete ? digest.compactionCount : null,
       latestInstruction: instruction
         ? {
-            excerpt: makeExcerpt(instruction.excerpt, INSTRUCTION_EXCERPT_CHARS),
+            excerpt: cutAfterMask(instruction.excerpt, INSTRUCTION_EXCERPT_CHARS),
             origin: instruction.origin,
             at: instruction.at,
           }

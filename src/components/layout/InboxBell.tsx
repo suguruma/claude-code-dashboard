@@ -1,22 +1,25 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { Bell, MoreHorizontal } from "lucide-react"
 import { StatusMarkBadge } from "@/components/desktopSessions/statusMeta"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@/components/ui/popover"
 import { useInbox } from "@/hooks/useInbox"
+import { writePersisted } from "@/hooks/useLocalStorage"
+import { DEFAULT_FILTERS, FILTER_STORAGE_KEY, normalizeFilters, type DesktopSessionFilters } from "@/lib/desktopSessionFilters"
 import { agoText, countText, INBOX_SHOWN, type InboxItem } from "@/lib/inbox"
 import { cn } from "@/lib/utils"
 
 /**
  * 知らせの鐘(⑮ OR-4)。上のバーに未読の数を出し、押すと直近の知らせを新しい順に20件まで出す。
- * 行を押すと、その先(セッションは詳細・PC の警告はリソース［負荷］・利用上限はリソース［利用上限］)へ移り、既読にする。
+ * 行を押すと、その先(セッションは看板の該当カード・PC の警告はリソース［負荷］・利用上限はリソース［利用上限］)へ移り、既読にする。
  * 未読は太字と「● 未読」の文字(色だけに頼らない)。［すべて既読にする］と、行の「…」に「未読に戻す」。
  */
 export function InboxBell() {
   const router = useRouter()
+  const pathname = usePathname()
   const inbox = useInbox()
   const [open, setOpen] = useState(false)
   const shown = inbox.items.slice(0, INBOX_SHOWN)
@@ -24,6 +27,21 @@ export function InboxBell() {
   function go(item: InboxItem) {
     void inbox.mark([item])
     setOpen(false)
+    if (item.href.startsWith("/desktop-sessions#")) {
+      // セッションは看板の該当カードへ(看板にし、グループの絞り込みを外してから移る)
+      let stored: DesktopSessionFilters = DEFAULT_FILTERS
+      try {
+        stored = normalizeFilters(JSON.parse(window.localStorage.getItem(FILTER_STORAGE_KEY) ?? "null") ?? DEFAULT_FILTERS)
+      } catch {
+        // 読めなければ既定から
+      }
+      writePersisted(FILTER_STORAGE_KEY, { ...stored, view: "board", group: "all" })
+      if (pathname === "/desktop-sessions") {
+        // 同じページの中では、ハッシュを替えて看板に知らせる(看板は hashchange を見ている)
+        window.location.replace(item.href)
+        return
+      }
+    }
     router.push(item.href)
   }
 
