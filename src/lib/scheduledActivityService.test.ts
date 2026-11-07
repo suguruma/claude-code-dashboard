@@ -268,7 +268,7 @@ describe("[AG-1][AG-5][AG-6] 予定タスクの集計", () => {
     expect(res.definitions).toEqual([])
   })
 
-  it("[A13] 新しい系統が最後の回に初めて出て、その回が24時間より前なら選ばない(重さの順になる)", async () => {
+  it("[A13] 新しい系統が最後の回に初めて出て、その回が36時間より前なら選ばない(重さの順になる)", async () => {
     const fx = await fixture()
     await seed(fx)
     const { service } = makeService(fx)
@@ -286,7 +286,7 @@ describe("[AG-1][AG-5][AG-6] 予定タスクの集計", () => {
       await writeMeta(fx, makeMeta({ n, scheduledTaskId: "gamma", createdAt: t, lastActivityAt: t + HOUR, isArchived: true, category: "completed" }))
       await writeTranscript(path.join(fx.projectDir, `${fakeCliId(n)}.jsonl`), usageLines(t + 60_000, model), t + HOUR)
     }
-    // delta：3日前は Opus、12時間前に Sonnet を初めて使った(24時間以内なので選ばれる)
+    // delta：3日前は Opus、12時間前に Sonnet を初めて使った(36時間以内なので選ばれる)
     for (const [n, ago, model] of [[7, 3 * DAY, "claude-opus-5-5"], [8, 12 * HOUR, "claude-sonnet-5-5"]] as const) {
       const t = NOW - ago
       await writeMeta(fx, makeMeta({ n, scheduledTaskId: "delta", createdAt: t, lastActivityAt: t + HOUR, isArchived: true, category: "completed" }))
