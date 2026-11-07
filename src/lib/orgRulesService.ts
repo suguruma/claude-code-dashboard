@@ -3,7 +3,8 @@ import { promises as fs } from "fs"
 import os from "os"
 import path from "path"
 import { locateData, type Env } from "./dataLocations"
-import { getDesktopSessionService, type DesktopSessionService, type GroupSource } from "./desktopSessionService"
+import { isSafePosixPath } from "./desktopSessions"
+import { getDesktopSessionService, type DesktopSessionService, type GroupSource, type WslLink } from "./desktopSessionService"
 import { getAppDataRoot } from "./fileIO"
 import { pickLeader } from "./flowEvents"
 import { parseFrontmatter } from "./frontmatter"
@@ -26,6 +27,7 @@ import type {
   OrgRulesResponse,
 } from "./orgRulesTypes"
 import { getPreviewBlockReason } from "./sensitivePaths"
+import { getWslAccess, type WslAccess } from "./wslAccess"
 
 /**
  * 組織のルールのページ(⑨)のデータを組み立てる。読み取り専用・外部との通信なし・LLM を呼ばない。
@@ -34,6 +36,8 @@ import { getPreviewBlockReason } from "./sensitivePaths"
  * - グローバルの CLAUDE.md(`~/.claude/CLAUDE.md`。設定ファイル・環境変数で場所を変えられる。自動の探索を止めているときは指定した場所だけ)
  * - 指揮役の作業フォルダの CLAUDE.md(`<作業フォルダ>/CLAUDE.md` だけ。親フォルダ・`@` の読み込み先はたどらない)
  * - 指揮役の会話ログのあるフォルダの `memory`(作業フォルダのパスを符号化して探すことはしない)
+ * - WSL の作業フォルダ(⑱)：Desktop が記録した配布版の名前と WSL の中の会話記録の場所から、`\\wsl.localhost\<配布版>\` の下の
+ *   `<作業フォルダ>/CLAUDE.md` と `<会話記録のフォルダ>/memory`。配布版が動いているときだけ(起こさない)
  * - 設定ファイル `config/org-rules.json` の `extraFiles` に書いたファイル(.md・.txt、1MB まで)
  * 指揮役でないセッションのフォルダは、CLAUDE.md も記憶も読まない。どのファイルも、認証情報などの拒否リスト(getPreviewBlockReason)を通す。
  */
@@ -60,6 +64,8 @@ export interface OrgRulesServiceOptions {
   env?: Env
   platform?: NodeJS.Platform
   now?: () => number
+  /** WSL の作業フォルダを読む入り口(⑱。テストで差し替える) */
+  wsl?: WslAccess
 }
 
 /** 設定ファイル(`config/org-rules.json`)を読む。形の合わない項目は無視する */
@@ -100,7 +106,12 @@ interface FolderRecord {
   /** 会話ログのあるフォルダの memory。会話ログが見つからなければ null */
   memoryDir: string | null
   foreign: boolean
+  /** WSL の作業フォルダのとき、Desktop が記録した配布版と会話記録の場所(⑱)。分からなければ null */
+  wsl: WslLink | null
 }
+
+/** WSL の作業フォルダをどこから読むか(⑱)。read: 読める / stopped: 配布版が止まっている / unknown: 読めない(配布版が分からない・形が合わない) */
+type WslPlace = { state: "read"; claudeMd: string; memoryDir: string | null } | { state: "stopped" } | { state: "unknown" }
 
 const emptyFile = (status: OrgRuleFile["status"], p: string | null): OrgRuleFile => ({
   status,
@@ -130,10 +141,13 @@ export class OrgRulesService {
   private readonly platform: NodeJS.Platform
   private readonly now: () => number
 
+  private readonly wsl: WslAccess
+
   constructor(
     private readonly sessions: DesktopSessionService,
     private readonly options: OrgRulesServiceOptions = {}
   ) {
+    this.wsl = options.wsl ?? getWslAccess()
     this.env = options.env ?? process.env
     this.platform = options.platform ?? process.platform
     this.now = options.now ?? Date.now
@@ -146,6 +160,24 @@ export class OrgRulesService {
   /** この PC からは読めない作業フォルダ(Windows で `/home/...` のような WSL のパス)。パスを推測して読み替えない(Q7) */
   private isForeign(cwd: string): boolean {
     return this.platform === "win32" && cwd.startsWith("/")
+  }
+
+  /** WSL の配布版が動いているかを、読む直前に調べる(⑱ W3)。読む対象が無ければ wsl.exe を呼ばない */
+  private async runningFor(records: FolderRecord[]): Promise<Set<string>> {
+    if (!records.some((r) => r.foreign && r.wsl)) return new Set()
+    return this.wsl.runningDistros()
+  }
+
+  private wslPlace(record: FolderRecord, running: Set<string>): WslPlace {
+    const cwd = record.cwd.replace(/\/+$/, "")
+    if (!record.wsl || !isSafePosixPath(cwd)) return { state: "unknown" }
+    const { distro, transcriptPath } = record.wsl
+    // 一覧と完全一致した名前だけを使う(許可リスト)。止まっている配布版の下は開かない(開くと起きるため)
+    if (!running.has(distro)) return { state: "stopped" }
+    const claudeMd = this.wsl.toWindowsPath(distro, `${cwd}/CLAUDE.md`)
+    if (!claudeMd) return { state: "unknown" }
+    const memoryDir = transcriptPath ? this.wsl.toWindowsPath(distro, path.posix.join(path.posix.dirname(transcriptPath), "memory")) : null
+    return { state: "read", claudeMd, memoryDir }
   }
 
   async get(): Promise<OrgRulesResponse> {
@@ -167,14 +199,28 @@ export class OrgRulesService {
     // C. 指揮役の作業フォルダ
     const folders: OrgFolderCard[] = []
     if (desktop) {
-      for (const record of await this.collectFolders()) {
-        folders.push({
-          key: record.key,
-          cwd: record.cwd,
-          groups: record.groups,
-          claudeMd: record.foreign ? emptyFile("wsl", path.posix.join(record.cwd, "CLAUDE.md")) : await this.readRuleFile(path.join(record.cwd, "CLAUDE.md"), "claude-md", titles),
-          memory: record.foreign ? emptyMemory("wsl") : await this.readMemory(record.memoryDir, titles),
-        })
+      const records = await this.collectFolders()
+      const running = await this.runningFor(records)
+      for (const record of records) {
+        let claudeMd: OrgRuleFile
+        let memory: OrgMemory
+        if (record.foreign) {
+          // 画面に返すパスは、どの状態でも WSL のパスのまま(UNC は出さない。⑱ W7)
+          const shown = path.posix.join(record.cwd, "CLAUDE.md")
+          const place = this.wslPlace(record, running)
+          if (place.state === "read") {
+            claudeMd = { ...(await this.readRuleFile(place.claudeMd, "claude-md", titles)), path: shown }
+            memory = await this.readMemory(place.memoryDir, titles)
+          } else {
+            const status = place.state === "stopped" ? "wsl-stopped" : "wsl"
+            claudeMd = emptyFile(status, shown)
+            memory = emptyMemory(status)
+          }
+        } else {
+          claudeMd = await this.readRuleFile(path.join(record.cwd, "CLAUDE.md"), "claude-md", titles)
+          memory = await this.readMemory(record.memoryDir, titles)
+        }
+        folders.push({ key: record.key, cwd: record.cwd, groups: record.groups, claudeMd, memory })
       }
     }
 
@@ -207,16 +253,23 @@ export class OrgRulesService {
    */
   async memoryBody(key: string, fileName: string): Promise<OrgMemoryBodyResponse | null> {
     const record = (await this.collectFolders()).find((r) => r.key === key)
-    if (!record || record.foreign || !record.memoryDir) return null
+    if (!record) return null
+    let dir = record.memoryDir
+    if (record.foreign) {
+      // WSL(⑱ W4)：一覧と同じ条件で、配布版が動いているときだけ。止まっていれば本文の API からも起こさない
+      const place = this.wslPlace(record, await this.runningFor([record]))
+      dir = place.state === "read" ? place.memoryDir : null
+    }
+    if (!dir) return null
     let names: string[]
     try {
-      names = await fs.readdir(record.memoryDir)
+      names = await fs.readdir(dir)
     } catch {
       return null
     }
     // 一覧と同じ関数で選んだファイル名だけを受け付ける(打ち切りの後ろ・拒否リストのものは返さない)
-    if (!listedMemoryFiles(record.memoryDir, names).includes(fileName)) return null
-    const file = path.join(record.memoryDir, fileName)
+    if (!listedMemoryFiles(dir, names).includes(fileName)) return null
+    const file = path.join(dir, fileName)
     try {
       const stat = await fs.stat(file)
       if (!stat.isFile() || stat.size > MAX_MEMORY_BYTES) return null
@@ -253,7 +306,9 @@ export class OrgRulesService {
       )?.source
       const cwd = leader?.summary.cwd
       if (!leader || !cwd) continue
-      const k = folderKey(cwd, this.platform)
+      const foreign = this.isForeign(cwd)
+      // WSL の作業フォルダは配布版ごとに分け、大文字小文字を区別する(⑱。Linux のパスのため)
+      const k = foreign ? `wsl:${leader.wsl?.distro ?? ""}:${cwd.replace(/\/+$/, "")}` : folderKey(cwd, this.platform)
       let record = byKey.get(k)
       if (!record) {
         record = {
@@ -261,11 +316,14 @@ export class OrgRulesService {
           cwd,
           groups: [],
           memoryDir: leader.filePath ? path.join(path.dirname(leader.filePath), "memory") : null,
-          foreign: this.isForeign(cwd),
+          foreign,
+          wsl: foreign ? leader.wsl : null,
         }
         byKey.set(k, record)
-      } else if (!record.memoryDir && leader.filePath) {
-        record.memoryDir = path.join(path.dirname(leader.filePath), "memory")
+      } else {
+        if (!record.memoryDir && leader.filePath) record.memoryDir = path.join(path.dirname(leader.filePath), "memory")
+        // 同じ作業フォルダの2人目の指揮役から、WSL の会話記録の場所を補う
+        if (record.wsl && !record.wsl.transcriptPath && leader.wsl?.transcriptPath) record.wsl = { ...record.wsl, transcriptPath: leader.wsl.transcriptPath }
       }
       record.groups.push({ groupName: info.name, leaderTitle: leader.summary.title })
     }

@@ -69,6 +69,14 @@ export interface GroupSource {
   summary: DesktopSessionSummary
   /** 会話ログのファイル。見つからなければ null */
   filePath: string | null
+  /** WSL のセッションの配布版と、WSL の中の会話記録のパス(⑱。組織のルールだけが使う)。WSL でなければ null */
+  wsl: WslLink | null
+}
+
+/** WSL のセッション(⑱)：Desktop が記録した配布版の名前と、WSL の中の会話記録の絶対パス(無ければ null) */
+export interface WslLink {
+  distro: string
+  transcriptPath: string | null
 }
 
 const DATA_DIR_TTL_MS = 30_000
@@ -94,6 +102,8 @@ interface BuiltSession {
   relation: SessionRelationData
   /** 予定タスクの集計(⑯)だけに使う値。一覧の応答には入れない */
   scheduled: ScheduledLink | null
+  /** WSL のセッション(⑱)。一覧の応答には入れない */
+  wsl: WslLink | null
 }
 
 /** 予定タスクの回(⑯ AG-1・AG-6)：予定タスクの名前と、使用量を合計する会話記録の ID(本体と前の会話記録) */
@@ -429,7 +439,7 @@ export class DesktopSessionService {
         if (parentId) sideChatCounts.set(parentId, (sideChatCounts.get(parentId) ?? 0) + 1)
         continue
       }
-      const source = { summary: b.summary, filePath: b.ref?.filePath ?? null }
+      const source: GroupSource = { summary: b.summary, filePath: b.ref?.filePath ?? null, wsl: b.wsl }
       if (b.summary.group?.id === groupId) sources.push(source)
       else if (b.summary.group === null && b.summary.spawnedFromId !== null) outsiders.push(source)
     }
@@ -639,7 +649,8 @@ export class DesktopSessionService {
           cliSessionIds: [...new Set([...(meta.cliSessionId ? [meta.cliSessionId] : []), ...(meta.priorCliSessionIds ?? [])])],
         }
       : null
-    return { summary, tasks, ref, lastCompactionAt: digest?.lastCompactionAt ?? null, relation, scheduled }
+    const wsl: WslLink | null = meta?.wslDistro ? { distro: meta.wslDistro, transcriptPath: meta.remoteTranscriptPath ?? null } : null
+    return { summary, tasks, ref, lastCompactionAt: digest?.lastCompactionAt ?? null, relation, scheduled, wsl }
   }
 }
 
