@@ -1,6 +1,7 @@
 "use client"
 
 import { CheckCircle2, Circle, CircleDot } from "lucide-react"
+import useSWR from "swr"
 import { Badge } from "@/components/ui/badge"
 import {
   Dialog,
@@ -11,6 +12,9 @@ import {
 } from "@/components/ui/dialog"
 import { useDesktopSessionDetail } from "@/hooks/useDesktopSessions"
 import { isInstructionProvisional } from "@/lib/desktopInstruction"
+import { fetcher } from "@/lib/fetcher"
+import { breakdownText } from "@/lib/scheduledActivityText"
+import type { UsageSessionBreakdown } from "@/lib/usageTypes"
 import type { TaskStatus } from "@/lib/desktopSessionTypes"
 import { NEEDS_ACTION_KIND_LABEL, needsActionSourceLabel } from "@/lib/needsActionKind"
 import { cn } from "@/lib/utils"
@@ -25,6 +29,23 @@ const TASK_ICON: Record<TaskStatus, { Icon: typeof Circle; label: string; classN
   completed: { Icon: CheckCircle2, label: "完了", className: "text-[var(--status-good)]" },
   in_progress: { Icon: CircleDot, label: "実行中", className: "text-primary" },
   pending: { Icon: Circle, label: "未着手", className: "text-muted-foreground" },
+}
+
+/**
+ * モデル別トークンとサブエージェントの本数の1行(⑯ AG-5。直近7日)。［利用上限］と同じ台帳から、詳細を開いたときだけ読む。
+ * 詳細の表示を待たせないよう、別の要求にする
+ */
+function ModelBreakdownLine({ transcriptId }: { transcriptId: string }) {
+  const { data, error } = useSWR<UsageSessionBreakdown>(`/api/usage/session?key=${encodeURIComponent(transcriptId)}`, fetcher, {
+    revalidateOnFocus: false,
+  })
+  const text = data ? (breakdownText(data.models, data.subagents) ?? "直近7日の使用量はありません") : error ? "読み込めませんでした" : "読み込んでいます"
+  return (
+    <p className="text-sm" data-testid="detail-model-breakdown">
+      <span className="text-muted-foreground">モデル別トークン（直近7日）：</span>
+      <span className="tabular-nums">{text}</span>
+    </p>
+  )
 }
 
 interface SessionDetailDialogProps {
@@ -104,6 +125,7 @@ export function SessionDetailDialog({ sessionId, highContextRatio, onClose }: Se
                 )}
               </Field>
             </dl>
+            {detail.transcriptId && <ModelBreakdownLine transcriptId={detail.transcriptId} />}
 
             <div className="space-y-1">
               <h3 className="text-sm font-medium">コンテキスト使用量</h3>

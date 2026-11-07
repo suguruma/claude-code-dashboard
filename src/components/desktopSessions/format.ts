@@ -1,6 +1,7 @@
 import { formatDistanceToNowStrict } from "date-fns"
 import { ja } from "date-fns/locale"
 import type { InstructionOrigin } from "@/lib/desktopSessionTypes"
+import { SCHEDULED_TASK_LABEL } from "@/lib/scheduledActivity"
 
 export function formatTokens(tokens: number): string {
   if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(tokens % 1_000_000 === 0 ? 0 : 1)}M`
@@ -22,6 +23,6 @@ export const ORIGIN_LABEL: Record<InstructionOrigin, string> = {
   human: "人",
   peer: "他セッション",
   notification: "通知",
-  scheduled: "定期実行",
+  scheduled: SCHEDULED_TASK_LABEL,
   system: "システム",
 }

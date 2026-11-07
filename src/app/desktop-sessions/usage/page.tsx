@@ -3,22 +3,25 @@
 import { NotificationToggle } from "@/components/desktopSessions/NotificationToggle"
 import { UsagePanel } from "@/components/desktopSessions/UsagePanel"
 import { LoadView } from "@/components/resources/LoadView"
+import { ScheduledView } from "@/components/resources/ScheduledView"
 import { ResourceAlertBand } from "@/components/resources/PcAlertBands"
 import { WorkPlanView } from "@/components/resources/WorkPlanView"
 import { UnderlineTabPanel, UnderlineTabs } from "@/components/ui/underline-tabs"
 import { useState } from "react"
 import { useUrlTab } from "@/hooks/useTabParam"
+import { SCHEDULED_TASK_LABEL } from "@/lib/scheduledActivity"
 
 const RESOURCE_TABS = [
   { id: "usage", label: "利用上限" },
   { id: "plan", label: "作業と待ち" },
   { id: "load", label: "負荷" },
+  { id: "scheduled", label: SCHEDULED_TASK_LABEL },
 ] as const
 const TAB_IDS = RESOURCE_TABS.map((t) => t.id)
 type ResourceTab = (typeof TAB_IDS)[number]
 
 /**
- * リソース(⑭。前の「利用上限」のページ)。上のタブで［利用上限］［作業と待ち］［負荷］を切り替える。
+ * リソース(⑭。前の「利用上限」のページ)。上のタブで［利用上限］［作業と待ち］［負荷］［予定タスク］(⑯)を切り替える。
  * タブの前回の選択は覚えない：サイドバーから開くと、いつも［利用上限］(要件メモ 14 の L7)。ホームの帯・通知は `?tab=load` で直に開く。
  * 見出しと上限ガードの帯は、Claude Desktop の各ページと共通の枠(DesktopSessionsFrame)が出す。
  */
@@ -48,6 +51,9 @@ export default function ResourcesPage() {
       </UnderlineTabPanel>
       <UnderlineTabPanel idPrefix="resources" id="load" value={tab}>
         <LoadView focus={focus} />
+      </UnderlineTabPanel>
+      <UnderlineTabPanel idPrefix="resources" id="scheduled" value={tab}>
+        <ScheduledView />
       </UnderlineTabPanel>
     </div>
   )

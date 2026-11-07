@@ -101,6 +101,24 @@ export interface UsageGuard {
   percent: number | null
 }
 
+/** モデル別の内訳の1件(⑯ AG-4)。系統(Opus・Sonnet・Haiku・Fable・その他)ごと、本体とサブエージェントを分ける */
+export interface UsageModelBreakdown {
+  family: string
+  subagent: boolean
+  /** 入力・出力・キャッシュの書き込み・読み出しの合計 */
+  tokens: number
+  costUsd: number
+}
+
+/** セッション1件のモデル別の内訳とサブエージェントの本数(⑯ AG-4・AG-5。セッションの詳細の1行) */
+export interface UsageSessionBreakdown {
+  /** 集計した期間の始まり(ms) */
+  since: number
+  models: UsageModelBreakdown[]
+  /** 期間の中に使用量の行があるサブエージェントの本数 */
+  subagents: number
+}
+
 export interface UsageContribution {
   /** 会話ログのセッションID(サブエージェントは親のセッションID)。Desktopのセッションと対応づけられないときの識別にも使う */
   sessionKey: string
@@ -111,6 +129,10 @@ export interface UsageContribution {
   groupName: string | null
   costUsd: number
   tokens: UsageTokens
+  /** モデル別の内訳(⑯ AG-4。多い順) */
+  models?: UsageModelBreakdown[]
+  /** 期間の中に使用量の行があるサブエージェントの本数(⑯ AG-4) */
+  subagents?: number
 }
 
 export interface UsageContributionSet {

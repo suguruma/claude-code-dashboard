@@ -30,6 +30,10 @@ export interface DesktopMeta {
   permissionMode: string | null
   isArchived: boolean
   isRoutine: boolean
+  /** 予定タスクの名前(定義のフォルダ名。⑯ AG-1)。形に合わない値は捨てる */
+  scheduledTaskId?: string | null
+  /** 前の会話記録の ID(`priorCliSessionIds`。⑯ AG-6 で使用量の合計に含める)。形に合わない値は捨てる */
+  priorCliSessionIds?: string[]
   createdAt: number | null
   lastActivityAt: number | null
   completedTurns: number | null
@@ -251,6 +255,20 @@ function spawnedFromIdOf(spawnedFrom: unknown): string | null {
   return typeof id === "string" && SESSION_ID_FORM.test(id) ? id : null
 }
 
+/** 予定タスクの名前の形(定義のフォルダ名)。パスの区切りや空白を含む値は捨てる */
+export const SCHEDULED_TASK_FORM = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/
+/** 会話記録の ID の形 */
+const CLI_SESSION_FORM = /^[A-Za-z0-9-]{8,64}$/
+
+function scheduledTaskIdOf(raw: unknown): string | null {
+  return typeof raw === "string" && SCHEDULED_TASK_FORM.test(raw) ? raw : null
+}
+
+function priorCliSessionIdsOf(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  return raw.filter((v): v is string => typeof v === "string" && CLI_SESSION_FORM.test(v)).slice(0, 20)
+}
+
 /** サイドチャットか: `spawnedFrom.btw` と `spawnedFrom.userFork` が両方 true */
 function isSideChatOf(spawnedFrom: unknown): boolean {
   if (!spawnedFrom || typeof spawnedFrom !== "object") return false
@@ -274,6 +292,8 @@ export function projectMeta(raw: unknown): DesktopMeta | null {
   const statusCategory =
     category === "blocked" || category === "review_ready" || category === "completed" ? category : null
   const needsActionText = summary?.needs_action
+  const scheduledTaskId = scheduledTaskIdOf(r.scheduledTaskId)
+  const priorCliSessionIds = priorCliSessionIdsOf(r.priorCliSessionIds)
 
   return {
     id,
@@ -309,6 +329,9 @@ export function projectMeta(raw: unknown): DesktopMeta | null {
     writtenBranch: writtenBranchOf(r.writtenBranches),
     peerReceipts: peerReceiptsOf(r.peerReceipts),
     isSideChat: isSideChatOf(r.spawnedFrom),
+    // 予定タスク(⑯)の項目は、値があるときだけ持つ(無いセッションの形は今までと同じ)
+    ...(scheduledTaskId ? { scheduledTaskId } : {}),
+    ...(priorCliSessionIds.length > 0 ? { priorCliSessionIds } : {}),
   }
 }
 

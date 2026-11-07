@@ -1,4 +1,4 @@
-import { costOf, type PriceBook } from "./usagePricing"
+import { costOf, familyOf, type PriceBook } from "./usagePricing"
 import type { UsageRow } from "./usageLedger"
 import type { SnapshotWindow, UsageSnapshot } from "./usageSnapshots"
 import type {
@@ -8,8 +8,10 @@ import type {
   UsageContributionSet,
   UsageEstimate,
   UsageGuard,
+  UsageModelBreakdown,
   UsageOfficialValue,
   UsagePace,
+  UsageSessionBreakdown,
   UsageTokens,
   UsageWindowKey,
   UsageWindowView,
@@ -537,6 +539,51 @@ export interface SessionIdentity {
   groupName: string | null
 }
 
+/** モデル別の内訳を足していく入れ物(⑯ AG-4) */
+class BreakdownAccumulator {
+  private readonly models = new Map<string, UsageModelBreakdown>()
+  private readonly agents = new Set<string>()
+  /** まとめた行(「ほか n件」)の本数 */
+  private extraAgents = 0
+
+  add(row: UsageRow, cost: number): void {
+    const f = familyOf(row.model)
+    const family = f ? f.charAt(0).toUpperCase() + f.slice(1) : "その他"
+    const key = `${row.subagent ? "s" : "m"}:${family}`
+    const m = this.models.get(key) ?? { family, subagent: row.subagent, tokens: 0, costUsd: 0 }
+    m.tokens += row.input + row.output + row.cacheRead + row.cacheWrite5m + row.cacheWrite1h
+    m.costUsd += cost
+    this.models.set(key, m)
+    if (row.subagent && row.agent) this.agents.add(row.agent)
+  }
+
+  merge(other: { models?: UsageModelBreakdown[]; subagents?: number }): void {
+    for (const m of other.models ?? []) {
+      const key = `${m.subagent ? "s" : "m"}:${m.family}`
+      const cur = this.models.get(key) ?? { family: m.family, subagent: m.subagent, tokens: 0, costUsd: 0 }
+      cur.tokens += m.tokens
+      cur.costUsd += m.costUsd
+      this.models.set(key, cur)
+    }
+    this.extraAgents += other.subagents ?? 0
+  }
+
+  result(): { models: UsageModelBreakdown[]; subagents: number } {
+    const models = [...this.models.values()].sort((a, b) => Number(a.subagent) - Number(b.subagent) || b.costUsd - a.costUsd)
+    return { models, subagents: this.agents.size + this.extraAgents }
+  }
+}
+
+/** セッション(会話ログのID。前の会話記録を含めて渡せる)のモデル別の内訳とサブエージェントの本数(⑯ AG-5 の詳細の1行) */
+export function buildSessionBreakdown(rows: UsageRow[], sessionKeys: ReadonlySet<string>, since: number, now: number, prices: PriceBook): UsageSessionBreakdown {
+  const acc = new BreakdownAccumulator()
+  for (const row of rows) {
+    if (row.at < since || row.at > now || !sessionKeys.has(row.sessionKey)) continue
+    acc.add(row, costOf(row, prices.resolve(row.model).price))
+  }
+  return { since, ...acc.result() }
+}
+
 const OTHER_KEY = "__other__"
 const MAX_CONTRIBUTIONS = 40
 const UNKNOWN_TITLE = "（Desktopのセッションに対応しない会話記録）"
@@ -550,6 +597,7 @@ export function buildContributions(
   identityOf: (sessionKey: string) => SessionIdentity | null
 ): UsageContributionSet {
   const bySession = new Map<string, UsageContribution>()
+  const breakdowns = new Map<string, BreakdownAccumulator>()
   for (const row of rows) {
     if (row.at < since || row.at > now) continue
     let item = bySession.get(row.sessionKey)
@@ -566,15 +614,25 @@ export function buildContributions(
       }
       bySession.set(row.sessionKey, item)
     }
-    item.costUsd += costOf(row, prices.resolve(row.model).price)
+    const cost = costOf(row, prices.resolve(row.model).price)
+    item.costUsd += cost
     addTokens(item.tokens, row)
+    let acc = breakdowns.get(row.sessionKey)
+    if (!acc) {
+      acc = new BreakdownAccumulator()
+      breakdowns.set(row.sessionKey, acc)
+    }
+    acc.add(row, cost)
   }
+  for (const [key, acc] of breakdowns) Object.assign(bySession.get(key)!, acc.result())
 
   const sorted = [...bySession.values()].sort((a, b) => b.costUsd - a.costUsd)
   if (sorted.length <= MAX_CONTRIBUTIONS) return { since, items: sorted }
   // 多いときは、上位だけを個別に出し、残りを1件にまとめる
   const head = sorted.slice(0, MAX_CONTRIBUTIONS)
   const rest = sorted.slice(MAX_CONTRIBUTIONS)
+  const restAcc = new BreakdownAccumulator()
+  for (const r of rest) restAcc.merge(r)
   const other: UsageContribution = {
     sessionKey: OTHER_KEY,
     desktopId: null,
@@ -589,6 +647,7 @@ export function buildContributions(
       t.cacheWrite += r.tokens.cacheWrite
       return t
     }, emptyTokens()),
+    ...restAcc.result(),
   }
   return { since, items: [...head, other] }
 }
