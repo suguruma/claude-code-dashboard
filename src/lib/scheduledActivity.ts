@@ -91,10 +91,16 @@ function byTask(runs: ScheduledRun[]): Map<string, ScheduledRun[]> {
  * - 系統で比べる(版の違いは同じ系統)。本体とサブエージェントのどちらに出ても同じに数える
  * - それより前の読める回のどれにも無かった系統だけ。前の回が読めない回(初回・読める範囲の最初の回)は数えない
  * - その系統が、最初に出た回から後の回の過半数で使われていること(時々だけ使う物は拾わない)。
- *   最初に出た回が最後の回(後の回がその1回だけ)のときは、その回が24時間以内のときだけ数える(1回だけでは使い続けたか分からないため。
+ *   作業中の回(まだその系統を使っていないことがある)は数えない(最初に出た回そのものは数える)。
+ *   最初に出た回が最後の終わった回のときは、その回が36時間以内のとき(毎日の回が半日遅れても外れない)と、
+ *   次の回が作業中で48時間以内のとき(次の回が終わるまで)だけ数える(1回だけでは使い続けたか分からないため。
  *   画面は、初めて出した既定の選択を覚えるので、次の日に替わることはない)
  * 該当が無ければ、直近14日の重さの合計が大きい順の1件目(境目は今日の7日前＝null)
  */
+/** 新しい系統が最後の終わった回にだけ出たとき、新しい系統と数える長さ(低2)。次の回が作業中なら、48時間まで待つ */
+const SINGLE_RUN_FRESH_MS = 36 * 3_600_000
+const SINGLE_RUN_WAIT_NEXT_MS = 2 * DAY_MS
+
 export function chooseDefault(runs: ScheduledRun[], now: number): DefaultSelection | null {
   const since = now - RECENT_DAYS * DAY_MS
   let best: { taskId: string; at: number } | null = null
@@ -106,9 +112,12 @@ export function chooseDefault(runs: ScheduledRun[], now: number): DefaultSelecti
       if (i > 0) {
         for (const f of fams) {
           if (seen.has(f)) continue
-          const later = readable.slice(i)
+          const after = readable.slice(i + 1)
+          const later = [run, ...after.filter((r) => !r.running)]
           const used = later.filter((r) => familiesOf(r).has(f)).length
-          const fresh = later.length > 1 || now - run.startedAt <= DAY_MS
+          const age = now - run.startedAt
+          const nextRunning = after.some((r) => r.running)
+          const fresh = later.length > 1 || age <= SINGLE_RUN_FRESH_MS || (nextRunning && age <= SINGLE_RUN_WAIT_NEXT_MS)
           if (used * 2 > later.length && fresh && run.startedAt >= since && run.startedAt <= now) {
             if (!best || run.startedAt > best.at) best = { taskId, at: run.startedAt }
           }
@@ -362,6 +371,14 @@ export function dailyRows(runs: ScheduledRun[], boundary: string, now: number): 
     rows.push({ day: k, runs: [...(byDay.get(k) ?? [])].sort((a, b) => b.startedAt - a.startedAt) })
   }
   return rows
+}
+
+/**
+ * 境目の線を上に引く行の日(前の7日の最初の行 = 境目の前の日。新しい順の表なので、線は境目の日と前の日の間に入る)。
+ * 境目が今日でも、線は今日の行と昨日の行の間に残る。境目が今日より後なら表の先頭の行(後の7日の行が無いため)
+ */
+export function boundaryLineDay(rows: DayRow[], boundary: string): string | null {
+  return rows.find((r) => r.day < boundary)?.day ?? null
 }
 
 /** 予定タスクのいつもの本体のモデルの系統(回の多い順の1位)。替わった回だけ印を付けるために使う */

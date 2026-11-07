@@ -82,6 +82,10 @@ describe("[A15] 言葉と書き方", () => {
     expect(runSubagentText(run("2026-11-05 07:09"))).toBe("0")
   })
 
+  it("[低1] 会話記録の無い回のサブエージェントの欄は「―」(分からない。「0」だと使わなかったと読める)", () => {
+    expect(runSubagentText(run("2026-11-05 07:09", { hasUsage: false }))).toBe("―")
+  })
+
   it("日付・何時間前・符号", () => {
     expect(dayText("2026-11-07")).toBe("11/07（土）")
     expect(agoText(now - 3 * 3600_000, now)).toBe("3時間前")

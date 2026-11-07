@@ -79,6 +79,8 @@ export function breakdownText(models: { family: string; subagent: boolean; token
 
 /** 日ごとの表のサブエージェントの欄「2（Sonnet）」 */
 export function runSubagentText(run: ScheduledRun): string {
+  // 会話記録の無い回は、重さ・トークンと同じく「分からない」(「0」だと使わなかったと読める)
+  if (!run.hasUsage) return "―"
   if (run.subagentCount === 0) return "0"
   return run.subagentFamilies.length > 0 ? `${run.subagentCount}（${run.subagentFamilies.join("・")}）` : String(run.subagentCount)
 }

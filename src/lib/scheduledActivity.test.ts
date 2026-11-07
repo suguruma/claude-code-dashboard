@@ -7,6 +7,7 @@ import {
   buildTaskList,
   chooseDefault,
   compareRuns,
+  boundaryLineDay,
   dailyRows,
   dayKey,
   familyLabel,
@@ -159,6 +160,20 @@ describe("[AG-2][A2] 日ごとの表", () => {
     expect(rows.find((r) => r.day === "2026-11-09")?.runs).toEqual([])
   })
 
+  it("[中1] 境目の線は境目の日と前の日の間。境目の日は線の上(後の7日の側)。境目が今日でも区切りが残る", () => {
+    const runs = [run("w", "2026-11-07 07:09"), run("w", "2026-11-06 07:09")]
+    const rows = dailyRows(runs, "2026-11-07", jst("2026-11-10 12:00"))
+    const line = boundaryLineDay(rows, "2026-11-07")
+    expect(line).toBe("2026-11-06")
+    const at = rows.findIndex((r) => r.day === line)
+    expect(rows.slice(0, at).map((r) => r.day)).toContain("2026-11-07")
+    expect(rows.slice(at).every((r) => r.day < "2026-11-07")).toBe(true)
+    // 境目が今日：線は今日の行の下(表の先頭ではない)
+    const today = dailyRows(runs, "2026-11-10", jst("2026-11-10 12:00"))
+    expect(boundaryLineDay(today, "2026-11-10")).toBe("2026-11-09")
+    expect(today[0].day).toBe("2026-11-10")
+  })
+
   it("いつもの本体の系統(替わった回だけ印を付けるため)", () => {
     expect(usualMainFamily([run("w", "2026-11-01 07:00"), run("w", "2026-11-02 07:00"), run("w", "2026-11-03 07:00", { mainFamilies: ["Sonnet"] })])).toBe("Opus")
   })
@@ -269,6 +284,25 @@ describe("[A13] 新しい系統が最後の回に初めて出たとき", () => {
     ]
     expect(chooseDefault(runs, jst("2026-11-08 20:00"))).toMatchObject({ taskId: "sometimes", boundaryDay: "2026-11-08" })
     expect(chooseDefault(runs, jst("2026-11-10 12:00"))).toMatchObject({ reason: "weight" })
+  })
+
+  it("[低2] 次の回が作業中でまだ新しい系統を使っていない間(48時間まで)・次の回が無いまま24時間を過ぎても(36時間まで)選び続ける", () => {
+    const base = [
+      ...["11-03", "11-04", "11-05", "11-06"].map((d) => run("watch", `2026-${d} 07:09`)),
+      run("watch", "2026-11-07 07:09", { sub: ["Sonnet"] }),
+      ...["11-03", "11-05", "11-07"].map((d) => run("other", `2026-${d} 10:00`, { cost: 5 })),
+    ]
+    const want = { taskId: "watch", reason: "new-family", boundaryDay: "2026-11-07" }
+    // 11/08 の回が作業中で、本体の行だけ(Sonnet はまだ無い)
+    const running = [...base, run("watch", "2026-11-08 07:09", { running: true })]
+    expect(chooseDefault(running, jst("2026-11-08 07:20"))).toEqual(want)
+    expect(chooseDefault(running, jst("2026-11-09 07:00"))).toEqual(want)
+    // 11/08 の回が無いまま(PC が止まっていた・遅れた)
+    expect(chooseDefault(base, jst("2026-11-08 09:00"))).toEqual(want)
+    // 次の回が無いまま36時間を過ぎたら、1回だけでは使い続けたか分からないので選ばない
+    expect(chooseDefault(base, jst("2026-11-08 20:00"))).toMatchObject({ reason: "weight" })
+    // 作業中の回の後でも、48時間を過ぎたら選ばない
+    expect(chooseDefault(running, jst("2026-11-09 08:00"))).toMatchObject({ reason: "weight" })
   })
 
   it("前の7日の本体の重さが0なら、本体は比べない(―)", () => {

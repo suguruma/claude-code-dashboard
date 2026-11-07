@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { FAKE_ACCOUNT, FAKE_ORG, SENTINEL, fakeCliId, fakeSessionId, fakeUuid, makeMeta, makeSessionSummary } from "./desktopFixtures"
 import { DesktopSessionService } from "./desktopSessionService"
 import { projectMeta } from "./desktopSessions"
-import type { DesktopSessionMessaging } from "./desktopSessionTypes"
+import type { DesktopSessionMessaging, DesktopSessionStatus } from "./desktopSessionTypes"
 import { readJsonlFrom } from "./jsonlReader"
 import { LAN_HEADER } from "./lanAccess/config"
 import { compareRuns, dayKey } from "./scheduledActivity"
@@ -189,6 +189,23 @@ describe("[AG-1][AG-5][AG-6] 予定タスクの集計", () => {
     expect(beta?.mark).toMatchObject({ symbol: "？", text: "判断", tone: "gray" })
     expect(beta?.stopReason).toBe("要対応")
     expect(res.runs.find((r) => r.desktopId === fakeSessionId(1))?.stopReason).toBeNull()
+  })
+
+  it("[A1][低3] 9つの状態 × アーカイブの有無で、タブの印が一覧の印(buildMarks)と同じ", async () => {
+    const fx = await fixture()
+    const statuses: DesktopSessionStatus[] = ["running", "interrupted", "blocked", "review_ready", "completed", "standby", "waiting", "unknown", "error"]
+    const sessions = statuses.flatMap((status, i) =>
+      [false, true].map((isArchived) =>
+        makeSessionSummary(fakeSessionId(100 + i * 2 + Number(isArchived)), { status, isArchived, createdAt: NOW - (i + 1) * HOUR, lastActivityAt: NOW - i * HOUR })
+      )
+    )
+    const runs = sessions.map((summary) => ({ summary, taskId: "alpha", cliSessionIds: [] }))
+    const service = new ScheduledActivityService({ projectsRoot: fx.projectsRoot, prices: new PriceBook(), runs: async () => ({ sessions, runs }), now: () => NOW })
+    const res = await service.get()
+    const marks = buildMarks(sessions, NOW)
+    expect(res.runs).toHaveLength(18)
+    for (const r of res.runs) expect(r.mark, r.desktopId).toEqual(marks.get(r.desktopId))
+    expect(new Set(res.runs.map((r) => `${r.mark.symbol}${r.mark.text}`)).size).toBe(9)
   })
 
   it("[A2][A5] モデル別のトークンは本体とサブエージェントを分けて、会話記録の合計と一致する。種類は agentType、無ければ「種類不明」", async () => {

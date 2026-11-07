@@ -12,6 +12,7 @@ import {
   SCHEDULED_TASK_LABEL,
   buildTaskList,
   compareRuns,
+  boundaryLineDay,
   dailyRows,
   dayKey,
   indexOf,
@@ -335,6 +336,8 @@ function DailySection({
   onOpen: (desktopId: string) => void
 }) {
   const rows = dailyRows(runs, comparison.boundary, now)
+  // 線は境目の日と前の日の間(前の7日の最初の行の上)。境目の日の回が後の7日の側に並ぶ
+  const lineDay = boundaryLineDay(rows, comparison.boundary)
   const open = (e: KeyboardEvent, id: string) => {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault()
@@ -361,7 +364,7 @@ function DailySection({
           {rows.flatMap((row) =>
             row.runs.length === 0
               ? [
-                  <tr key={row.day} className={cn("border-b", row.day === comparison.boundary && "border-t-2 border-t-foreground/40")} data-testid="scheduled-day-idle">
+                  <tr key={row.day} className={cn("border-b", row.day === lineDay && "border-t-2 border-t-foreground/40")} data-testid="scheduled-day-idle">
                     <td className="py-1.5 pr-3 whitespace-nowrap">{dayText(row.day)}</td>
                     <td colSpan={5} className="py-1.5 text-muted-foreground">
                       ― 動いていない
@@ -377,7 +380,7 @@ function DailySection({
                       tabIndex={0}
                       className={cn(
                         "cursor-pointer border-b outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring",
-                        row.day === comparison.boundary && i === 0 && "border-t-2 border-t-foreground/40"
+                        row.day === lineDay && i === 0 && "border-t-2 border-t-foreground/40"
                       )}
                       onClick={() => onOpen(run.desktopId)}
                       onKeyDown={(e) => open(e, run.desktopId)}
