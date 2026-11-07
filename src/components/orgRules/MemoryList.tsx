@@ -12,6 +12,7 @@ const MEMORY_STATUS_TEXT: Record<Exclude<OrgMemory["status"], "ok">, string> = {
   missing: "記憶はありません。",
   unknown: "記憶の場所が分かりません（指揮役の会話ログが見つかりません）。",
   wsl: "この PC からは読めません（WSL の作業フォルダ）。",
+  "wsl-stopped": "WSL が止まっているので読めません。作業フォルダの配布版（Ubuntu など）を起動すると読めます（Dashboard からは起こしません）。",
 }
 
 /** 指揮役の記憶の一覧。本文は、行を開いたときだけ取りに行く */

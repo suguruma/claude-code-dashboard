@@ -27,10 +27,10 @@ export interface OrgRuleSection {
 
 /**
  * 読んだファイル1つ。status は、ok: 読めた / missing: 無い / disabled: 自動の探索を止めていて場所の指定が無い /
- * wsl: この PC からは読めない(WSL の作業フォルダ) / refused: 拒否リストに当たった / unsupported: .md・.txt 以外 /
+ * wsl: この PC からは読めない(WSL の作業フォルダ) / wsl-stopped: WSL の配布版が止まっている(起こさない。⑱) / refused: 拒否リストに当たった / unsupported: .md・.txt 以外 /
  * too-large: 大きすぎる / unreadable: 読み込みに失敗した
  */
-export type OrgFileStatus = "ok" | "missing" | "disabled" | "wsl" | "refused" | "unsupported" | "too-large" | "unreadable"
+export type OrgFileStatus = "ok" | "missing" | "disabled" | "wsl" | "wsl-stopped" | "refused" | "unsupported" | "too-large" | "unreadable"
 
 export interface OrgRuleFile {
   status: OrgFileStatus
@@ -55,9 +55,9 @@ export interface OrgMemoryEntry {
   tooLarge: boolean
 }
 
-/** 記憶。status は、ok / missing: 記憶のフォルダが無い / unknown: 場所が分からない(会話ログが見つからない) / wsl */
+/** 記憶。status は、ok / missing: 記憶のフォルダが無い / unknown: 場所が分からない(会話ログが見つからない) / wsl / wsl-stopped(⑱) */
 export interface OrgMemory {
-  status: "ok" | "missing" | "unknown" | "wsl"
+  status: "ok" | "missing" | "unknown" | "wsl" | "wsl-stopped"
   entries: OrgMemoryEntry[]
   typeCounts: Record<string, number>
   /** MEMORY.md があるか(無ければ、索引とのずれは調べない) */

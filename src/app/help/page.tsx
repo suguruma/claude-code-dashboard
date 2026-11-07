@@ -332,7 +332,7 @@ const FAQ: { q: string; a: string; id?: string }[] = [
   },
   {
     q: "組織の「決まり」に、グループの決まりが出ない・「読めません」と出る",
-    a: "グループごとの決まりは、組織図と同じ指揮役（グループ内でタイトルが接頭辞〈既定は「00_」〉で始まるセッション）の作業フォルダから読みます。指揮役のいないグループは出ません。記憶は、指揮役の会話記録のあるフォルダの memory から読むので、会話記録が見つからないときは「記憶の場所が分かりません」と出ます。WSL の作業フォルダ（/home/... など）は、この PC から読めないので「この PC からは読めません」と出ます。グローバルの CLAUDE.md の場所は、config/org-rules.json の globalClaudeMdPath か環境変数 CCD_GLOBAL_CLAUDE_MD で変えられます（環境変数 CCD_DESKTOP_AUTODETECT=0 で起動しているときは、指定しないと読みません）。台帳などのファイルを足すときは、config/org-rules.json の extraFiles に書きます（config/org-rules.example.json が見本です）。",
+    a: "グループごとの決まりは、組織図と同じ指揮役（グループ内でタイトルが接頭辞〈既定は「00_」〉で始まるセッション）の作業フォルダから読みます。指揮役のいないグループは出ません。記憶は、指揮役の会話記録のあるフォルダの memory から読むので、会話記録が見つからないときは「記憶の場所が分かりません」と出ます。WSL の作業フォルダ（/home/... など）は、Claude Desktop が記録した配布版の名前（Ubuntu など）と WSL の中の会話記録の場所から、\\\\wsl.localhost\\<配布版> の下の CLAUDE.md と記憶を読みます。配布版が止まっているときは起こさず「WSL が止まっているので読めません」と出ます（配布版の名前が記録されていないときは「この PC からは読めません」）。グローバルの CLAUDE.md の場所は、config/org-rules.json の globalClaudeMdPath か環境変数 CCD_GLOBAL_CLAUDE_MD で変えられます（環境変数 CCD_DESKTOP_AUTODETECT=0 で起動しているときは、指定しないと読みません）。台帳などのファイルを足すときは、config/org-rules.json の extraFiles に書きます（config/org-rules.example.json が見本です）。",
   },
   {
     q: "組織の「つながり」に、指示と報告の時刻が出ない・役割の名前を変えたい",

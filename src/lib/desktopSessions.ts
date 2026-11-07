@@ -34,6 +34,10 @@ export interface DesktopMeta {
   scheduledTaskId?: string | null
   /** 前の会話記録の ID(`priorCliSessionIds`。⑯ AG-6 で使用量の合計に含める)。形に合わない値は捨てる */
   priorCliSessionIds?: string[]
+  /** WSL のセッションの配布版の名前(`wslConfig.distro`。⑱ W1)。形に合わない値は捨てる */
+  wslDistro?: string
+  /** WSL の中の会話記録の絶対パス(`sshRemoteTranscriptPath`。⑱ W1)。配布版の名前があり、形に合うときだけ */
+  remoteTranscriptPath?: string
   createdAt: number | null
   lastActivityAt: number | null
   completedTurns: number | null
@@ -264,6 +268,35 @@ function scheduledTaskIdOf(raw: unknown): string | null {
   return typeof raw === "string" && SCHEDULED_TASK_FORM.test(raw) ? raw : null
 }
 
+/** WSL の配布版の名前の形(⑱ W1)。区切りや空白・`..` を含む値は捨てる */
+export const WSL_DISTRO_FORM = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
+
+function wslDistroOf(raw: unknown): string | null {
+  if (!raw || typeof raw !== "object") return null
+  const d = (raw as Record<string, unknown>).distro
+  return typeof d === "string" && WSL_DISTRO_FORM.test(d) && !d.includes("..") ? d : null
+}
+
+/**
+ * WSL の絶対パスが、抜け出しや別の場所を指さない形か(⑱)。`/` 1つで始まり、`..`・`.`・空の区間・`\`・NUL・`:` を含まない。
+ * `//host/share` のような値は空の区間で弾く(Windows で UNC の根として別のホストへ接続しないため)
+ */
+export function isSafePosixPath(raw: unknown): raw is string {
+  if (typeof raw !== "string" || raw.length > 1024 || !raw.startsWith("/") || raw === "/") return false
+  if (/[\\\0:]/.test(raw)) return false
+  return raw
+    .slice(1)
+    .split("/")
+    .every((seg) => seg !== "" && seg !== "." && seg !== "..")
+}
+
+/** WSL の中の会話記録の絶対パスの形(⑱ W1)。`~/.claude/projects/<フォルダ>/<id>.jsonl` に限る */
+const REMOTE_TRANSCRIPT_FORM = /^\/(home\/[^/]+|root)\/\.claude\/projects\/[^/]+\/[^/]+\.jsonl$/
+
+export function isRemoteTranscriptPath(raw: unknown): raw is string {
+  return isSafePosixPath(raw) && REMOTE_TRANSCRIPT_FORM.test(raw)
+}
+
 function priorCliSessionIdsOf(raw: unknown): string[] {
   if (!Array.isArray(raw)) return []
   return raw.filter((v): v is string => typeof v === "string" && CLI_SESSION_FORM.test(v)).slice(0, 20)
@@ -294,6 +327,8 @@ export function projectMeta(raw: unknown): DesktopMeta | null {
   const needsActionText = summary?.needs_action
   const scheduledTaskId = scheduledTaskIdOf(r.scheduledTaskId)
   const priorCliSessionIds = priorCliSessionIdsOf(r.priorCliSessionIds)
+  const wslDistro = wslDistroOf(r.wslConfig)
+  const remoteTranscriptPath = wslDistro && isRemoteTranscriptPath(r.sshRemoteTranscriptPath) ? r.sshRemoteTranscriptPath : null
 
   return {
     id,
@@ -332,6 +367,9 @@ export function projectMeta(raw: unknown): DesktopMeta | null {
     // 予定タスク(⑯)の項目は、値があるときだけ持つ(無いセッションの形は今までと同じ)
     ...(scheduledTaskId ? { scheduledTaskId } : {}),
     ...(priorCliSessionIds.length > 0 ? { priorCliSessionIds } : {}),
+    // WSL(⑱)の項目も、値があるときだけ持つ
+    ...(wslDistro ? { wslDistro } : {}),
+    ...(remoteTranscriptPath ? { remoteTranscriptPath } : {}),
   }
 }
 

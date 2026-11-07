@@ -8,6 +8,7 @@ const STATUS_TEXT: Record<Exclude<OrgFileStatus, "ok" | "missing">, string> = {
   disabled:
     "自動で探すのを止めています（CCD_DESKTOP_AUTODETECT=0）。設定ファイル config/org-rules.json の globalClaudeMdPath か、環境変数 CCD_GLOBAL_CLAUDE_MD で場所を指定すると読みます。",
   wsl: "この PC からは読めません（WSL の作業フォルダ）。",
+  "wsl-stopped": "WSL が止まっているので読めません。作業フォルダの配布版（Ubuntu など）を起動すると読めます（Dashboard からは起こしません）。",
   refused: "認証情報などを含む可能性があるファイルのため、読みません。",
   unsupported: ".md と .txt のファイルだけを読みます。",
   "too-large": "1MB を超えるため、読みません。",
