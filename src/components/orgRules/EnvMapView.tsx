@@ -21,7 +21,7 @@ import {
   stepInstruction,
   type MapLayout,
 } from "@/lib/envMap/envMapLayout"
-import { decideSession, liveSkipped, type SkippedSession } from "@/lib/envMap/envMapSelect"
+import { ROUTE_FETCH_OPTIONS, decideSession, liveSkipped, routeSelectionNote, type SkippedSession } from "@/lib/envMap/envMapSelect"
 import { GUARD_BOX, type EnvMapData, type EnvMapNode, type EnvMapResponse, type RouteInstruction, type RouteResponse } from "@/lib/envMap/envMapTypes"
 import { CONFLICT_EDGE, NORMAL_EDGE, STRENGTH_TEXT, readColors, strengthBorder, type EnvMapColors } from "./envMapTheme"
 
@@ -213,8 +213,7 @@ interface BodyProps {
 function EnvMapBody({ res, map, mode, setMode, session, missing, setSession, onEmptyDefault, reload }: BodyProps) {
   const routeKey = mode === "route" && session ? `/api/env-map/route?session=${encodeURIComponent(session)}` : null
   const route = useSWR<RouteResponse>(routeKey, fetcher, {
-    revalidateOnFocus: false,
-    revalidateIfStale: false,
+    ...ROUTE_FETCH_OPTIONS,
     onSuccess: (d) => {
       if (d.instructions.length === 0 && !d.problem) onEmptyDefault?.()
     },
@@ -282,11 +281,7 @@ function EnvMapBody({ res, map, mode, setMode, session, missing, setSession, onE
           {mode === "now" && sel.degree === 0 && layerFilter !== "linked"
             ? `（つながり無し ${map.nodes.filter((n) => n.layer === sel.layer && n.degree === 0).length} の中）`
             : ""}
-          {mode === "route" && ins && sel.id === GUARD_BOX && !ins.visits.some((v) => v.box === sel.id)
-            ? `（歩にしない印。この指示で ${ins.guard}回）`
-            : mode === "route" && ins && !ins.visits.some((v) => v.box === sel.id)
-              ? "（この指示では通っていません）"
-              : ""}
+          {mode === "route" ? routeSelectionNote(sel.id, GUARD_BOX, ins) : ""}
         </span>
         <button type="button" className="ml-2 rounded px-1 text-muted-foreground hover:bg-muted" onClick={() => setSelected(null)} aria-label="選んだ箱を外す">
           <X className="inline size-4" />

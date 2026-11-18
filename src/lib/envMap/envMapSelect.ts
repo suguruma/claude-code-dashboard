@@ -19,7 +19,7 @@ export interface SessionDecisionInput {
   defaultSession: string | null
   /** 既定で選んで指示が無かったセッション */
   skipped: readonly string[]
-  /** 一覧を取りに行っている途中か */
+  /** 一覧を取りに行っている途中か(決め方には使わない。一度取り直した id は、後の取り直しの間も missing のまま) */
   validating: boolean
   /** 一覧を取り直し終えた、頼まれたセッションの id(まだなら null) */
   refreshedFor: string | null
@@ -33,6 +33,23 @@ export function decideSession(o: SessionDecisionInput): SessionDecision {
   }
   const id = o.sessions.find((s) => !o.skipped.includes(s.id))?.id ?? o.defaultSession
   return { kind: "chosen", id, auto: true }
+}
+
+/**
+ * ルートの取得の決め(低19)。見ている間は自動で読み直さない(4-2)が、タブ・ページを開くたびに取り直す。
+ * 同じ窓で前に読んだ結果を使い回すと、飛ばした既定のセッションが後で動いて既定に戻ったときに、空の結果のまま残る。
+ * 取り直しはサーバーで書き足された分だけを読むので軽い
+ */
+export const ROUTE_FETCH_OPTIONS = { revalidateOnFocus: false, revalidateIfStale: false, revalidateOnMount: true } as const
+
+/**
+ * ［ルート］で選んだ箱の添え書き。見張りのフックは歩にしない印なので、この指示で当たった回数を出す(低18)。
+ * 当たりが0回の指示では、ほかの箱と同じく「通っていません」(低20)
+ */
+export function routeSelectionNote(selectedId: string, guardBox: string, ins: { guard: number; visits: readonly { box: string }[] } | null): string {
+  if (!ins || ins.visits.some((v) => v.box === selectedId)) return ""
+  if (selectedId === guardBox && ins.guard > 0) return `（歩にしない印。この指示で ${ins.guard}回）`
+  return "（この指示では通っていません）"
 }
 
 /** 飛ばしたセッションと、飛ばした時の「最後に動いた時刻」 */

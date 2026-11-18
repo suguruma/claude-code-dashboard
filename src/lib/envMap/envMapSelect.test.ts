@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { decideSession, liveSkipped } from "./envMapSelect"
+import { ROUTE_FETCH_OPTIONS, decideSession, liveSkipped, routeSelectionNote } from "./envMapSelect"
 
 const base = { sessions: [{ id: "a" }, { id: "b" }], defaultSession: "a", skipped: [] as string[], validating: false, refreshedFor: null }
 
@@ -45,6 +45,28 @@ describe("[完了前の相談役 中1] 飛ばしたセッションに後から�
   })
   it("一覧から消えたセッションは数えない", () => {
     expect(liveSkipped([{ id: "gone", at: 1 }, { id: "b", at: 50 }], list)).toEqual(["b"])
+  })
+})
+
+describe("[再確認2 低19] ルートは開くたびに取り直す", () => {
+  it("開いたときは取り直し、見ている間(フォーカス)は読み直さない", () => {
+    expect(ROUTE_FETCH_OPTIONS.revalidateOnMount).toBe(true)
+    expect(ROUTE_FETCH_OPTIONS.revalidateOnFocus).toBe(false)
+  })
+})
+
+describe("[低18・再確認2 低20] ルートで選んだ箱の添え書き", () => {
+  const G = "hook:guard"
+  it("見張りの当たりがある指示で見張りのフックを選ぶと、回数", () => {
+    expect(routeSelectionNote(G, G, { guard: 3, visits: [{ box: "a" }] })).toBe("（歩にしない印。この指示で 3回）")
+  })
+  it("当たりが0回の指示では、0回と言わず「通っていません」", () => {
+    expect(routeSelectionNote(G, G, { guard: 0, visits: [{ box: "a" }] })).toBe("（この指示では通っていません）")
+  })
+  it("通った箱は添え書きなし、通っていない箱は「通っていません」、指示が無ければなし", () => {
+    expect(routeSelectionNote("a", G, { guard: 0, visits: [{ box: "a" }] })).toBe("")
+    expect(routeSelectionNote("b", G, { guard: 2, visits: [{ box: "a" }] })).toBe("（この指示では通っていません）")
+    expect(routeSelectionNote("b", G, null)).toBe("")
   })
 })
 
