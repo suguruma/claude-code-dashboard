@@ -104,6 +104,15 @@ interface BuiltSession {
   scheduled: ScheduledLink | null
   /** WSL のセッション(⑱)。一覧の応答には入れない */
   wsl: WslLink | null
+  /** 全体マップ(⑲)のルートだけに使う値:会話記録の ID(本体と前の会話記録)。一覧の応答には入れない */
+  cliSessionIds: string[]
+}
+
+/** 全体マップ(⑲)のルートの元:セッションと、読む会話記録のパス(本体と前の会話記録。見つかった物だけ)・予定タスクの名前 */
+export interface EnvMapSource {
+  summary: DesktopSessionSummary
+  taskId: string | null
+  transcriptPaths: string[]
 }
 
 /** 予定タスクの回(⑯ AG-1・AG-6)：予定タスクの名前と、使用量を合計する会話記録の ID(本体と前の会話記録) */
@@ -512,6 +521,28 @@ export class DesktopSessionService {
     return { sessions: list.sessions, runs }
   }
 
+  /**
+   * 全体マップ(⑲)のルートの元。アーカイブ済みを含む。会話記録は本体と前の会話記録(priorCliSessionIds)のうち、索引で見つかった物。
+   * WSL のセッションは外す(Windows の会話記録だけ)
+   */
+  async envMapSources(): Promise<EnvMapSource[]> {
+    await this.list()
+    const index = await this.getTranscripts()
+    const out: EnvMapSource[] = []
+    for (const b of this.built.values()) {
+      // WSL のセッションの記録は WSL の中にあり、段1 では読まない(一覧にも出さない)
+      if (b.wsl) continue
+      const paths = new Set<string>()
+      if (b.ref) paths.add(b.ref.filePath)
+      for (const id of b.cliSessionIds) {
+        const ref = index.get(id)
+        if (ref) paths.add(ref.filePath)
+      }
+      out.push({ summary: b.summary, taskId: b.scheduled?.taskId ?? null, transcriptPaths: [...paths] })
+    }
+    return out
+  }
+
   private countSessions(sessions: DesktopSessionSummary[], highContextRatio: number): DesktopSessionCounts {
     const active = sessions.filter((s) => !s.isArchived)
     return {
@@ -650,7 +681,8 @@ export class DesktopSessionService {
         }
       : null
     const wsl: WslLink | null = meta?.wslDistro ? { distro: meta.wslDistro, transcriptPath: meta.remoteTranscriptPath ?? null } : null
-    return { summary, tasks, ref, lastCompactionAt: digest?.lastCompactionAt ?? null, relation, scheduled, wsl }
+    const cliSessionIds = [...new Set([...(meta?.cliSessionId ? [meta.cliSessionId] : []), ...(meta?.priorCliSessionIds ?? [])])]
+    return { summary, tasks, ref, lastCompactionAt: digest?.lastCompactionAt ?? null, relation, scheduled, wsl, cliSessionIds }
   }
 }
 

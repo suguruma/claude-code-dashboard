@@ -193,7 +193,7 @@ interface RawBlock {
   content?: unknown
 }
 
-interface RawEntry {
+export interface RawEntry {
   type?: string
   subtype?: string
   uuid?: string
@@ -232,12 +232,12 @@ function toMs(timestamp: string | undefined): number | null {
 }
 
 /** システムが差し込む疑似ユーザー行(コマンド出力・リマインダー等)かどうか */
-const SYSTEM_WRAPPER = /^<(local-command|command-name|command-message|command-args|system-reminder|bash-|user-prompt-submit)/
-const INTERRUPT_MARK = "[Request interrupted by user"
+export const SYSTEM_WRAPPER = /^<(local-command|command-name|command-message|command-args|system-reminder|bash-|user-prompt-submit)/
+export const INTERRUPT_MARK = "[Request interrupted by user"
 /** isCompactSummary が付かない形式でも、圧縮後の要約を指示として拾わない */
-const CONTINUATION_MARK = "This session is being continued from a previous conversation"
+export const CONTINUATION_MARK = "This session is being continued from a previous conversation"
 
-function originOf(entry: RawEntry): InstructionOrigin {
+export function originOf(entry: RawEntry): InstructionOrigin {
   const kind = entry.origin?.kind
   if (kind === "human") return "human"
   if (kind === "peer") return "peer"
