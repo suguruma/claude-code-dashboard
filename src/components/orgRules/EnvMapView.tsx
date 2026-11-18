@@ -195,8 +195,9 @@ function EnvMapBody({ res, map, mode, setMode, session, missing, setSession, onE
     setPick({ session, index: i })
     setPlay(null)
   }
-  const [openLayerId, setOpenLayerId] = useState<string | null>(null)
-  const openLayer = useCallback((layer: string) => setOpenLayerId(layer), [])
+  /** 一覧で開く層。scroll は「つながり無し n」を押したときだけ(探して選んだときは、行A が見えるようにページを動かさない。A16) */
+  const [openLayerReq, setOpenLayerReq] = useState<{ id: string; scroll: boolean; n: number } | null>(null)
+  const openLayer = useCallback((layer: string, scroll = true) => setOpenLayerReq((r) => ({ id: layer, scroll, n: (r?.n ?? 0) + 1 })), [])
   const choosePrev = () => index > 1 && choose(index - 1)
   const chooseNext = () => index < instructions.length && choose(index + 1)
 
@@ -406,7 +407,7 @@ function EnvMapBody({ res, map, mode, setMode, session, missing, setSession, onE
         setSelected={setSelected}
         ins={mode === "route" ? ins : null}
         reload={reload}
-        openLayerId={openLayerId}
+        openLayer={openLayerReq}
       />
     </div>
   )
@@ -571,8 +572,8 @@ interface CanvasProps {
   note: React.ReactNode
   /** 地図の上の行が出入りしたときに測り直すための印 */
   measureKey: string
-  /** 「つながり無し n」を押したとき(層の id) */
-  onIsolated: (layer: string) => void
+  /** 「つながり無し n」を押したとき(層の id)。scroll=false は一覧を開くだけ */
+  onIsolated: (layer: string, scroll?: boolean) => void
   map: EnvMapData
   mode: Mode
   ins: RouteInstruction | null
@@ -792,7 +793,7 @@ function MapCanvas({ note, measureKey, onIsolated, map, mode, ins, selected, set
       for (const [groupId, members] of layoutRef.current?.isolated ?? []) {
         if (members.includes(selected)) {
           targetId = groupId
-          onIsolated(groupId.slice(ISOLATED_PREFIX.length))
+          onIsolated(groupId.slice(ISOLATED_PREFIX.length), false)
           break
         }
       }
@@ -1038,18 +1039,18 @@ interface PanelProps {
   setSelected: (id: string | null) => void
   ins: RouteInstruction | null
   reload: () => void
-  /** 「つながり無し n」を押したときに開く層 */
-  openLayerId: string | null
+  /** 「つながり無し n」を押したとき・まとめた中の箱を選んだときに開く層 */
+  openLayer: { id: string; scroll: boolean; n: number } | null
 }
 
-function DetailPanel({ map, nodes, layerLabel, selected, setSelected, ins, reload, openLayerId }: PanelProps) {
+function DetailPanel({ map, nodes, layerLabel, selected, setSelected, ins, reload, openLayer }: PanelProps) {
   const [allSteps, setAllSteps] = useState(false)
   const listRef = useRef<HTMLDetailsElement>(null)
   useEffect(() => {
-    if (!openLayerId || !listRef.current) return
+    if (!openLayer || !listRef.current) return
     listRef.current.open = true
-    document.getElementById(`env-map-layer-${openLayerId}`)?.scrollIntoView({ block: "start" })
-  }, [openLayerId])
+    if (openLayer.scroll) document.getElementById(`env-map-layer-${openLayer.id}`)?.scrollIntoView({ block: "start" })
+  }, [openLayer])
   const sel = selected ? nodes.get(selected) : null
   const links = useMemo(() => {
     if (!sel) return []
