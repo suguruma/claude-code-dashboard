@@ -165,6 +165,25 @@ export function playbackInterval(steps: number): number {
   return Math.max(300, Math.min(1200, Math.floor(15000 / steps)))
 }
 
+/**
+ * 選ぶ指示の番号。picked がその一覧にあればそれ、無ければ最後の指示(番号0〈最初の入力の前〉があっても、番号の数ではなく最後の要素)。
+ * 一覧が空なら null
+ */
+export function pickInstruction(indexes: readonly number[], picked: number | null): number | null {
+  if (indexes.length === 0) return null
+  if (picked !== null && indexes.includes(picked)) return picked
+  return indexes[indexes.length - 1]
+}
+
+/** 前後の指示の番号(配列の位置で決める)。端なら null */
+export function stepInstruction(indexes: readonly number[], current: number | null, delta: -1 | 1): number | null {
+  if (current === null) return null
+  const i = indexes.indexOf(current)
+  if (i < 0) return null
+  const next = indexes[i + delta]
+  return next === undefined ? null : next
+}
+
 /** 丸囲みの番号(①〜⑳。それより大きい数は「(21)」) */
 export function circled(n: number): string {
   if (n >= 1 && n <= 20) return String.fromCharCode(0x2460 + n - 1)

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import type { EnvMapData, RouteVisit } from "./envMapTypes"
-import { BAND_GAP, BOX_H, BAND_PAD, EMPTY_BAND_H, GUTTER_PX, LABEL_GUTTER, circled, fitView, fitZoom, layoutNow, layoutRoute, playbackInterval } from "./envMapLayout"
+import { BAND_GAP, BOX_H, BAND_PAD, EMPTY_BAND_H, GUTTER_PX, LABEL_GUTTER, circled, fitView, fitZoom, layoutNow, layoutRoute, pickInstruction, playbackInterval, stepInstruction } from "./envMapLayout"
 
 const layers = ["entry", "safety", "routing", "skills", "tools", "knowledge", "output"].map((id) => ({ id, label: id }))
 const node = (id: string, layer: string, degree = 1) => ({ id, layer, label: id, kind: "", strength: "none" as const, place: "", desc: "", degree })
@@ -61,6 +61,19 @@ describe("ルートの詰めた表示", () => {
   it("通っていない帯は細い", () => {
     const l = layoutRoute(data(14), [{ box: "n0", order: 1, calls: 0, visits: 1 }], 721)
     expect(l.bands.filter((b) => b.h === EMPTY_BAND_H)).toHaveLength(6)
+  })
+})
+
+describe("[A26] 指示の選び方(番号0〈最初の入力の前〉があっても)", () => {
+  it("既定は最後の指示、前後は配列の位置で", () => {
+    expect(pickInstruction([0, 1], null)).toBe(1)
+    expect(pickInstruction([0], null)).toBe(0)
+    expect(pickInstruction([], null)).toBeNull()
+    expect(pickInstruction([1, 2, 3], 2)).toBe(2)
+    expect(pickInstruction([1, 2, 3], 9)).toBe(3)
+    expect(stepInstruction([0, 1, 2], 1, -1)).toBe(0)
+    expect(stepInstruction([0, 1, 2], 2, 1)).toBeNull()
+    expect(stepInstruction([0, 1, 2], 0, -1)).toBeNull()
   })
 })
 

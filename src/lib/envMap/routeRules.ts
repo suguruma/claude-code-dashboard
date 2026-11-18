@@ -292,6 +292,12 @@ const TIMESTAMP = /"timestamp":"([^"]{10,40})"/
 
 /** 会話記録の1行を RouteBuilder に渡す。壊れた行は飛ばす */
 export function feedLine(builder: RouteBuilder, line: string): void {
+  // 道具を呼ばない assistant の行は、指示の終わりの時刻だけが要る(JSON を解かない。低8 で読む行が増えた分の速さ)
+  if (!line.includes('"tool_use"') && (line.includes('"type":"assistant"') || line.includes('"type": "assistant"'))) {
+    const m = TIMESTAMP.exec(line.slice(-2000)) ?? TIMESTAMP.exec(line.slice(0, 4000))
+    builder.touch(m ? toMs(m[1]) : null)
+    return
+  }
   if (line.length > MAX_PARSE_BYTES && line.includes('"tool_result"')) {
     const m = TIMESTAMP.exec(line.slice(-2000)) ?? TIMESTAMP.exec(line.slice(0, 4000))
     builder.touch(m ? toMs(m[1]) : null)

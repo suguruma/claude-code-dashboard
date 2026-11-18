@@ -16,7 +16,9 @@ import {
   labelWidth,
   layoutNow,
   layoutRoute,
+  pickInstruction,
   playbackInterval,
+  stepInstruction,
   type MapLayout,
 } from "@/lib/envMap/envMapLayout"
 import { GUARD_BOX, type EnvMapData, type EnvMapNode, type EnvMapResponse, type RouteInstruction, type RouteResponse } from "@/lib/envMap/envMapTypes"
@@ -108,8 +110,8 @@ export function EnvMapView() {
   const [fromUrl] = useState(urlSession)
   const [mode, setModeState] = useState<Mode>(() => (fromUrl ? "route" : (readMode() ?? "route")))
   const [session, setSession] = useState<string | null>(fromUrl)
-  /** 既定のセッションに指示が無いとき、次のセッションへ進めた数(低12。5つまで) */
-  const [skip, setSkip] = useState(0)
+  /** 既定で選んで指示が無かったセッション(低12。id で持つ。5つまで) */
+  const [skipped, setSkipped] = useState<string[]>([])
 
   const setMode = useCallback((m: Mode) => {
     setModeState(m)
@@ -138,7 +140,8 @@ export function EnvMapView() {
   // URL のセッションが一覧(直近30日・会話記録あり・WSL を除く)に無いときは、別のセッションに差し替えない(中5)
   const missing = session !== null && !inList
   const auto = session === null
-  const chosen = inList ? session : missing ? null : (data.sessions[Math.min(skip, data.sessions.length - 1)]?.id ?? data.defaultSession)
+  const autoPick = data.sessions.find((s) => !skipped.includes(s.id))?.id ?? data.defaultSession
+  const chosen = inList ? session : missing ? null : autoPick
   const effectiveMode: Mode = hasSessions ? mode : "now"
   return (
     <EnvMapBody
@@ -149,7 +152,11 @@ export function EnvMapView() {
       session={chosen}
       missing={missing}
       setSession={setSession}
-      onEmptyDefault={auto && skip < 5 && skip < data.sessions.length - 1 ? () => setSkip((n) => n + 1) : undefined}
+      onEmptyDefault={
+        auto && autoPick && skipped.length < 5 && skipped.length < data.sessions.length - 1
+          ? () => setSkipped((ids) => (ids.includes(autoPick) ? ids : [...ids, autoPick]))
+          : undefined
+      }
       reload={() => void mutate()}
     />
   )
@@ -181,9 +188,12 @@ function EnvMapBody({ res, map, mode, setMode, session, missing, setSession, onE
   const nodes = useMemo(() => new Map(map.nodes.map((n) => [n.id, n])), [map])
   const layerLabel = useMemo(() => new Map(map.layers.map((l) => [l.id, l.label])), [map])
   const [pick, setPick] = useState<{ session: string | null; index: number | null }>({ session: null, index: null })
-  const instructions = route.data?.instructions ?? []
-  const index = pick.session === session && pick.index !== null && pick.index <= instructions.length ? pick.index : instructions.length
+  const instructions = useMemo(() => route.data?.instructions ?? [], [route.data])
+  const indexes = useMemo(() => instructions.map((i) => i.index), [instructions])
+  const index = pickInstruction(indexes, pick.session === session ? pick.index : null)
   const ins = instructions.find((i) => i.index === index) ?? null
+  const prevIndex = stepInstruction(indexes, index, -1)
+  const nextIndex = stepInstruction(indexes, index, 1)
   const [selected, setSelected] = useState<string | null>(null)
   const [layerFilter, setLayerFilter] = useState<string>("all")
   const [play, setPlay] = useState<number | null>(null)
@@ -198,8 +208,8 @@ function EnvMapBody({ res, map, mode, setMode, session, missing, setSession, onE
   /** 一覧で開く層。scroll は「つながり無し n」を押したときだけ(探して選んだときは、行A が見えるようにページを動かさない。A16) */
   const [openLayerReq, setOpenLayerReq] = useState<{ id: string; scroll: boolean; n: number } | null>(null)
   const openLayer = useCallback((layer: string, scroll = true) => setOpenLayerReq((r) => ({ id: layer, scroll, n: (r?.n ?? 0) + 1 })), [])
-  const choosePrev = () => index > 1 && choose(index - 1)
-  const chooseNext = () => index < instructions.length && choose(index + 1)
+  const choosePrev = () => prevIndex !== null && choose(prevIndex)
+  const chooseNext = () => nextIndex !== null && choose(nextIndex)
 
   // 再生(初めて通った順。全体15秒以内・1歩300ms 以上。動きを減らす設定では再生しない。A20)
   const visits = useMemo(() => ins?.visits ?? [], [ins])
@@ -249,14 +259,14 @@ function EnvMapBody({ res, map, mode, setMode, session, missing, setSession, onE
     const boxes = ins.visits.length
     rowA = (
       <span>
+        {map.stale && (
+          <button type="button" className="mr-1 underline decoration-dotted" onClick={() => setStaleNote((v) => !v)} aria-expanded={staleNote}>
+            地図が古い（{agoText(map.generatedAt, res.generatedAt)}）▸
+          </button>
+        )}
         箱 {play !== null ? `${Math.min(play, boxes)}/${boxes}` : boxes}（通った順）・歩 {ins.steps.length}・道具 {ins.calls}回
         {ins.agents > 0 ? `・役 ${ins.agents}` : ""}
         {ins.running ? "・途中" : ""}
-        {map.stale && (
-          <button type="button" className="ml-1 underline decoration-dotted" onClick={() => setStaleNote((v) => !v)} aria-expanded={staleNote}>
-            ・地図が古い（{agoText(map.generatedAt, res.generatedAt)}）▸
-          </button>
-        )}
         {staleNote && <span className="ml-2 text-muted-foreground">地図は、地図を作る仕組みが作り直します</span>}
       </span>
     )
@@ -330,7 +340,7 @@ function EnvMapBody({ res, map, mode, setMode, session, missing, setSession, onE
           <select
             id="env-map-instruction"
             className="h-8 w-[240px] truncate rounded-md border bg-background px-2"
-            value={instructions.length ? index : ""}
+            value={index ?? ""}
             disabled={!instructions.length}
             title={ins ? instructionText(ins, nodes) : undefined}
             onChange={(e) => {
@@ -344,14 +354,17 @@ function EnvMapBody({ res, map, mode, setMode, session, missing, setSession, onE
               </option>
             ))}
           </select>
-          <Button variant="outline" size="icon-sm" onClick={choosePrev} disabled={index <= 1} aria-label="前の指示" title="前の指示">
+          <Button variant="outline" size="icon-sm" onClick={choosePrev} disabled={prevIndex === null} aria-label="前の指示" title="前の指示">
             ◀
           </Button>
-          <Button variant="outline" size="icon-sm" onClick={chooseNext} disabled={index >= instructions.length} aria-label="次の指示" title="次の指示">
+          <Button variant="outline" size="icon-sm" onClick={chooseNext} disabled={nextIndex === null} aria-label="次の指示" title="次の指示">
             ▶
           </Button>
           {play === null ? (
-            <Button variant="outline" size="sm" className="w-[120px] text-sm" disabled={!ins || ins.visits.length === 0 || reduced} onClick={() => setPlay(1)} title={reduced ? "動きを減らす設定のため、番号だけを出しています" : undefined}>
+            <Button variant="outline" size="sm" className="w-[120px] text-sm" disabled={!ins || ins.visits.length === 0 || reduced} onClick={() => {
+                setSelected(null)
+                setPlay(1)
+              }} title={reduced ? "動きを減らす設定のため、番号だけを出しています" : undefined}>
               順に光らせる
             </Button>
           ) : (
@@ -625,6 +638,8 @@ function MapCanvas({ note, measureKey, onIsolated, map, mode, ins, selected, set
   /** cytoscape を作り直した回数。選択と再生の印は、作り直すたびに当て直す(相談役 重1) */
   const [cyVer, setCyVer] = useState(0)
   const [hover, setHover] = useState<{ label: string; x: number; y: number } | null>(null)
+  /** まとめた中の箱で一覧を開いた最後の箱(同じ箱では開き直さない) */
+  const openedFor = useRef<string | null>(null)
 
   // 地図の高さ:画面の下端−16px まで(縦の予算。A11)。ルートの詰めた表示が 1.0倍で入らなければ伸ばす(ページで送る。低A)。
   // 上の行(空の状態の文など)が出入りすると地図の上端が動くので、指示が替わるたびに測り直す
@@ -793,7 +808,10 @@ function MapCanvas({ note, measureKey, onIsolated, map, mode, ins, selected, set
       for (const [groupId, members] of layoutRef.current?.isolated ?? []) {
         if (members.includes(selected)) {
           targetId = groupId
-          onIsolated(groupId.slice(ISOLATED_PREFIX.length), false)
+          if (openedFor.current !== selected) {
+            openedFor.current = selected
+            onIsolated(groupId.slice(ISOLATED_PREFIX.length), false)
+          }
           break
         }
       }
@@ -984,6 +1002,7 @@ function styleOf(c: EnvMapColors): unknown {
     { selector: "node.current", style: { "background-color": c.route, color: c.bg, "border-color": c.route } },
     { selector: "node.dim", style: { opacity: 0.35 } },
     { selector: "node.picked", style: { "border-color": c.route, "border-width": 6, "background-color": c.route, "background-opacity": 0.18 } },
+    { selector: "node.picked.current", style: { "background-color": c.route, "background-opacity": 1, color: c.bg } },
     { selector: "node.faded", style: { opacity: 0.12 } },
     { selector: "node.nolabel", style: { "text-opacity": 0 } },
     {
@@ -992,7 +1011,14 @@ function styleOf(c: EnvMapColors): unknown {
     },
     {
       selector: "edge.conflict",
-      style: { "line-color": c.danger, "target-arrow-color": c.danger, width: CONFLICT_EDGE.width, "line-style": CONFLICT_EDGE.style, "line-dash-pattern": CONFLICT_EDGE.dash },
+      style: {
+        "line-color": c.danger,
+        "target-arrow-color": c.danger,
+        "target-arrow-shape": CONFLICT_EDGE.arrow,
+        width: CONFLICT_EDGE.width,
+        "line-style": CONFLICT_EDGE.style,
+        "line-dash-pattern": CONFLICT_EDGE.dash,
+      },
     },
     { selector: "edge.route", style: { "line-color": c.route, "target-arrow-color": c.route, width: 2.5 } },
     { selector: "edge.hidden", style: { display: "none" } },

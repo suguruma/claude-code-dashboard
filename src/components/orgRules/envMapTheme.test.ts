@@ -6,6 +6,8 @@ describe("[A18・中2・低1] 形で見分ける", () => {
     expect(CONFLICT_EDGE.style).toBe("dashed")
     expect(NORMAL_EDGE.style).toBe("solid")
     expect(CONFLICT_EDGE.width / NORMAL_EDGE.width).toBeGreaterThanOrEqual(2)
+    // 短い線では破線が形に出ないので、矢印の形も替える
+    expect(CONFLICT_EDGE.arrow).toBe("tee")
   })
   it("5つの強さの枠は、太さ・線の種類・色のどれかで互いに違う", () => {
     const all = (["stop", "judge", "watch", "read", "none"] as const).map((s) => JSON.stringify(strengthBorder(s)))
