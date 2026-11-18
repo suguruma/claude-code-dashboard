@@ -12,6 +12,6 @@ export async function GET() {
     const service = await getRelationsService()
     return NextResponse.json(await service.get())
   } catch {
-    return NextResponse.json({ error: "関係性マップを読み込めませんでした" }, { status: 500 })
+    return NextResponse.json({ error: "つながりを読み込めませんでした" }, { status: 500 })
   }
 }

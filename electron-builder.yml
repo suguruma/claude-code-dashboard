@@ -20,6 +20,9 @@ extraResources:
     to: standalone/.next
   - from: config/projects.example.json
     to: seed/config/projects.example.json
+  # 同梱している部品(cytoscape など)の許諾文(⑲)
+  - from: THIRD_PARTY_NOTICES.md
+    to: THIRD_PARTY_NOTICES.md
 win:
   # portable をやめて、ユーザーごとに入れるインストーラー（NSIS）にした（v0.3.2）。portable は起動のたびに別の一時フォルダから動くので、
   # 「スマホから見る」のファイアウォールの確認が起動のたびに出る見込みだった。入れる場所（%LOCALAPPDATA%\Programs の下）は版を上げても同じ

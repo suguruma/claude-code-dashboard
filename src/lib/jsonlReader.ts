@@ -10,6 +10,7 @@ const MAX_CARRY_BYTES = 64 * 1024 * 1024
  * ファイル全体をメモリに載せず、chunkBytes ずつ読む。
  * needle を渡すと、その文字列(UTF-8 のバイト列)を含む行だけを文字列にして onLine に渡す(含まない行は文字列にしない。
  * 巨大なツールの出力の行を、文字に直さずに飛ばすため。⑯ A11)
+ * accept を渡すと、行のバイト列でそれが true の行だけを文字列にして onLine に渡す(⑲:複数の印のどれかを含む行だけを拾う)
  */
 export async function readJsonlFrom(
   filePath: string,
@@ -17,7 +18,8 @@ export async function readJsonlFrom(
   endSize: number,
   onLine: (line: string) => void,
   chunkBytes: number = CHUNK_BYTES,
-  needle?: string
+  needle?: string,
+  accept?: (line: Buffer) => boolean
 ): Promise<number> {
   const needleBytes = needle ? Buffer.from(needle, "utf-8") : null
   const handle = await fs.open(filePath, "r")
@@ -45,6 +47,8 @@ export async function readJsonlFrom(
       }
       if (needleBytes) {
         emitMatching(data.subarray(0, lastNewline), needleBytes, onLine)
+      } else if (accept) {
+        emitAccepted(data.subarray(0, lastNewline), accept, onLine)
       } else {
         const complete = data.subarray(0, lastNewline).toString("utf-8")
         for (const line of complete.split("\n")) {
@@ -57,6 +61,20 @@ export async function readJsonlFrom(
     return committed
   } finally {
     await handle.close()
+  }
+}
+
+/** buf(改行で区切られた完結した行の並び)のうち、accept が true の行だけを文字列にして onLine に渡す */
+function emitAccepted(buf: Buffer, accept: (line: Buffer) => boolean, onLine: (line: string) => void): void {
+  let from = 0
+  while (from < buf.length) {
+    const nl = buf.indexOf(0x0a, from)
+    const end = nl < 0 ? buf.length : nl
+    if (end > from) {
+      const line = buf.subarray(from, end)
+      if (accept(line)) onLine(line.toString("utf-8"))
+    }
+    from = end + 1
   }
 }
 
