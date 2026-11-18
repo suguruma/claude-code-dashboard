@@ -151,7 +151,14 @@ export function EnvMapView() {
     return (
       <Alert>
         <AlertTitle>地図を描けません</AlertTitle>
-        <AlertDescription>{data.problem?.message ?? "地図のデータがありません"}</AlertDescription>
+        <AlertDescription>
+          <p>{data.problem?.message ?? "地図のデータがありません"}</p>
+          {/* 設定を書いた後に、窓を読み込み直さずに読み直せる(低17) */}
+          <Button variant="outline" size="sm" className="mt-2 text-sm" onClick={() => void mutate()} disabled={isValidating}>
+            <RefreshCw className="size-4" />
+            地図を読み直す
+          </Button>
+        </AlertDescription>
       </Alert>
     )
   }
@@ -271,7 +278,11 @@ function EnvMapBody({ res, map, mode, setMode, session, missing, setSession, onE
           {mode === "now" && sel.degree === 0 && layerFilter !== "linked"
             ? `（つながり無し ${map.nodes.filter((n) => n.layer === sel.layer && n.degree === 0).length} の中）`
             : ""}
-          {mode === "route" && ins && !ins.visits.some((v) => v.box === sel.id) ? "（この指示では通っていません）" : ""}
+          {mode === "route" && ins && sel.id === GUARD_BOX && !ins.visits.some((v) => v.box === sel.id)
+            ? `（歩にしない印。この指示で ${ins.guard}回）`
+            : mode === "route" && ins && !ins.visits.some((v) => v.box === sel.id)
+              ? "（この指示では通っていません）"
+              : ""}
         </span>
         <button type="button" className="ml-2 rounded px-1 text-muted-foreground hover:bg-muted" onClick={() => setSelected(null)} aria-label="選んだ箱を外す">
           <X className="inline size-4" />
@@ -827,6 +838,7 @@ function MapCanvas({ note, measureKey, onIsolated, map, mode, ins, selected, set
     if (!cy || cyVer === 0 || cy.destroyed()) return
     // まとめた中の箱(つながり無し n)を選んだときは、その「つながり無し n」の箱に印を付けて寄せ、一覧のその層を開く(中1)
     let targetId = selected
+    if (!selected) openedFor.current = null
     if (selected && cy.getElementById(selected).length === 0) {
       for (const [groupId, members] of layoutRef.current?.isolated ?? []) {
         if (members.includes(selected)) {
@@ -976,8 +988,7 @@ export function mapBudgetHeight(el: HTMLElement): number {
 /** 地図の中の y(画面の px)が見える所まで、ページ(いちばん近い縦にスクロールする親)を送る */
 function scrollToMapY(box: HTMLElement | null, y: number): void {
   if (!box) return
-  let el: HTMLElement | null = box.parentElement
-  while (el && !/(auto|scroll)/.test(getComputedStyle(el).overflowY)) el = el.parentElement
+  const el = scrollParentOf(box)
   const scroller: HTMLElement = el ?? document.scrollingElement as HTMLElement
   const r = box.getBoundingClientRect()
   const view = el ? el.getBoundingClientRect() : { top: 0, bottom: window.innerHeight }
@@ -1041,6 +1052,9 @@ function styleOf(c: EnvMapColors): unknown {
         width: CONFLICT_EDGE.width,
         "line-style": CONFLICT_EDGE.style,
         "line-dash-pattern": CONFLICT_EDGE.dash,
+        "curve-style": "unbundled-bezier",
+        "control-point-distances": [CONFLICT_EDGE.bend],
+        "control-point-weights": [0.5],
       },
     },
     { selector: "edge.route", style: { "line-color": c.route, "target-arrow-color": c.route, width: 2.5 } },

@@ -42,8 +42,13 @@ describe("[A3] 設定とファイルの問題", () => {
     const none = await loadEnvMapConfig(dir)
     // 実際の置き場を文に出す(exe でも置き場が分かる。中6)
     expect("problem" in none && none.problem.message).toContain(path.join(dir, "config", "env-map.json"))
+    // 見本の円記号は2つ(そのまま写しても JSON が壊れない。低16)
+    const sample = ("problem" in none && none.problem.message.match(/\{"mapPath": "[^"]*"\}/)?.[0]) || ""
+    expect(() => JSON.parse(sample.replace("…", "x"))).not.toThrow()
     const missing = await service({ config: { mapPath: path.join(dir, "nothing.json") } }, []).get()
     expect(missing.problem?.kind).toBe("missing")
+    // 直す設定ファイルの実際の場所を添える(低15)
+    expect(missing.problem?.message).toContain(path.join("config", "env-map.json"))
     await fs.writeFile(path.join(dir, "broken.json"), "{ not json")
     const broken = await service({ config: { mapPath: path.join(dir, "broken.json") } }, []).get()
     expect(broken.problem?.kind).toBe("broken")

@@ -36,6 +36,10 @@ export function parseEnvMapConfig(raw: unknown): EnvMapConfig {
   return { mapPath }
 }
 
+/** 設定の書き方の見本(円記号は JSON では2つ。1つだと JSON が壊れる。低16) */
+export const CONFIG_SAMPLE = '{"mapPath": "C:\\\\…\\\\map.json"}'
+export const CONFIG_NOTE = "パスの円記号は2つにするか、/ で区切ります"
+
 /** 設定ファイルの実際の場所(exe では %APPDATA% の下。画面にそのまま出して、置き場を知らせる。中6) */
 export function envMapConfigPath(root: string = getAppDataRoot()): string {
   return path.join(root, "config", "env-map.json")
@@ -47,19 +51,21 @@ export async function loadEnvMapConfig(root: string = getAppDataRoot()): Promise
   try {
     text = await fs.readFile(file, "utf-8")
   } catch {
-    return { problem: { kind: "no-config", message: `設定がありません。${file} を作り、地図のファイルの場所を {"mapPath": "…\\map.json"} の形で書いてください` } }
+    return { problem: { kind: "no-config", message: `設定がありません。${file} を作り、地図のファイルの場所を ${CONFIG_SAMPLE} の形で書いてください(${CONFIG_NOTE})` } }
   }
   try {
     const config = parseEnvMapConfig(JSON.parse(text))
-    if (!config.mapPath) return { problem: { kind: "no-config", message: `設定 ${file} に地図のファイルの場所(mapPath)がありません` } }
+    if (!config.mapPath) return { problem: { kind: "no-config", message: `設定 ${file} に地図のファイルの場所(mapPath)がありません。${CONFIG_SAMPLE} の形で書いてください(${CONFIG_NOTE})` } }
     return { config }
   } catch {
-    return { problem: { kind: "no-config", message: `設定ファイル ${file} を読めません(JSON の形が壊れています)` } }
+    return { problem: { kind: "no-config", message: `設定ファイル ${file} を読めません(JSON の形が壊れています。${CONFIG_NOTE})` } }
   }
 }
 
 export interface EnvMapServiceOptions {
   config: () => Promise<EnvMapConfigResult>
+  /** 設定ファイルの実際の場所(問題の文に出す。低15)。省略時は envMapConfigPath() */
+  configPath?: () => string
   sources: () => Promise<EnvMapSource[]>
   home?: string
   now?: () => number
@@ -102,15 +108,24 @@ export class EnvMapService {
     const cfg = await this.opts.config()
     if ("problem" in cfg) return cfg.problem
     const mapPath = cfg.config.mapPath
-    if (!mapPath) return problemOf("no-config")
-    if (getPreviewBlockReason(mapPath)) return problemOf("unreadable")
+    const cfgFile = (this.opts.configPath ?? envMapConfigPath)()
+    if (!mapPath) return { kind: "no-config", message: `設定 ${cfgFile} に地図のファイルの場所(mapPath)がありません` }
+    // 直す設定ファイルの実際の場所を添える(低15)
+    const withPlace = (kind: "missing" | "unreadable"): EnvMapProblem => ({
+      kind,
+      message:
+        kind === "missing"
+          ? `地図のファイルが見つかりません。${cfgFile} の mapPath を確かめてください`
+          : `地図のファイルを読めません(大きすぎるか、開けない場所です)。${cfgFile} の mapPath を確かめてください`,
+    })
+    if (getPreviewBlockReason(mapPath)) return withPlace("unreadable")
     let stat
     try {
       stat = await fs.stat(mapPath)
     } catch (e) {
-      return problemOf((e as NodeJS.ErrnoException).code === "ENOENT" ? "missing" : "unreadable")
+      return withPlace((e as NodeJS.ErrnoException).code === "ENOENT" ? "missing" : "unreadable")
     }
-    if (!stat.isFile() || stat.size > MAX_MAP_BYTES) return problemOf("unreadable")
+    if (!stat.isFile() || stat.size > MAX_MAP_BYTES) return withPlace("unreadable")
     const hit = this.mapCache
     if (hit && hit.path === mapPath && hit.mtimeMs === stat.mtimeMs && hit.size === stat.size) return hit.result
     let raw: unknown

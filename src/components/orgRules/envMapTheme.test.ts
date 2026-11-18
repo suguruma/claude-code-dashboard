@@ -8,6 +8,8 @@ describe("[A18・中2・低1] 形で見分ける", () => {
     expect(CONFLICT_EDGE.width / NORMAL_EDGE.width).toBeGreaterThanOrEqual(2)
     // 短い線では破線が形に出ないので、矢印の形も替える
     expect(CONFLICT_EDGE.arrow).toBe("tee")
+    // 隣り合う箱の間でも破線の模様が出る長さ(8+4 の2回分以上)になるよう曲げる
+    expect(CONFLICT_EDGE.bend).toBeGreaterThanOrEqual(24)
   })
   it("5つの強さの枠は、太さ・線の種類・色のどれかで互いに違う", () => {
     const all = (["stop", "judge", "watch", "read", "none"] as const).map((s) => JSON.stringify(strengthBorder(s)))

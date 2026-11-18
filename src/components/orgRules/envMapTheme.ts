@@ -90,7 +90,10 @@ export function strengthBorder(s: EnvMapStrength): { width: number; style: "soli
   }
 }
 
-/** 食い違う決まりの線:赤に加えて破線と太さで分ける(白黒でも通常の線と見分ける。中2) */
-export const CONFLICT_EDGE = { width: 3.5, style: "dashed" as const, dash: [8, 4], arrow: "tee" as const }
+/**
+ * 食い違う決まりの線:赤に加えて破線と太さで分ける(白黒でも通常の線と見分ける。中2)。
+ * 隣り合う箱の間は線が短く破線が出ないので、bend(px)だけ曲げて長さを取る(低14)
+ */
+export const CONFLICT_EDGE = { width: 3.5, style: "dashed" as const, dash: [8, 4], arrow: "tee" as const, bend: 36 }
 /** 通常の線 */
 export const NORMAL_EDGE = { width: 1.5, style: "solid" as const }
