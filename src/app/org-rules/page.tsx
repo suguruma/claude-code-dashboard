@@ -2,6 +2,7 @@
 
 import { OrgRulesView } from "@/components/orgRules/OrgRulesView"
 import { RelationsView } from "@/components/orgRules/RelationsView"
+import { EnvMapView } from "@/components/orgRules/EnvMapView"
 import { findNavItem } from "@/components/layout/navConfig"
 import { UnderlineTabPanel, UnderlineTabs } from "@/components/ui/underline-tabs"
 import { useTabParam } from "@/hooks/useTabParam"
@@ -9,6 +10,7 @@ import { useTabParam } from "@/hooks/useTabParam"
 const TABS = [
   { id: "rules", label: "決まり" },
   { id: "links", label: "つながり" },
+  { id: "map", label: "全体マップ" },
 ] as const
 const TAB_IDS = TABS.map((t) => t.id)
 type OrgTab = (typeof TAB_IDS)[number]
@@ -18,6 +20,7 @@ type OrgTab = (typeof TAB_IDS)[number]
  * - 決まり(⑨)：全グループ共通の決まり(グローバルの CLAUDE.md)と、グループごとの指揮役の決まり(作業フォルダの CLAUDE.md と記憶)、
  *   設定で足したファイルを、読み取り専用で1か所に並べる
  * - つながり(⑬ の関係性マップ)：誰がどのグループにいて、どの決まり・記憶・スキル・指示ファイルが効いているか
+ * - 全体マップ(⑲)：AI 環境の仕組みの地図と、指示ごとに通った道(ルート)。`?tab=map&session=<id>` でそのセッションのルートを開く
  * 選んだタブは `?tab=` と前回の選択で覚える。
  */
 export default function OrgRulesPage() {
@@ -46,6 +49,9 @@ function OrgTabs() {
       </UnderlineTabPanel>
       <UnderlineTabPanel idPrefix="org" id="links" value={tab}>
         <RelationsView />
+      </UnderlineTabPanel>
+      <UnderlineTabPanel idPrefix="org" id="map" value={tab}>
+        <EnvMapView />
       </UnderlineTabPanel>
     </div>
   )
