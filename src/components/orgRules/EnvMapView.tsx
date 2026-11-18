@@ -21,7 +21,7 @@ import {
   stepInstruction,
   type MapLayout,
 } from "@/lib/envMap/envMapLayout"
-import { decideSession } from "@/lib/envMap/envMapSelect"
+import { decideSession, liveSkipped, type SkippedSession } from "@/lib/envMap/envMapSelect"
 import { GUARD_BOX, type EnvMapData, type EnvMapNode, type EnvMapResponse, type RouteInstruction, type RouteResponse } from "@/lib/envMap/envMapTypes"
 import { CONFLICT_EDGE, NORMAL_EDGE, STRENGTH_TEXT, readColors, strengthBorder, type EnvMapColors } from "./envMapTheme"
 
@@ -104,9 +104,10 @@ function nameOf(key: string, nodes: Map<string, EnvMapNode>): string {
 }
 
 /**
- * 既定で選んで指示が無かったセッション(低12)。タブを替える・別のページへ行くと部品は外されるので、部品の外(この窓の中)に覚える(低13)
+ * 既定で選んで指示が無かったセッション(低12)。タブを替える・別のページへ行くと部品は外されるので、部品の外(この窓の中)に覚える(低13)。
+ * 飛ばした時の最後に動いた時刻と組で持ち、その後に動いたセッションは飛ばさない
  */
-const skippedSessions: string[] = []
+const skippedSessions: SkippedSession[] = []
 
 export function EnvMapView() {
   // 一覧はタブを開くたびに取り直す(窓を開いたまま後から始まったセッションを、古い一覧で「出せません」にしない。中7・低17)
@@ -118,7 +119,8 @@ export function EnvMapView() {
   const [fromUrl] = useState(urlSession)
   const [mode, setModeState] = useState<Mode>(() => (fromUrl ? "route" : (readMode() ?? "route")))
   const [session, setSession] = useState<string | null>(fromUrl)
-  const [skipped, setSkipped] = useState<string[]>(() => [...skippedSessions])
+  const [skippedAll, setSkipped] = useState<SkippedSession[]>(() => [...skippedSessions])
+  const skipped = data ? liveSkipped(skippedAll, data.sessions) : []
   /** 一覧に無いセッションを頼まれて、一覧を取り直し終えた id(中7) */
   const [refreshedFor, setRefreshedFor] = useState<string | null>(null)
   const decision = data
@@ -182,8 +184,10 @@ export function EnvMapView() {
       onEmptyDefault={
         auto && autoPick && skipped.length < 5 && skipped.length < data.sessions.length - 1
           ? () => {
-              if (!skippedSessions.includes(autoPick)) skippedSessions.push(autoPick)
-              setSkipped((ids) => (ids.includes(autoPick) ? ids : [...ids, autoPick]))
+              const entry = { id: autoPick, at: data.sessions.find((s) => s.id === autoPick)?.lastActivityAt ?? null }
+              const rest = skippedSessions.filter((k) => k.id !== autoPick)
+              skippedSessions.splice(0, skippedSessions.length, ...rest, entry)
+              setSkipped((ks) => [...ks.filter((k) => k.id !== autoPick), entry])
             }
           : undefined
       }
@@ -1026,6 +1030,9 @@ function styleOf(c: EnvMapColors): unknown {
         "border-color": c.fg,
         "border-width": "data(bw)",
         "border-style": "data(bs)",
+        // 重なりは z-index だけで決める(箱 10・ふつうの線 0・食い違いの線 20)。曲げた食い違いの線が箱に隠れないように(低14 の後の相談役 低3)
+        "z-index-compare": "manual",
+        "z-index": 10,
       },
     },
     { selector: "node.weak", style: { "border-color": c.muted } },
@@ -1041,7 +1048,7 @@ function styleOf(c: EnvMapColors): unknown {
     { selector: "node.nolabel", style: { "text-opacity": 0 } },
     {
       selector: "edge",
-      style: { width: NORMAL_EDGE.width, "line-style": NORMAL_EDGE.style, "line-color": c.muted, "curve-style": "bezier", "target-arrow-shape": "triangle", "target-arrow-color": c.muted, "arrow-scale": 0.8 },
+      style: { width: NORMAL_EDGE.width, "line-style": NORMAL_EDGE.style, "line-color": c.muted, "curve-style": "bezier", "target-arrow-shape": "triangle", "target-arrow-color": c.muted, "arrow-scale": 0.8, "z-index-compare": "manual", "z-index": 0 },
     },
     {
       selector: "edge.conflict",
@@ -1055,6 +1062,7 @@ function styleOf(c: EnvMapColors): unknown {
         "curve-style": "unbundled-bezier",
         "control-point-distances": [CONFLICT_EDGE.bend],
         "control-point-weights": [0.5],
+        "z-index": 20,
       },
     },
     { selector: "edge.route", style: { "line-color": c.route, "target-arrow-color": c.route, width: 2.5 } },

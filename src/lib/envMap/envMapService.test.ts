@@ -56,6 +56,22 @@ describe("[A3] 設定とファイルの問題", () => {
   })
 })
 
+describe("[低15・完了前の相談役 低4] 地図が無い文に、設定ファイルの実際の場所", () => {
+  it("渡した設定ファイルの絶対の場所が、そのまま文に入る(OS によらない)", async () => {
+    const place = "/x/y/config/env-map.json"
+    const svc = new EnvMapService({
+      config: async () => ({ config: { mapPath: path.join(dir, "nothing.json") } }),
+      configPath: () => place,
+      sources: async () => [],
+      home: "C:\\Users\\tester",
+      now: () => NOW,
+    })
+    const r = await svc.get()
+    expect(r.problem?.kind).toBe("missing")
+    expect(r.problem?.message).toContain(place)
+  })
+})
+
 describe("サービス", () => {
   const src = (id: string, extra: Partial<DesktopSessionSummary> = {}, paths = [path.join(dir, "a.jsonl")]): EnvMapSource => ({
     summary: summary(id, extra),
