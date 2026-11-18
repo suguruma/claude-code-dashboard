@@ -100,8 +100,11 @@ function extent(boxes: LayoutBox[]): number {
 
 export const isolatedLabel = (n: number) => `つながり無し ${n}`
 
-/** ルートの詰めた表示:通った箱だけを、帯ごとに初めて通った順で並べる */
-export function layoutRoute(data: EnvMapData, visits: RouteVisit[], width: number): MapLayout {
+/**
+ * ルートの詰めた表示:通った箱だけを、帯ごとに初めて通った順で並べる。
+ * marks(見張りの印・「ほか」)は歩ではないので、帯の右端に寄せ(線が貫かない。低4)、帯の数にも数えない(低10)
+ */
+export function layoutRoute(data: EnvMapData, visits: RouteVisit[], width: number, marks: ReadonlySet<string> = new Set()): MapLayout {
   const byId = new Map<string, EnvMapNode>(data.nodes.map((n) => [n.id, n]))
   const boxes: LayoutBox[] = []
   const bands: LayoutBand[] = []
@@ -111,8 +114,19 @@ export function layoutRoute(data: EnvMapData, visits: RouteVisit[], width: numbe
       .filter((v) => byId.get(v.box)?.layer === layer.id)
       .map((v) => ({ id: v.box, label: byId.get(v.box)!.label, layer: layer.id }))
     const f = flow(items, y, width)
+    // 印は帯の右端へ(同じ行に入らなければ、そのままの位置)
+    let right = width
+    for (const b of [...f.boxes].reverse()) {
+      if (!marks.has(b.id)) continue
+      const x = right - b.w / 2
+      const clash = f.boxes.some((o) => !marks.has(o.id) && Math.abs(o.y - b.y) < 1 && Math.abs(o.x - x) < (o.w + b.w) / 2 + BOX_GAP_X)
+      if (!clash) {
+        b.x = x
+        right -= b.w + BOX_GAP_X
+      }
+    }
     boxes.push(...f.boxes)
-    bands.push({ layer: layer.id, label: layer.label, y, h: f.height, count: items.length })
+    bands.push({ layer: layer.id, label: layer.label, y, h: f.height, count: items.filter((i) => !marks.has(i.id)).length })
     y += f.height + BAND_GAP
   }
   return { boxes, bands, width: extent(boxes), height: Math.max(0, y - BAND_GAP), isolated: new Map() }

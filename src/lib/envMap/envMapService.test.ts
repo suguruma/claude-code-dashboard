@@ -40,7 +40,8 @@ function service(config: EnvMapConfigResult, sources: EnvMapSource[]) {
 describe("[A3] 設定とファイルの問題", () => {
   it("設定が無い・ファイルが無い・JSON が壊れている、で別の文", async () => {
     const none = await loadEnvMapConfig(dir)
-    expect("problem" in none && none.problem.message).toContain("config/env-map.json")
+    // 実際の置き場を文に出す(exe でも置き場が分かる。中6)
+    expect("problem" in none && none.problem.message).toContain(path.join(dir, "config", "env-map.json"))
     const missing = await service({ config: { mapPath: path.join(dir, "nothing.json") } }, []).get()
     expect(missing.problem?.kind).toBe("missing")
     await fs.writeFile(path.join(dir, "broken.json"), "{ not json")

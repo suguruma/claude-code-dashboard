@@ -47,6 +47,17 @@ describe("ルートの詰めた表示", () => {
     expect(l.height).toBeLessThanOrEqual(375 - 32)
     expect(fitZoom(l, 721, 375)).toBe(1)
   })
+  it("[低4・低10] 印(見張り・ほか)は帯の右端に寄せ、帯の数に数えない", () => {
+    const d = data(14)
+    const visits: RouteVisit[] = [
+      { box: "n0", order: 1, calls: 0, visits: 1 },
+      { box: "n1", order: 0, calls: 5, visits: 0 },
+    ]
+    const l = layoutRoute(d, visits, 689, new Set(["n1"]))
+    const mark = l.boxes.find((b) => b.id === "n1")!
+    expect(mark.x + mark.w / 2).toBeCloseTo(689)
+    expect(l.bands.find((b) => b.layer === "safety")?.count).toBe(0)
+  })
   it("通っていない帯は細い", () => {
     const l = layoutRoute(data(14), [{ box: "n0", order: 1, calls: 0, visits: 1 }], 721)
     expect(l.bands.filter((b) => b.h === EMPTY_BAND_H)).toHaveLength(6)

@@ -36,17 +36,25 @@ export function parseEnvMapConfig(raw: unknown): EnvMapConfig {
   return { mapPath }
 }
 
+/** 設定ファイルの実際の場所(exe では %APPDATA% の下。画面にそのまま出して、置き場を知らせる。中6) */
+export function envMapConfigPath(root: string = getAppDataRoot()): string {
+  return path.join(root, "config", "env-map.json")
+}
+
 export async function loadEnvMapConfig(root: string = getAppDataRoot()): Promise<EnvMapConfigResult> {
+  const file = envMapConfigPath(root)
   let text: string
   try {
-    text = await fs.readFile(path.join(root, "config", "env-map.json"), "utf-8")
+    text = await fs.readFile(file, "utf-8")
   } catch {
-    return { problem: problemOf("no-config") }
+    return { problem: { kind: "no-config", message: `設定がありません。${file} を作り、地図のファイルの場所を {"mapPath": "…\\map.json"} の形で書いてください` } }
   }
   try {
-    return { config: parseEnvMapConfig(JSON.parse(text)) }
+    const config = parseEnvMapConfig(JSON.parse(text))
+    if (!config.mapPath) return { problem: { kind: "no-config", message: `設定 ${file} に地図のファイルの場所(mapPath)がありません` } }
+    return { config }
   } catch {
-    return { problem: { kind: "no-config", message: "設定ファイル config/env-map.json を読めません(JSON の形が壊れています)" } }
+    return { problem: { kind: "no-config", message: `設定ファイル ${file} を読めません(JSON の形が壊れています)` } }
   }
 }
 
