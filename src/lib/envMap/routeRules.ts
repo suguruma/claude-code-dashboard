@@ -88,13 +88,14 @@ export function isGuarded(name: string): boolean {
   return GUARDED.has(name)
 }
 
-const MARKERS = ['"tool_use"', '"queued_command"'].map((m) => Buffer.from(m))
+const MARKERS = ['"tool_use"', '"queued_command"', '"type":"assistant"', '"type": "assistant"'].map((m) => Buffer.from(m))
 const USER_MARKERS = ['"type":"user"', '"type": "user"'].map((m) => Buffer.from(m))
 const TOOL_RESULT = Buffer.from('"tool_result"')
 
 /**
  * 会話記録の行のうち、ルートに要る行か(文字に直す前のバイト列で決める。巨大なツールの結果の行を解かずに飛ばす)。
- * 拾うのは、道具の呼び出しの行・作業中に届いた入力の行・ツールの結果を含まない user の行(人の入力の候補)
+ * 拾うのは、道具の呼び出しの行・作業中に届いた入力の行・assistant の行(道具が無くても、指示の終わりの時刻に使う。低8)・
+ * ツールの結果を含まない user の行(人の入力の候補)
  */
 export function acceptLine(line: Buffer): boolean {
   if (MARKERS.some((m) => line.includes(m))) return true
@@ -154,6 +155,8 @@ interface Building {
   others: Map<string, number>
   guard: number
   agents: number
+  /** 最初の人の入力より前の道具(番号0) */
+  pre?: boolean
 }
 
 const newBuilding = (at: number | null): Building => ({
@@ -203,9 +206,15 @@ export class RouteBuilder {
       return
     }
     this.touch(at)
-    if (!this.cur || entry.isSidechain || entry.type !== "assistant") return
+    if (entry.isSidechain || entry.type !== "assistant") return
     const content = entry.message?.content
     if (!Array.isArray(content)) return
+    if (!this.cur) {
+      // 最初の人の入力より前の道具(他のセッションから始めたセッションなど)は捨てずに、番号0 の指示にまとめる(低7)
+      if (!content.some((b) => (b as RawBlockLike)?.type === "tool_use")) return
+      this.cur = { ...newBuilding(at), pre: true }
+      this.built.push(this.cur)
+    }
     for (const b of content as RawBlockLike[]) {
       if (!b || b.type !== "tool_use" || typeof b.name !== "string") continue
       if (typeof b.id === "string") {
@@ -230,8 +239,11 @@ export class RouteBuilder {
 
   /** running:最後の指示が動いている途中か */
   finish(running: boolean): RouteInstruction[] {
-    const head: RouteStep[] = [{ box: this.ctx.entry, calls: 0 }]
-    if (this.ctx.group) head.push({ box: this.ctx.group, calls: 0 })
+    // 入口・グループの箱が地図に無いときは歩に入れない(描かれない箱を数えない。低10)
+    const head: RouteStep[] = []
+    if (this.ctx.index.ids.has(this.ctx.entry)) head.push({ box: this.ctx.entry, calls: 0 })
+    if (this.ctx.group && this.ctx.index.ids.has(this.ctx.group)) head.push({ box: this.ctx.group, calls: 0 })
+    const hasPre = this.built[0]?.pre === true
     return this.built.map((b, i) => {
       const steps: RouteStep[] = [...head]
       for (const box of b.boxes) {
@@ -257,7 +269,7 @@ export class RouteBuilder {
       const top = [...boxCounts, ...otherCounts].sort((x, y) => y.count - x.count).slice(0, 2)
       const empty: RouteEmpty = b.calls === 0 ? "no-tools" : b.boxes.length === 0 ? "no-box" : null
       return {
-        index: i + 1,
+        index: hasPre ? i : i + 1,
         startAt: b.startAt,
         endAt: b.endAt,
         calls: b.calls,
@@ -280,6 +292,12 @@ const TIMESTAMP = /"timestamp":"([^"]{10,40})"/
 
 /** 会話記録の1行を RouteBuilder に渡す。壊れた行は飛ばす */
 export function feedLine(builder: RouteBuilder, line: string): void {
+  // 道具を呼ばない assistant の行は、指示の終わりの時刻だけが要る(JSON を解かない。低8 で読む行が増えた分の速さ)
+  if (!line.includes('"tool_use"') && (line.includes('"type":"assistant"') || line.includes('"type": "assistant"'))) {
+    const m = TIMESTAMP.exec(line.slice(-2000)) ?? TIMESTAMP.exec(line.slice(0, 4000))
+    builder.touch(m ? toMs(m[1]) : null)
+    return
+  }
   if (line.length > MAX_PARSE_BYTES && line.includes('"tool_result"')) {
     const m = TIMESTAMP.exec(line.slice(-2000)) ?? TIMESTAMP.exec(line.slice(0, 4000))
     builder.touch(m ? toMs(m[1]) : null)

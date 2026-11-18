@@ -16,11 +16,13 @@ import {
   labelWidth,
   layoutNow,
   layoutRoute,
+  pickInstruction,
   playbackInterval,
+  stepInstruction,
   type MapLayout,
 } from "@/lib/envMap/envMapLayout"
 import { GUARD_BOX, type EnvMapData, type EnvMapNode, type EnvMapResponse, type RouteInstruction, type RouteResponse } from "@/lib/envMap/envMapTypes"
-import { STRENGTH_TEXT, readColors, strengthBorder, type EnvMapColors } from "./envMapTheme"
+import { CONFLICT_EDGE, NORMAL_EDGE, STRENGTH_TEXT, readColors, strengthBorder, type EnvMapColors } from "./envMapTheme"
 
 /**
  * 組織の［全体マップ］(⑲ 段1)。地図(［今］)と、指示ごとのルート(［ルート］。既定)を cytoscape で描く。
@@ -108,6 +110,8 @@ export function EnvMapView() {
   const [fromUrl] = useState(urlSession)
   const [mode, setModeState] = useState<Mode>(() => (fromUrl ? "route" : (readMode() ?? "route")))
   const [session, setSession] = useState<string | null>(fromUrl)
+  /** 既定で選んで指示が無かったセッション(低12。id で持つ。5つまで) */
+  const [skipped, setSkipped] = useState<string[]>([])
 
   const setMode = useCallback((m: Mode) => {
     setModeState(m)
@@ -132,7 +136,12 @@ export function EnvMapView() {
     )
   }
   const hasSessions = data.sessions.length > 0
-  const chosen = session && data.sessions.some((s) => s.id === session) ? session : data.defaultSession
+  const inList = session !== null && data.sessions.some((s) => s.id === session)
+  // URL のセッションが一覧(直近30日・会話記録あり・WSL を除く)に無いときは、別のセッションに差し替えない(中5)
+  const missing = session !== null && !inList
+  const auto = session === null
+  const autoPick = data.sessions.find((s) => !skipped.includes(s.id))?.id ?? data.defaultSession
+  const chosen = inList ? session : missing ? null : autoPick
   const effectiveMode: Mode = hasSessions ? mode : "now"
   return (
     <EnvMapBody
@@ -141,7 +150,13 @@ export function EnvMapView() {
       mode={effectiveMode}
       setMode={setMode}
       session={chosen}
+      missing={missing}
       setSession={setSession}
+      onEmptyDefault={
+        auto && autoPick && skipped.length < 5 && skipped.length < data.sessions.length - 1
+          ? () => setSkipped((ids) => (ids.includes(autoPick) ? ids : [...ids, autoPick]))
+          : undefined
+      }
       reload={() => void mutate()}
     />
   )
@@ -153,19 +168,32 @@ interface BodyProps {
   mode: Mode
   setMode: (m: Mode) => void
   session: string | null
+  /** URL のセッションが一覧に無い(中5) */
+  missing: boolean
   setSession: (id: string) => void
+  /** 既定で選んだセッションに指示が無かったとき(低12) */
+  onEmptyDefault?: () => void
   reload: () => void
 }
 
-function EnvMapBody({ res, map, mode, setMode, session, setSession, reload }: BodyProps) {
+function EnvMapBody({ res, map, mode, setMode, session, missing, setSession, onEmptyDefault, reload }: BodyProps) {
   const routeKey = mode === "route" && session ? `/api/env-map/route?session=${encodeURIComponent(session)}` : null
-  const route = useSWR<RouteResponse>(routeKey, fetcher, { revalidateOnFocus: false, revalidateIfStale: false })
+  const route = useSWR<RouteResponse>(routeKey, fetcher, {
+    revalidateOnFocus: false,
+    revalidateIfStale: false,
+    onSuccess: (d) => {
+      if (d.instructions.length === 0 && !d.problem) onEmptyDefault?.()
+    },
+  })
   const nodes = useMemo(() => new Map(map.nodes.map((n) => [n.id, n])), [map])
   const layerLabel = useMemo(() => new Map(map.layers.map((l) => [l.id, l.label])), [map])
   const [pick, setPick] = useState<{ session: string | null; index: number | null }>({ session: null, index: null })
-  const instructions = route.data?.instructions ?? []
-  const index = pick.session === session && pick.index !== null && pick.index <= instructions.length ? pick.index : instructions.length
+  const instructions = useMemo(() => route.data?.instructions ?? [], [route.data])
+  const indexes = useMemo(() => instructions.map((i) => i.index), [instructions])
+  const index = pickInstruction(indexes, pick.session === session ? pick.index : null)
   const ins = instructions.find((i) => i.index === index) ?? null
+  const prevIndex = stepInstruction(indexes, index, -1)
+  const nextIndex = stepInstruction(indexes, index, 1)
   const [selected, setSelected] = useState<string | null>(null)
   const [layerFilter, setLayerFilter] = useState<string>("all")
   const [play, setPlay] = useState<number | null>(null)
@@ -177,10 +205,11 @@ function EnvMapBody({ res, map, mode, setMode, session, setSession, reload }: Bo
     setPick({ session, index: i })
     setPlay(null)
   }
-  const [openLayerId, setOpenLayerId] = useState<string | null>(null)
-  const openLayer = useCallback((layer: string) => setOpenLayerId(layer), [])
-  const choosePrev = () => index > 1 && choose(index - 1)
-  const chooseNext = () => index < instructions.length && choose(index + 1)
+  /** 一覧で開く層。scroll は「つながり無し n」を押したときだけ(探して選んだときは、行A が見えるようにページを動かさない。A16) */
+  const [openLayerReq, setOpenLayerReq] = useState<{ id: string; scroll: boolean; n: number } | null>(null)
+  const openLayer = useCallback((layer: string, scroll = true) => setOpenLayerReq((r) => ({ id: layer, scroll, n: (r?.n ?? 0) + 1 })), [])
+  const choosePrev = () => prevIndex !== null && choose(prevIndex)
+  const chooseNext = () => nextIndex !== null && choose(nextIndex)
 
   // 再生(初めて通った順。全体15秒以内・1歩300ms 以上。動きを減らす設定では再生しない。A20)
   const visits = useMemo(() => ins?.visits ?? [], [ins])
@@ -216,6 +245,10 @@ function EnvMapBody({ res, map, mode, setMode, session, setSession, reload }: Bo
         <span>
           ・{layerLabel.get(sel.layer) ?? sel.layer}
           {STRENGTH_TEXT[sel.strength] ? `・${STRENGTH_TEXT[sel.strength]}` : ""}・つながり {sel.degree}
+          {mode === "now" && sel.degree === 0 && layerFilter !== "linked"
+            ? `（つながり無し ${map.nodes.filter((n) => n.layer === sel.layer && n.degree === 0).length} の中）`
+            : ""}
+          {mode === "route" && ins && !ins.visits.some((v) => v.box === sel.id) ? "（この指示では通っていません）" : ""}
         </span>
         <button type="button" className="ml-2 rounded px-1 text-muted-foreground hover:bg-muted" onClick={() => setSelected(null)} aria-label="選んだ箱を外す">
           <X className="inline size-4" />
@@ -226,13 +259,23 @@ function EnvMapBody({ res, map, mode, setMode, session, setSession, reload }: Bo
     const boxes = ins.visits.length
     rowA = (
       <span>
+        {map.stale && (
+          <button type="button" className="mr-1 underline decoration-dotted" onClick={() => setStaleNote((v) => !v)} aria-expanded={staleNote}>
+            地図が古い（{agoText(map.generatedAt, res.generatedAt)}）▸
+          </button>
+        )}
         箱 {play !== null ? `${Math.min(play, boxes)}/${boxes}` : boxes}（通った順）・歩 {ins.steps.length}・道具 {ins.calls}回
-        {ins.agents > 0 ? `・役 ${ins.agents}（中の道具は数えない）` : ""}
+        {ins.agents > 0 ? `・役 ${ins.agents}` : ""}
         {ins.running ? "・途中" : ""}
+        {staleNote && <span className="ml-2 text-muted-foreground">地図は、地図を作る仕組みが作り直します</span>}
       </span>
     )
   } else {
-    const made = map.stale ? null : `地図の作成 ${dateText(map.generatedAt)}（${agoText(map.generatedAt, res.generatedAt)}）`
+    const made = map.stale
+      ? null
+      : map.generatedAt === null
+        ? "地図の作成日は不明"
+        : `地図の作成 ${dateText(map.generatedAt)}（${agoText(map.generatedAt, res.generatedAt)}）`
     const head = `箱 ${map.nodes.length}・線 ${map.edges.length}・`
     const hint = "人から見るのは［つながり］、仕組みから見るのはここ"
     const withHint = made && (head + made + "。" + hint).length <= ROW_A_MAX
@@ -278,11 +321,13 @@ function EnvMapBody({ res, map, mode, setMode, session, setSession, reload }: Bo
             className="h-8 w-[200px] truncate rounded-md border bg-background px-2"
             value={session ?? ""}
             onChange={(e) => {
+              if (!e.target.value) return
               setSession(e.target.value)
               setSelected(null)
               setPlay(null)
             }}
           >
+            {!session && <option value="">セッションを選ぶ</option>}
             {res.sessions.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.title}
@@ -295,7 +340,7 @@ function EnvMapBody({ res, map, mode, setMode, session, setSession, reload }: Bo
           <select
             id="env-map-instruction"
             className="h-8 w-[240px] truncate rounded-md border bg-background px-2"
-            value={instructions.length ? index : ""}
+            value={index ?? ""}
             disabled={!instructions.length}
             title={ins ? instructionText(ins, nodes) : undefined}
             onChange={(e) => {
@@ -309,14 +354,17 @@ function EnvMapBody({ res, map, mode, setMode, session, setSession, reload }: Bo
               </option>
             ))}
           </select>
-          <Button variant="outline" size="icon-sm" onClick={choosePrev} disabled={index <= 1} aria-label="前の指示" title="前の指示">
+          <Button variant="outline" size="icon-sm" onClick={choosePrev} disabled={prevIndex === null} aria-label="前の指示" title="前の指示">
             ◀
           </Button>
-          <Button variant="outline" size="icon-sm" onClick={chooseNext} disabled={index >= instructions.length} aria-label="次の指示" title="次の指示">
+          <Button variant="outline" size="icon-sm" onClick={chooseNext} disabled={nextIndex === null} aria-label="次の指示" title="次の指示">
             ▶
           </Button>
           {play === null ? (
-            <Button variant="outline" size="sm" className="w-[120px] text-sm" disabled={!ins || ins.visits.length === 0 || reduced} onClick={() => setPlay(1)} title={reduced ? "動きを減らす設定のため、番号だけを出しています" : undefined}>
+            <Button variant="outline" size="sm" className="w-[120px] text-sm" disabled={!ins || ins.visits.length === 0 || reduced} onClick={() => {
+                setSelected(null)
+                setPlay(1)
+              }} title={reduced ? "動きを減らす設定のため、番号だけを出しています" : undefined}>
               順に光らせる
             </Button>
           ) : (
@@ -328,6 +376,13 @@ function EnvMapBody({ res, map, mode, setMode, session, setSession, reload }: Bo
             <RefreshCw className="size-4" />
           </Button>
         </div>
+      )}
+      {mode === "route" && missing && !session && (
+        <Alert>
+          <AlertDescription>
+            このセッションは地図に出せません（WSL のセッション・直近30日に動いていない・会話記録が無い、のどれかです）。上の欄から別のセッションを選べます。
+          </AlertDescription>
+        </Alert>
       )}
       {mode === "route" && route.isLoading && (
         <p className="py-2 text-sm text-muted-foreground">読んでいます{sessionItem ? `（${Math.max(0.1, Math.round(sessionItem.bytes / 1e5) / 10)} MB）` : ""}...</p>
@@ -356,7 +411,7 @@ function EnvMapBody({ res, map, mode, setMode, session, setSession, reload }: Bo
         play={play}
         reduced={reduced}
       />
-      <Legend />
+      <Legend map={map} now={res.generatedAt} />
       <DetailPanel
         map={map}
         nodes={nodes}
@@ -365,7 +420,7 @@ function EnvMapBody({ res, map, mode, setMode, session, setSession, reload }: Bo
         setSelected={setSelected}
         ins={mode === "route" ? ins : null}
         reload={reload}
-        openLayerId={openLayerId}
+        openLayer={openLayerReq}
       />
     </div>
   )
@@ -373,7 +428,14 @@ function EnvMapBody({ res, map, mode, setMode, session, setSession, reload }: Bo
 
 function instructionText(i: RouteInstruction, nodes: Map<string, EnvMapNode>): string {
   const top = i.top.map((t) => `${shortName(nameOf(t.key, nodes))} ${t.count}`).join("・")
-  return `#${i.index} ${dateText(i.startAt)}・${durationText(i.startAt, i.endAt)}${top ? `・${top}` : ""}${i.running ? "・途中" : ""}`
+  // 通ったスキル・役と出口の箱(2つまで。4-2 の⑤)
+  const marks = i.visits
+    .filter((v) => /^(skill|agent|out):/.test(v.box))
+    .slice(0, 2)
+    .map((v) => shortName(nameOf(v.box, nodes)))
+    .join("・")
+  const head = i.index === 0 ? "最初の指示の前" : `#${i.index}`
+  return `${head} ${dateText(i.startAt)}・${durationText(i.startAt, i.endAt)}${top ? `・${top}` : ""}${marks ? ` › ${marks}` : ""}${i.running ? "・途中" : ""}`
 }
 
 /** 指示の一覧で使う短い名前(括弧の中の補足を落とす) */
@@ -523,8 +585,8 @@ interface CanvasProps {
   note: React.ReactNode
   /** 地図の上の行が出入りしたときに測り直すための印 */
   measureKey: string
-  /** 「つながり無し n」を押したとき(層の id) */
-  onIsolated: (layer: string) => void
+  /** 「つながり無し n」を押したとき(層の id)。scroll=false は一覧を開くだけ */
+  onIsolated: (layer: string, scroll?: boolean) => void
   map: EnvMapData
   mode: Mode
   ins: RouteInstruction | null
@@ -555,12 +617,14 @@ function routeView(map: EnvMapData, ins: RouteInstruction) {
   }
   if (ins.others.length > 0) {
     const text = `ほか：${ins.others.slice(0, 3).map((o) => `${o.key} ${o.count}`).join("・")}${ins.others.length > 3 ? ` ほか${ins.others.length - 3}種` : ""}`
-    extra.push({ id: OTHERS_ID, layer: "tools", label: text, kind: "", strength: "none", place: "", desc: "", degree: 0 })
+    const toolLayer = byId.get("tool:cc-shell")?.layer ?? map.layers.find((l) => l.id === "tools")?.id ?? map.layers[map.layers.length - 1]?.id ?? "tools"
+    extra.push({ id: OTHERS_ID, layer: toolLayer, label: text, kind: "", strength: "none", place: "", desc: "", degree: 0 })
     visits.push({ box: OTHERS_ID, order: 0, calls: 0, visits: 0 })
     labels.set(OTHERS_ID, text)
   }
   const data: EnvMapData = { ...map, nodes: [...map.nodes.map((n) => (labels.has(n.id) ? { ...n, label: labels.get(n.id)! } : n)), ...extra] }
-  return { data, visits, labels }
+  const marks = new Set<string>([OTHERS_ID, ...(ins.visits.some((v) => v.box === GUARD_BOX) ? [] : [GUARD_BOX])])
+  return { data, visits, labels, marks }
 }
 
 function MapCanvas({ note, measureKey, onIsolated, map, mode, ins, selected, setSelected, layerFilter, play, reduced }: CanvasProps) {
@@ -574,6 +638,8 @@ function MapCanvas({ note, measureKey, onIsolated, map, mode, ins, selected, set
   /** cytoscape を作り直した回数。選択と再生の印は、作り直すたびに当て直す(相談役 重1) */
   const [cyVer, setCyVer] = useState(0)
   const [hover, setHover] = useState<{ label: string; x: number; y: number } | null>(null)
+  /** まとめた中の箱で一覧を開いた最後の箱(同じ箱では開き直さない) */
+  const openedFor = useRef<string | null>(null)
 
   // 地図の高さ:画面の下端−16px まで(縦の予算。A11)。ルートの詰めた表示が 1.0倍で入らなければ伸ばす(ページで送る。低A)。
   // 上の行(空の状態の文など)が出入りすると地図の上端が動くので、指示が替わるたびに測り直す
@@ -581,8 +647,7 @@ function MapCanvas({ note, measureKey, onIsolated, map, mode, ins, selected, set
     const measure = () => {
       const el = wrapRef.current
       if (!el) return
-      const top = el.getBoundingClientRect().top + window.scrollY
-      setHeight(Math.max(280, window.innerHeight - top - 16))
+      setHeight(Math.max(280, mapBudgetHeight(el)))
       setWidth(el.clientWidth)
     }
     measure()
@@ -603,7 +668,7 @@ function MapCanvas({ note, measureKey, onIsolated, map, mode, ins, selected, set
     const avail = Math.max(320, width - MAP_PADDING * 2)
     if (mode === "route" && ins) {
       const r = routeView(map, ins)
-      return { kind: "route" as const, layout: layoutRoute(r.data, r.visits, avail), data: r.data, ins }
+      return { kind: "route" as const, layout: layoutRoute(r.data, r.visits, avail, r.marks), data: r.data, ins }
     }
     let data = map
     if (layerFilter === "linked") data = { ...map, nodes: map.nodes.filter((n) => n.degree > 0) }
@@ -643,7 +708,7 @@ function MapCanvas({ note, measureKey, onIsolated, map, mode, ins, selected, set
           group: "nodes",
           data: { id: b.id, label, w: labelWidth(label), bw: border.width, bs: border.style },
           position: { x: b.x, y: b.y },
-          classes: [isolated ? "isolated" : "", b.id === OTHERS_ID ? "others" : "", b.id === GUARD_BOX && view.kind === "route" ? "guard" : "", view.kind === "route" && b.id !== OTHERS_ID && b.id !== GUARD_BOX ? "lit" : ""]
+          classes: [isolated ? "isolated" : "", border.muted && !isolated ? "weak" : "", b.id === OTHERS_ID ? "others" : "", b.id === GUARD_BOX && view.kind === "route" ? "guard" : "", view.kind === "route" && b.id !== OTHERS_ID && b.id !== GUARD_BOX ? "lit" : ""]
             .filter(Boolean)
             .join(" "),
         })
@@ -737,22 +802,36 @@ function MapCanvas({ note, measureKey, onIsolated, map, mode, ins, selected, set
   useEffect(() => {
     const cy = cyRef.current
     if (!cy || cyVer === 0 || cy.destroyed()) return
+    // まとめた中の箱(つながり無し n)を選んだときは、その「つながり無し n」の箱に印を付けて寄せ、一覧のその層を開く(中1)
+    let targetId = selected
+    if (selected && cy.getElementById(selected).length === 0) {
+      for (const [groupId, members] of layoutRef.current?.isolated ?? []) {
+        if (members.includes(selected)) {
+          targetId = groupId
+          if (openedFor.current !== selected) {
+            openedFor.current = selected
+            onIsolated(groupId.slice(ISOLATED_PREFIX.length), false)
+          }
+          break
+        }
+      }
+    }
     cy.batch(() => {
       cy.elements().removeClass("faded").removeClass("hidden").removeClass("picked")
-      if (!selected) return
-      const target = cy.getElementById(selected)
+      if (!targetId) return
+      const target = cy.getElementById(targetId)
       if (!target || target.length === 0) return
       const keep = target.closedNeighborhood()
       cy.nodes().difference(keep.nodes()).addClass("faded")
       cy.edges().difference(target.connectedEdges()).addClass("hidden")
       target.addClass("picked")
     })
-    const target = cy.getElementById(selected ?? "")
-    if (selected && target && target.length > 0 && atOne && cy.zoom() >= 1) {
+    const target = cy.getElementById(targetId ?? "")
+    if (targetId && target && target.length > 0 && atOne && cy.zoom() >= 1) {
       scrollToMapY(boxRef.current, target.position().y * cy.zoom() + cy.pan().y)
       return
     }
-    if (selected && target && target.length > 0) {
+    if (targetId && target && target.length > 0) {
       const p = target.position()
       const z = Math.max(1, cy.zoom())
       const pan = { x: cy.width() / 2 - p.x * z, y: cy.height() / 2 - p.y * z }
@@ -761,7 +840,7 @@ function MapCanvas({ note, measureKey, onIsolated, map, mode, ins, selected, set
         cy.pan(pan)
       } else cy.animate({ zoom: z, pan, duration: 250 })
     }
-  }, [selected, cyVer, reduced, view, atOne])
+  }, [selected, cyVer, reduced, view, atOne, onIsolated])
 
   // 再生の光(初めて通った順)
   useEffect(() => {
@@ -851,6 +930,26 @@ function MapCanvas({ note, measureKey, onIsolated, map, mode, ins, selected, set
   )
 }
 
+/** いちばん近い縦にスクロールする親(この画面では <main>)。無ければ null(ページ全体) */
+function scrollParentOf(el: HTMLElement): HTMLElement | null {
+  let p: HTMLElement | null = el.parentElement
+  while (p && !/(auto|scroll)/.test(getComputedStyle(p).overflowY)) p = p.parentElement
+  return p
+}
+
+/**
+ * 地図の高さの予算:スクロールの位置に関係なく、送っていないときの「地図の上端から、見える所の下端−16px」(中4)。
+ * <main> が送られていても、送った分を足し戻して測る
+ */
+export function mapBudgetHeight(el: HTMLElement): number {
+  const parent = scrollParentOf(el)
+  const r = el.getBoundingClientRect()
+  if (!parent) return window.innerHeight - (r.top + window.scrollY) - 16
+  const pr = parent.getBoundingClientRect()
+  const topInParent = r.top - pr.top + parent.scrollTop
+  return parent.clientHeight - topInParent - 16
+}
+
 /** 地図の中の y(画面の px)が見える所まで、ページ(いちばん近い縦にスクロールする親)を送る */
 function scrollToMapY(box: HTMLElement | null, y: number): void {
   if (!box) return
@@ -895,47 +994,64 @@ function styleOf(c: EnvMapColors): unknown {
         "border-style": "data(bs)",
       },
     },
+    { selector: "node.weak", style: { "border-color": c.muted } },
     { selector: "node.isolated", style: { "border-style": "dashed", "border-color": c.muted, color: c.muted, "background-color": c.bandA } },
     { selector: "node.others", style: { "border-width": 0, "background-opacity": 0, color: c.muted } },
     { selector: "node.guard", style: { "border-style": "dashed", "border-width": 2, "border-color": c.muted } },
     { selector: "node.lit", style: { "border-color": c.route, "border-width": 3 } },
     { selector: "node.current", style: { "background-color": c.route, color: c.bg, "border-color": c.route } },
     { selector: "node.dim", style: { opacity: 0.35 } },
-    { selector: "node.picked", style: { "border-color": c.route, "border-width": 4 } },
+    { selector: "node.picked", style: { "border-color": c.route, "border-width": 6, "background-color": c.route, "background-opacity": 0.18 } },
+    { selector: "node.picked.current", style: { "background-color": c.route, "background-opacity": 1, color: c.bg } },
     { selector: "node.faded", style: { opacity: 0.12 } },
     { selector: "node.nolabel", style: { "text-opacity": 0 } },
     {
       selector: "edge",
-      style: { width: 1.5, "line-color": c.muted, "curve-style": "bezier", "target-arrow-shape": "triangle", "target-arrow-color": c.muted, "arrow-scale": 0.8 },
+      style: { width: NORMAL_EDGE.width, "line-style": NORMAL_EDGE.style, "line-color": c.muted, "curve-style": "bezier", "target-arrow-shape": "triangle", "target-arrow-color": c.muted, "arrow-scale": 0.8 },
     },
-    { selector: "edge.conflict", style: { "line-color": c.danger, "target-arrow-color": c.danger, width: 2.5 } },
+    {
+      selector: "edge.conflict",
+      style: {
+        "line-color": c.danger,
+        "target-arrow-color": c.danger,
+        "target-arrow-shape": CONFLICT_EDGE.arrow,
+        width: CONFLICT_EDGE.width,
+        "line-style": CONFLICT_EDGE.style,
+        "line-dash-pattern": CONFLICT_EDGE.dash,
+      },
+    },
     { selector: "edge.route", style: { "line-color": c.route, "target-arrow-color": c.route, width: 2.5 } },
     { selector: "edge.hidden", style: { display: "none" } },
   ]
 }
 
-function Legend() {
+function Legend({ map, now }: { map: EnvMapData; now: number }) {
   const items: { label: string; border: string }[] = [
-    { label: "止める", border: "border-4 border-solid" },
-    { label: "判定する", border: "border-[5px] border-double" },
-    { label: "記録だけ", border: "border-2 border-dashed" },
-    { label: "読ませるだけ", border: "border border-solid" },
+    { label: "止める", border: "border-4 border-solid border-foreground" },
+    { label: "判定する", border: "border-[5px] border-double border-foreground" },
+    { label: "記録だけ", border: "border-2 border-dashed border-foreground" },
+    { label: "読ませるだけ", border: "border-2 border-solid border-foreground" },
+    { label: "強さなし", border: "border border-solid border-muted-foreground" },
   ]
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2 text-sm text-muted-foreground" aria-label="凡例">
       {items.map((i) => (
         <span key={i.label} className="inline-flex items-center gap-1">
-          <span className={`inline-block h-4 w-6 rounded-sm border-foreground ${i.border}`} />
+          <span className={`inline-block h-4 w-6 rounded-sm ${i.border}`} />
           {i.label}
         </span>
       ))}
       <span className="inline-flex items-center gap-1">
-        <span className="inline-block h-1 w-6" style={{ background: "var(--destructive)" }} />
+        <span className="inline-block w-6 border-t-[3px] border-dashed" style={{ borderColor: "var(--destructive)" }} />
         食い違う決まり
       </span>
       <span className="inline-flex items-center gap-1">
         <span className="inline-block h-1 w-6" style={{ background: "var(--flow-down)" }} />
         ルートの光
+      </span>
+      <span className="ml-auto">
+        地図：箱 {map.nodes.length}・線 {map.edges.length}・
+        {map.generatedAt === null ? "作成日は不明" : `作成 ${dateText(map.generatedAt)}（${agoText(map.generatedAt, now)}）`}
       </span>
     </div>
   )
@@ -949,18 +1065,18 @@ interface PanelProps {
   setSelected: (id: string | null) => void
   ins: RouteInstruction | null
   reload: () => void
-  /** 「つながり無し n」を押したときに開く層 */
-  openLayerId: string | null
+  /** 「つながり無し n」を押したとき・まとめた中の箱を選んだときに開く層 */
+  openLayer: { id: string; scroll: boolean; n: number } | null
 }
 
-function DetailPanel({ map, nodes, layerLabel, selected, setSelected, ins, reload, openLayerId }: PanelProps) {
+function DetailPanel({ map, nodes, layerLabel, selected, setSelected, ins, reload, openLayer }: PanelProps) {
   const [allSteps, setAllSteps] = useState(false)
   const listRef = useRef<HTMLDetailsElement>(null)
   useEffect(() => {
-    if (!openLayerId || !listRef.current) return
+    if (!openLayer || !listRef.current) return
     listRef.current.open = true
-    document.getElementById(`env-map-layer-${openLayerId}`)?.scrollIntoView({ block: "start" })
-  }, [openLayerId])
+    if (openLayer.scroll) document.getElementById(`env-map-layer-${openLayer.id}`)?.scrollIntoView({ block: "start" })
+  }, [openLayer])
   const sel = selected ? nodes.get(selected) : null
   const links = useMemo(() => {
     if (!sel) return []
@@ -997,7 +1113,9 @@ function DetailPanel({ map, nodes, layerLabel, selected, setSelected, ins, reloa
       )}
       {ins && steps.length > 0 && (
         <section aria-label="歩の一覧">
-          <h3 className="font-medium">歩の一覧（時刻の順。続く同じ箱は1歩）</h3>
+          <h3 className="font-medium">
+            歩の一覧（時刻の順。続く同じ箱は1歩）{ins.agents > 0 ? "・役（サブエージェント）の中の道具は数えない" : ""}
+          </h3>
           <ol className="mt-1 flex flex-wrap gap-1">
             {shown.map((s, i) => (
               <li key={i}>

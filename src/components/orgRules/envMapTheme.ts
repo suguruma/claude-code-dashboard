@@ -71,18 +71,26 @@ export const STRENGTH_TEXT: Record<EnvMapStrength, string> = {
   none: "",
 }
 
-/** 強さは形と線で分ける(止める＝太い枠・判定する＝二重の枠・記録だけ＝点線・読ませるだけ＝細い枠) */
-export function strengthBorder(s: EnvMapStrength): { width: number; style: "solid" | "dashed" | "double" } {
+/**
+ * 強さは形と線で分ける(止める＝太い枠・判定する＝二重の枠・記録だけ＝点線・読ませるだけ＝実線の枠・強さなし＝細い灰色の枠)。
+ * muted が true の枠は、前景の色ではなく灰色(--muted-foreground)で描く(低1:読ませるだけと強さなしを分ける)
+ */
+export function strengthBorder(s: EnvMapStrength): { width: number; style: "solid" | "dashed" | "double"; muted: boolean } {
   switch (s) {
     case "stop":
-      return { width: 4, style: "solid" }
+      return { width: 4, style: "solid", muted: false }
     case "judge":
-      return { width: 5, style: "double" }
+      return { width: 5, style: "double", muted: false }
     case "watch":
-      return { width: 2, style: "dashed" }
+      return { width: 2, style: "dashed", muted: false }
     case "read":
-      return { width: 1, style: "solid" }
+      return { width: 2, style: "solid", muted: false }
     default:
-      return { width: 1, style: "solid" }
+      return { width: 1, style: "solid", muted: true }
   }
 }
+
+/** 食い違う決まりの線:赤に加えて破線と太さで分ける(白黒でも通常の線と見分ける。中2) */
+export const CONFLICT_EDGE = { width: 3.5, style: "dashed" as const, dash: [8, 4], arrow: "tee" as const }
+/** 通常の線 */
+export const NORMAL_EDGE = { width: 1.5, style: "solid" as const }

@@ -159,7 +159,8 @@ describe("[A5] 同じ呼び出しの重なりと、行の絞り", () => {
     expect(acc(JSON.stringify({ parentUuid: "a", type: "user", message: { content: "x" } }))).toBe(true)
     expect(acc(result("y"))).toBe(false)
     expect(acc(JSON.stringify({ type: "attachment", attachment: { type: "queued_command" } }))).toBe(true)
-    expect(acc(JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "z" }] } }))).toBe(false)
+    expect(acc(JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "z" }] } }))).toBe(true)
+    expect(acc(JSON.stringify({ type: "system", subtype: "x" }))).toBe(false)
   })
 })
 
@@ -206,12 +207,33 @@ describe("[A6] 指示の区切り", () => {
   })
 })
 
+describe("[低7・低8・低10] 最初の入力の前・時刻・地図に無い入口", () => {
+  it("最初の人の入力より前の道具は番号0 にまとめ、後の指示は1から", () => {
+    const r = run([tool("Bash"), tool("Edit", { file_path: "C:\\x\\a.ts" }), human("1つ目"), tool("Bash")])
+    expect(r.map((i) => [i.index, i.calls])).toEqual([
+      [0, 2],
+      [1, 1],
+    ])
+  })
+  it("道具を呼ばない assistant の行も、指示の終わりの時刻に入る(acceptLine を通す)", () => {
+    const b = new RouteBuilder({ index: IDX, home: HOME, entry: ENTRY_DESKTOP, group: null })
+    const lines = [human("a"), tool("Bash"), JSON.stringify({ type: "assistant", timestamp: "2026-11-18T09:00:00.000Z", message: { content: [{ type: "text", text: "おわり" }] } })]
+    for (const l of lines) if (acceptLine(Buffer.from(l))) feedLine(b, l)
+    expect(b.finish(false)[0].endAt).toBe(Date.parse("2026-11-18T09:00:00.000Z"))
+  })
+  it("入口・グループの箱が地図に無いときは歩に入れない", () => {
+    const r = run([human("a"), tool("Bash")], { entry: "entry:none", group: "group:none" })
+    expect(r[0].steps.map((s) => s.box)).toEqual(["tool:cc-shell"])
+  })
+})
+
 describe("[A25] 空の状態", () => {
   it("道具0回・箱を通らない・グループ不明", () => {
     const r = run([human("a"), human("b"), tool("Read", { file_path: "C:\\x" }), tool("Grep")], { group: null })
     expect(r[0].empty).toBe("no-tools")
     expect(r[1].empty).toBe("no-box")
     expect(r[1].steps.map((s) => s.box)).toEqual(["entry:desktop"])
+    expect(r[1].visits).toHaveLength(1)
   })
   it("動いている途中は最後の指示だけ", () => {
     const r = run([human("a"), human("b")], {}, true)
