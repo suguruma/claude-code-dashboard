@@ -81,8 +81,8 @@ describe("[6章] 個人のフォルダの名前を伏せる", () => {
 
 describe("[A5c] パスの正規化", () => {
   it("~ を戻し、区切りと大文字小文字をそろえる。WSL は比べない", () => {
-    expect(normalizePath("~\\AIxDev\\", HOME)).toBe("c:\\users\\tester\\aixdev")
-    expect(normalizePath("C:/AIxDev/X", HOME)).toBe("c:\\aixdev\\x")
+    expect(normalizePath("~\\Projects\\", HOME)).toBe("c:\\users\\tester\\projects")
+    expect(normalizePath("C:/Projects/X", HOME)).toBe("c:\\projects\\x")
     expect(normalizePath("WSL ~/work", HOME)).toBeNull()
     expect(normalizePath("relative\\path", HOME)).toBeNull()
   })

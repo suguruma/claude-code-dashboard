@@ -30,7 +30,7 @@ function index(): MapIndex {
   const layerOf = (id: string) =>
     id.startsWith("entry") || id.startsWith("task") ? "entry" : id.startsWith("safety") ? "safety" : id.startsWith("group") ? "routing" : id.startsWith("skill") || id.startsWith("agent") ? "skills" : id.startsWith("kn") ? "knowledge" : id.startsWith("out") ? "output" : "tools"
   const nodes: Record<string, unknown>[] = ids.map((id) => ({ id, layer: layerOf(id), label: id, kind: "", strength: "none", place: "", desc: "" }))
-  nodes.find((n) => n.id === "kn:plan")!.place = "~\\AIxDev\\App\\docs"
+  nodes.find((n) => n.id === "kn:plan")!.place = "~\\Projects\\App\\docs"
   nodes.find((n) => n.id === "group:■試験")!.sessions = [
     { title: "01_試験の担当", folder: "C:\\Work\\App", role: "担当" },
     { title: "02_ほか", folder: "~\\Shared", role: "担当" },
@@ -54,9 +54,9 @@ const box = (name: string, input: Record<string, unknown> = {}) => {
 
 describe("[A5] 規則3〜12 の写し", () => {
   it("当てる順と箱", () => {
-    expect(box("Read", { file_path: "C:\\Users\\tester\\AIxDev\\App\\docs\\plan.md" })).toBe("kn:plan") // 6
-    expect(box("Edit", { file_path: "c:/users/tester/aixdev/app/docs/x.md" })).toBe("kn:plan") // 6(区切りと大文字小文字)
-    expect(box("Read", { file_path: "C:\\Users\\tester\\AIxDev\\App\\docsX\\plan.md" })).toBe("ほか:Read") // 同じか、その中だけ
+    expect(box("Read", { file_path: "C:\\Users\\tester\\Projects\\App\\docs\\plan.md" })).toBe("kn:plan") // 6
+    expect(box("Edit", { file_path: "c:/users/tester/projects/app/docs/x.md" })).toBe("kn:plan") // 6(区切りと大文字小文字)
+    expect(box("Read", { file_path: "C:\\Users\\tester\\Projects\\App\\docsX\\plan.md" })).toBe("ほか:Read") // 同じか、その中だけ
     expect(box("Write", { file_path: "C:\\out\\報告.docx" })).toBe("out:office") // 8
     expect(box("Artifact", { action: "publish" })).toBe("out:page")
     expect(box("Artifact", { action: "read" })).toBe("ほか:Artifact")
@@ -226,7 +226,7 @@ describe("[A8] 中身を出さない", () => {
       tool("Bash", { command: `cat ${MARK}` }),
       result(`出力 ${MARK}`),
       tool("Write", { file_path: `C:\\x\\${MARK}.ts`, content: MARK }),
-      tool("Read", { file_path: `C:\\Users\\tester\\AIxDev\\App\\docs\\${MARK}.md` }),
+      tool("Read", { file_path: `C:\\Users\\tester\\Projects\\App\\docs\\${MARK}.md` }),
       tool("SendMessage", { message: `[完了] ${MARK}` }),
     ]
     const text = JSON.stringify(run(lines))
