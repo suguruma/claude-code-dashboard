@@ -12,15 +12,14 @@ import {
   ISOLATED_PREFIX,
   MIN_EFFECTIVE_FONT,
   circled,
-  fitZoom,
+  fitView,
   labelWidth,
   layoutNow,
   layoutRoute,
   playbackInterval,
   type MapLayout,
 } from "@/lib/envMap/envMapLayout"
-import type { EnvMapData, EnvMapNode, EnvMapResponse, RouteInstruction, RouteResponse } from "@/lib/envMap/envMapTypes"
-import { GUARD_BOX } from "@/lib/envMap/routeRules"
+import { GUARD_BOX, type EnvMapData, type EnvMapNode, type EnvMapResponse, type RouteInstruction, type RouteResponse } from "@/lib/envMap/envMapTypes"
 import { STRENGTH_TEXT, readColors, strengthBorder, type EnvMapColors } from "./envMapTheme"
 
 /**
@@ -288,7 +287,7 @@ function EnvMapBody({ res, map, mode, setMode, session, setSession, reload }: Bo
           </label>
           <select
             id="env-map-instruction"
-            className="h-8 w-[260px] truncate rounded-md border bg-background px-2"
+            className="h-8 w-[240px] truncate rounded-md border bg-background px-2"
             value={instructions.length ? index : ""}
             disabled={!instructions.length}
             title={ins ? instructionText(ins, nodes) : undefined}
@@ -310,17 +309,16 @@ function EnvMapBody({ res, map, mode, setMode, session, setSession, reload }: Bo
             ▶
           </Button>
           {play === null ? (
-            <Button variant="outline" size="sm" className="w-[120px]" disabled={!ins || ins.visits.length === 0 || reduced} onClick={() => setPlay(1)} title={reduced ? "動きを減らす設定のため、番号だけを出しています" : undefined}>
+            <Button variant="outline" size="sm" className="w-[120px] text-sm" disabled={!ins || ins.visits.length === 0 || reduced} onClick={() => setPlay(1)} title={reduced ? "動きを減らす設定のため、番号だけを出しています" : undefined}>
               順に光らせる
             </Button>
           ) : (
-            <Button variant="outline" size="sm" className="w-[120px]" onClick={() => setPlay(null)}>
+            <Button variant="outline" size="sm" className="w-[120px] text-sm" onClick={() => setPlay(null)}>
               止める（Esc）
             </Button>
           )}
-          <Button variant="ghost" size="sm" onClick={() => void route.mutate()} title="会話記録を読み直す（自動では読み直しません）">
+          <Button variant="ghost" size="icon-sm" onClick={() => void route.mutate()} aria-label="読み直す" title="会話記録を読み直す（自動では読み直しません）">
             <RefreshCw className="size-4" />
-            読み直す
           </Button>
         </div>
       )}
@@ -333,8 +331,8 @@ function EnvMapBody({ res, map, mode, setMode, session, setSession, reload }: Bo
         </Alert>
       )}
       {mode === "route" && route.data && !ins && <p className="py-2 text-sm">このセッションには、まだ指示がありません。</p>}
-      {mode === "route" && ins && <EmptyNote ins={ins} group={route.data?.group ?? null} nodes={nodes} />}
       <MapCanvas
+        note={mode === "route" && ins ? <EmptyNote ins={ins} group={route.data?.group ?? null} nodes={nodes} /> : null}
         map={map}
         mode={mode}
         ins={mode === "route" ? ins : null}
@@ -379,7 +377,7 @@ function EmptyNote({ ins, group, nodes }: { ins: RouteInstruction; group: string
   if (notes.length === 0) return null
   void nodes
   return (
-    <ul className="py-1 text-sm text-muted-foreground" data-empty="route">
+    <ul className="rounded border bg-background/90 px-2 py-1 text-sm text-muted-foreground" data-empty="route">
       {notes.map((n) => (
         <li key={n}>{n}</li>
       ))}
@@ -496,7 +494,7 @@ function MapControls({ mode, setMode, canRoute, map, layerFilter, setLayerFilter
         <Button variant="outline" size="icon-sm" onClick={() => zoomBy(0.8)} aria-label="縮小" title="縮小（− キー・Ctrl＋ホイール）">
           <Minus className="size-4" />
         </Button>
-        <Button variant="outline" size="sm" onClick={() => zoomBy(0)} title="全体を表示">
+        <Button variant="outline" size="sm" className="text-sm" onClick={() => zoomBy(0)} title="全体を表示">
           <Maximize2 className="size-4" />
           全体を表示
         </Button>
@@ -506,6 +504,8 @@ function MapControls({ mode, setMode, canRoute, map, layerFilter, setLayerFilter
 }
 
 interface CanvasProps {
+  /** 地図の右上に重ねる文(空の状態など。縦の予算を使わない) */
+  note: React.ReactNode
   map: EnvMapData
   mode: Mode
   ins: RouteInstruction | null
@@ -526,12 +526,13 @@ function routeView(map: EnvMapData, ins: RouteInstruction) {
     const n = byId.get(v.box)
     if (!n) continue
     const back = v.visits > 1 ? ` ↺${v.visits - 1}` : ""
-    labels.set(v.box, `${circled(v.order)} ${n.label}${v.calls > 0 ? ` ${v.calls}回` : ""}${back}`)
+    // 詰めた表示は括弧の補足を落とした短い名前(全体の名前は選ぶと行A と欄に出る)
+    labels.set(v.box, `${circled(v.order)} ${shortName(n.label)}${v.calls > 0 ? ` ${v.calls}回` : ""}${back}`)
   }
   const guard = byId.get(GUARD_BOX)
   if (guard && ins.guard > 0 && !labels.has(GUARD_BOX)) {
     visits.push({ box: GUARD_BOX, order: 0, calls: ins.guard, visits: 0 })
-    labels.set(GUARD_BOX, `🛡 ${guard.label} ×${ins.guard}`)
+    labels.set(GUARD_BOX, `🛡 ${shortName(guard.label)} ×${ins.guard}`)
   }
   if (ins.others.length > 0) {
     const text = `ほか：${ins.others.slice(0, 3).map((o) => `${o.key} ${o.count}`).join("・")}${ins.others.length > 3 ? ` ほか${ins.others.length - 3}種` : ""}`
@@ -543,7 +544,7 @@ function routeView(map: EnvMapData, ins: RouteInstruction) {
   return { data, visits, labels }
 }
 
-function MapCanvas({ map, mode, ins, selected, setSelected, layerFilter, play, reduced }: CanvasProps) {
+function MapCanvas({ note, map, mode, ins, selected, setSelected, layerFilter, play, reduced }: CanvasProps) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const boxRef = useRef<HTMLDivElement>(null)
   const cyRef = useRef<Core | null>(null)
@@ -552,8 +553,10 @@ function MapCanvas({ map, mode, ins, selected, setSelected, layerFilter, play, r
   const [width, setWidth] = useState(720)
   const [bands, setBands] = useState<{ label: string; top: number; h: number; count: number }[]>([])
   const [ready, setReady] = useState(false)
+  const [hover, setHover] = useState<{ label: string; x: number; y: number } | null>(null)
 
-  // 地図の高さ:画面の下端−16px まで(縦の予算。A11)。ルートの詰めた表示が 1.0倍で入らなければ伸ばす(ページで送る。低A)
+  // 地図の高さ:画面の下端−16px まで(縦の予算。A11)。ルートの詰めた表示が 1.0倍で入らなければ伸ばす(ページで送る。低A)。
+  // 上の行(空の状態の文など)が出入りすると地図の上端が動くので、指示が替わるたびに測り直す
   useEffect(() => {
     const measure = () => {
       const el = wrapRef.current
@@ -570,7 +573,7 @@ function MapCanvas({ map, mode, ins, selected, setSelected, layerFilter, play, r
       ro.disconnect()
       window.removeEventListener("resize", measure)
     }
-  }, [mode])
+  }, [mode, ins])
 
   // 色はテーマから。テーマを替えたら読み直す(A19。next-themes は html の class を替える)
   const themeKey = useSyncExternalStore(subscribeTheme, themeSnapshot, () => null)
@@ -588,7 +591,14 @@ function MapCanvas({ map, mode, ins, selected, setSelected, layerFilter, play, r
     return { kind: "now" as const, layout: layoutNow(data, avail), data, ins: null }
   }, [map, mode, ins, layerFilter, width])
 
-  const mapHeight = view.kind === "route" ? Math.max(height, view.layout.height + MAP_PADDING * 2) : height
+  // 1.0倍で見せるか:ルートはいつも。［今］は幅が 1.0倍で入り、高さが 0.85倍以上で入るとき(字を隠すより、地図を伸ばしてページで送る。低A)
+  const atOne = useMemo(() => {
+    if (view.kind === "route") return true
+    const byWidth = fitView(view.layout, width, Number.MAX_SAFE_INTEGER, MAP_PADDING).zoom
+    const both = fitView(view.layout, width, height, MAP_PADDING).zoom
+    return byWidth >= 1 && both >= 0.85
+  }, [view, width, height])
+  const mapHeight = atOne ? Math.max(height, view.layout.height + MAP_PADDING * 2) : height
 
   // cytoscape を作る(このタブを開いたときだけ読み込む。A12)
   useEffect(() => {
@@ -646,16 +656,28 @@ function MapCanvas({ map, mode, ins, selected, setSelected, layerFilter, play, r
         style: styleOf(colors),
       })
       cyRef.current = cy
-      const fz = fitZoom(layout, cy.width(), cy.height(), MAP_PADDING)
-      cy.minZoom(Math.min(fz * 0.8, 1))
+      // 枠の大きさは DOM から読む(作った直後の cy.width() は 0 のことがある)
+      const vw = boxRef.current.clientWidth || width
+      const vh = boxRef.current.clientHeight || mapHeight
+      const fit = fitView(layout, vw, vh, MAP_PADDING)
+      cy.minZoom(Math.min(fit.zoom * 0.8, 1))
       cy.maxZoom(2.5)
-      if (view.kind === "route") {
-        cy.zoom(1)
-        cy.pan({ x: MAP_PADDING, y: MAP_PADDING })
-      } else {
-        cy.zoom(fz)
-        cy.pan({ x: MAP_PADDING, y: MAP_PADDING })
-      }
+      // ルートの詰めた表示は 1.0倍(枠に入らなければ地図の高さを伸ばしてページで送る)。［今］は全体を表示
+      const start = atOne ? fitView(layout, Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER, MAP_PADDING) : fit
+      cy.zoom(start.zoom)
+      cy.pan(start.pan)
+      // 実効12px 未満の字は出さない(A15)
+      const syncLabels = () => cy.nodes().toggleClass("nolabel", cy.zoom() * 12 < MIN_EFFECTIVE_FONT - 0.01)
+      cy.on("zoom", syncLabels)
+      syncLabels()
+      cy.on("mouseover", "node", (e) => {
+        const t = e.target as unknown as { data(k: string): unknown; renderedPosition(): { x: number; y: number } }
+        if (cy.zoom() * 12 >= MIN_EFFECTIVE_FONT) return
+        const p = t.renderedPosition()
+        setHover({ label: String(t.data("label") ?? ""), x: p.x, y: p.y })
+      })
+      cy.on("mouseout", "node", () => setHover(null))
+      cy.on("viewport", () => setHover(null))
       const syncBands = () => {
         const z = cy.zoom()
         const p = cy.pan()
@@ -676,7 +698,7 @@ function MapCanvas({ map, mode, ins, selected, setSelected, layerFilter, play, r
     return () => {
       alive = false
     }
-  }, [view, colors, map.edges, setSelected])
+  }, [view, colors, map.edges, setSelected, width, mapHeight, atOne])
 
   useEffect(
     () => () => {
@@ -738,9 +760,11 @@ function MapCanvas({ map, mode, ins, selected, setSelected, layerFilter, play, r
       if (!cy || cy.destroyed()) return
       if (factor === 0) {
         const layout = layoutRef.current
-        const fz = layout ? fitZoom(layout, cy.width(), cy.height(), MAP_PADDING) : 1
-        cy.zoom(fz)
-        cy.pan({ x: MAP_PADDING, y: MAP_PADDING })
+        const box = boxRef.current
+        if (!layout || !box) return
+        const fit = fitView(layout, box.clientWidth, box.clientHeight, MAP_PADDING)
+        cy.zoom(fit.zoom)
+        cy.pan(fit.pan)
         return
       }
       const level = Math.max(cy.minZoom(), Math.min(cy.maxZoom(), cy.zoom() * factor))
@@ -771,21 +795,28 @@ function MapCanvas({ map, mode, ins, selected, setSelected, layerFilter, play, r
     <div ref={wrapRef} className="relative w-full overflow-hidden rounded-md border" style={{ height: mapHeight }}>
       <div
         ref={boxRef}
-        className="absolute inset-0"
+        // cytoscape は器の position を relative に替えるので、inset ではなく幅と高さで大きさを決める
+        style={{ width: "100%", height: "100%" }}
         tabIndex={0}
         role="img"
         aria-label={`${mode === "route" ? "指示のルート" : "AI 環境の全体マップ"}。一覧で同じ中身を読めます`}
         data-env-map="canvas"
       />
-      <div className="pointer-events-none absolute inset-y-0 left-0" aria-hidden="true">
+      <div className="pointer-events-none absolute inset-y-0 left-0 w-28" aria-hidden="true">
         {bands.map((b) =>
           b.top + b.h < 0 || b.top > mapHeight ? null : (
-            <div key={b.label} className="absolute left-1 rounded bg-background/85 px-1 text-sm leading-5 text-muted-foreground" style={{ top: Math.max(0, b.top + Math.max(0, (b.h - 20) / 2)) }}>
+            <div key={b.label} className="absolute left-1 whitespace-nowrap rounded bg-background/85 px-1 text-sm leading-5 text-muted-foreground" style={{ top: Math.max(0, b.top + Math.max(0, (b.h - 20) / 2)) }}>
               {b.label} {b.count}
             </div>
           )
         )}
       </div>
+      {note && <div className="absolute right-2 top-2 z-10 max-w-[60%]">{note}</div>}
+      {hover && (
+        <div className="pointer-events-none absolute z-10 -translate-x-1/2 rounded border bg-popover px-2 py-0.5 text-sm shadow" style={{ left: hover.x, top: hover.y + 22 }}>
+          {hover.label}
+        </div>
+      )}
       <p className="pointer-events-none absolute bottom-1 right-2 rounded bg-background/85 px-1 text-sm text-muted-foreground">ホイールでページを送る・Ctrl＋ホイールで拡大</p>
     </div>
   )
@@ -831,6 +862,7 @@ function styleOf(c: EnvMapColors): unknown {
     { selector: "node.dim", style: { opacity: 0.35 } },
     { selector: "node.picked", style: { "border-color": c.route, "border-width": 4 } },
     { selector: "node.faded", style: { opacity: 0.12 } },
+    { selector: "node.nolabel", style: { "text-opacity": 0 } },
     {
       selector: "edge",
       style: { width: 1.5, "line-color": c.muted, "curve-style": "bezier", "target-arrow-shape": "triangle", "target-arrow-color": c.muted, "arrow-scale": 0.8 },

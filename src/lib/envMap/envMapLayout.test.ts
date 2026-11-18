@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import type { EnvMapData, RouteVisit } from "./envMapTypes"
-import { BAND_GAP, BOX_H, BAND_PAD, EMPTY_BAND_H, circled, fitZoom, layoutNow, layoutRoute, playbackInterval } from "./envMapLayout"
+import { BAND_GAP, BOX_H, BAND_PAD, EMPTY_BAND_H, GUTTER_PX, LABEL_GUTTER, circled, fitView, fitZoom, layoutNow, layoutRoute, playbackInterval } from "./envMapLayout"
 
 const layers = ["entry", "safety", "routing", "skills", "tools", "knowledge", "output"].map((id) => ({ id, label: id }))
 const node = (id: string, layer: string, degree = 1) => ({ id, layer, label: id, kind: "", strength: "none" as const, place: "", desc: "", degree })
@@ -29,6 +29,11 @@ describe("［今］の並べ方", () => {
     expect(z).toBeGreaterThan(0)
     expect(l.height * z).toBeLessThanOrEqual(555)
     expect(l.width * z).toBeLessThanOrEqual(977)
+    // 帯の名前の幅を左に取っても、箱は枠の中に入る
+    const v = fitView(l, 977, 555)
+    expect(v.pan.x + LABEL_GUTTER * v.zoom).toBe(GUTTER_PX)
+    expect(v.pan.x + l.width * v.zoom).toBeLessThanOrEqual(977)
+    expect(v.pan.y + l.height * v.zoom).toBeLessThanOrEqual(555)
   })
 })
 

@@ -4,6 +4,9 @@
  * 人の入力・ファイルの中身・コマンドの全文・ツールの入力・突き合わせに使ったファイルのパスは入れない。
  */
 
+/** 見張りのフックの箱(規則7。段1 は歩にせず印)。画面からも使うので、fs に触れるファイルに置かない */
+export const GUARD_BOX = "safety:hook-guard"
+
 /** 箱の強さ(map.json の strength)。画面では日本語の凡例に写す */
 export type EnvMapStrength = "stop" | "judge" | "watch" | "read" | "none"
 

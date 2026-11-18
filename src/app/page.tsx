@@ -190,6 +190,14 @@ export default function HomePage() {
           </Link>{" "}
           で見ます。
         </p>
+        {/* 全体マップ(⑲)への入口の一文 */}
+        <p className="text-sm text-muted-foreground">
+          AI 環境の仕組みと、指示ごとに通った道は{" "}
+          <Link href="/org-rules?tab=map" className="inline-flex items-center gap-1 text-primary hover:underline">
+            組織の「全体マップ」 <ArrowRight className="size-3.5" aria-hidden />
+          </Link>{" "}
+          で見ます。
+        </p>
 
         {/* データの出どころの行(設定・環境変数で場所を指定したときだけ。自動で見つけたときは出さない。⑬) */}
         {data?.dataLocation && data.dataLocation.origin !== "auto" && <DataLocationLine location={data.dataLocation} />}

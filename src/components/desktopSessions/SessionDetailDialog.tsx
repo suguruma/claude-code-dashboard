@@ -1,6 +1,7 @@
 "use client"
 
 import { CheckCircle2, Circle, CircleDot } from "lucide-react"
+import Link from "next/link"
 import useSWR from "swr"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -88,6 +89,14 @@ export function SessionDetailDialog({ sessionId, highContextRatio, onClose }: Se
                 <DesktopStatusBadge id={detail.id} status={detail.status} standby={detail.standbyInfo} />
                 {detail.group && <Badge variant="secondary">{detail.group.name}</Badge>}
                 <SendCountBadge messaging={detail.messaging} />
+                {/* 全体マップ(⑲)でこのセッションのルートを見る。この詳細は PC の画面だけ(スマホは PhoneSessionSheet。A14) */}
+                <Link
+                  href={`/org-rules?tab=map&session=${encodeURIComponent(detail.id)}`}
+                  className="ml-auto text-sm text-primary hover:underline"
+                  title="組織の［全体マップ］で、このセッションの指示ごとのルートを見ます"
+                >
+                  地図で見る
+                </Link>
               </div>
               <p className="text-xs text-muted-foreground">判断の根拠：{detail.statusReason}</p>
             </div>

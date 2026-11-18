@@ -121,10 +121,28 @@ export function layoutRoute(data: EnvMapData, visits: RouteVisit[], width: numbe
 /** 全体を表示したときの倍率(地図の枠に全部が入る倍率。最小倍率はこれより少し小さくする。固定の 0.2 にしない) */
 export function fitZoom(layout: MapLayout, viewW: number, viewH: number, padding = 16): number {
   if (layout.width <= 0 || layout.height <= 0) return 1
-  return Math.min(1, (viewW - padding * 2) / layout.width, (viewH - padding * 2) / layout.height)
+  // 枠がまだ測れない(0)ときも、負や0の倍率にしない
+  const w = Math.max(1, viewW - padding * 2)
+  const h = Math.max(1, viewH - padding * 2)
+  return Math.max(0.02, Math.min(1, w / layout.width, h / layout.height))
 }
 
-/** 実効の字の大きさがこれ未満なら箱の名前を出さない(A15) */
+/** 帯の名前(HTML・14px)を重ねる左の幅(画面の px)。箱はこの右から描く */
+export const GUTTER_PX = 128
+
+/**
+ * 全体を表示の倍率と位置。帯の名前の幅(GUTTER_PX)は倍率に関係なく画面の左に取り、箱はその右に収める。
+ * 1.0倍を超えて大きくしない。枠が測れないときも負や0の倍率にしない
+ */
+export function fitView(layout: MapLayout, viewW: number, viewH: number, padding = 16): { zoom: number; pan: { x: number; y: number } } {
+  const contentW = Math.max(1, layout.width - LABEL_GUTTER)
+  const w = Math.max(1, viewW - GUTTER_PX - padding)
+  const h = Math.max(1, viewH - padding * 2)
+  const zoom = layout.height <= 0 ? 1 : Math.max(0.02, Math.min(1, w / contentW, h / layout.height))
+  return { zoom, pan: { x: GUTTER_PX - LABEL_GUTTER * zoom, y: padding } }
+}
+
+/** 実効の字の大きさがこれ未満なら箱の名前を出さない(A15。cytoscape の min-zoomed-font-size は倍率を2の累乗に切り上げて比べるので、自前で隠す) */
 export const MIN_EFFECTIVE_FONT = 12
 
 /** ［順に光らせる］の1歩の間隔:全体を15秒以内、1歩は 300ms 以上 1200ms 以下(A20) */

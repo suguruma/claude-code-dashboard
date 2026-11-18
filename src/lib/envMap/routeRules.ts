@@ -6,7 +6,7 @@ import {
   queuedOriginOf,
   type RawEntry,
 } from "../transcriptDigest"
-import type { RouteCount, RouteEmpty, RouteInstruction, RouteStep, RouteVisit } from "./envMapTypes"
+import { GUARD_BOX, type RouteCount, type RouteEmpty, type RouteInstruction, type RouteStep, type RouteVisit } from "./envMapTypes"
 import { normalizePath, type MapIndex } from "./mapData"
 
 /**
@@ -15,7 +15,7 @@ import { normalizePath, type MapIndex } from "./mapData"
  * - サブエージェントの記録は読まない(A5d)。isSidechain の行も読まない
  */
 
-export const GUARD_BOX = "safety:hook-guard"
+export { GUARD_BOX }
 export const ENTRY_DESKTOP = "entry:desktop"
 
 /** 規則11:数えない道具(箱にも「ほか」にも入れない) */
