@@ -66,6 +66,8 @@ export interface EnvMapSessionItem {
   lastActivityAt: number | null
   archived: boolean
   running: boolean
+  /** 会話記録の大きさの合計(バイト。読んでいる間の「読んでいます(n MB)」に使う) */
+  bytes: number
 }
 
 export interface EnvMapResponse {

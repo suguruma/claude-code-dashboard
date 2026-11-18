@@ -9,7 +9,8 @@
  * 出力先の env-map/map.json に地図を書き、projects/ の各会話ログ（サブエージェントを除く）の末尾に、人の指示1つと道具の呼び出しを足す。
  * 表示するには、config/env-map.json に {"mapPath": "<出力先>\\env-map\\map.json"} を書く。
  */
-import { appendFile, mkdir, readdir, writeFile } from "node:fs/promises"
+import { access, appendFile, mkdir, readdir, writeFile } from "node:fs/promises"
+import os from "node:os"
 import path from "node:path"
 
 const args = process.argv.slice(2)
@@ -18,6 +19,19 @@ const stale = args.includes("--stale")
 const outDir = args.filter((a) => !a.startsWith("--"))[0]
 if (!outDir) {
   console.error("使い方: node scripts/make-env-map-sample.mjs [--big] [--stale] <出力先>")
+  process.exit(1)
+}
+
+// 本物の会話記録に書き足さない:ホームの .claude の下は拒み、make-org-chart-sample が置く expected.json が無ければ止める
+const resolved = path.resolve(outDir).toLowerCase()
+if (resolved.startsWith(path.join(os.homedir(), ".claude").toLowerCase())) {
+  console.error("ホームの .claude の下には書きません。make-org-chart-sample.mjs の出力先を渡してください")
+  process.exit(1)
+}
+try {
+  await access(path.join(outDir, "expected.json"))
+} catch {
+  console.error("出力先に expected.json がありません。先に make-org-chart-sample.mjs で合成のデータを作ってください")
   process.exit(1)
 }
 
@@ -41,9 +55,9 @@ const FIXED = [
   { id: "safety:hook-guard", layer: "safety", label: "フック：安全の見張り（記録だけ）", strength: "watch" },
   { id: "group:■試験グループ", layer: "routing", label: "■試験グループ", sessions: true },
   { id: "group:■別グループ", layer: "routing", label: "■別グループ" },
-  { id: "skill:owner-doc", layer: "skills", label: "owner-doc", strength: "read" },
-  { id: "skill:agent-comms", layer: "skills", label: "agent-comms", strength: "read" },
-  { id: "agent:haiku-explorer", layer: "skills", label: "探し物の役（haiku）" },
+  { id: "skill:report-style", layer: "skills", label: "report-style", strength: "read" },
+  { id: "skill:message-style", layer: "skills", label: "message-style", strength: "read" },
+  { id: "agent:search-helper", layer: "skills", label: "探し物の役" },
   { id: "tool:cc-shell", layer: "tools", label: "シェル（Bash・PowerShell）" },
   { id: "tool:cc-edit", layer: "tools", label: "ファイルの書き換え（Edit・Write）" },
   { id: "tool:cc-web", layer: "tools", label: "Web（WebSearch・WebFetch）" },
@@ -71,8 +85,8 @@ const live = nodes.filter((n) => !n.ghost)
 const edgeCount = big ? 400 : 69
 const edges = []
 const pairs = [
-  ["skill:agent-comms", "skill:owner-doc"],
-  ["group:■試験グループ", "skill:owner-doc"],
+  ["skill:message-style", "skill:report-style"],
+  ["group:■試験グループ", "skill:report-style"],
   ["safety:hook-guard", "tool:cc-shell"],
   ["tool:cc-edit", "kn:plan"],
   ["tool:cc-comms", "out:report"],
@@ -109,15 +123,15 @@ function toolLines(startSec) {
     lines.push({ type: "user", timestamp: at(t - 1), message: { role: "user", content: [{ type: "tool_result", tool_use_id: `toolu_sample_${id}`, content: "合成の結果" }] } })
   }
   lines.push({ type: "user", timestamp: at(t), message: { role: "user", content: "合成の指示（全体マップの確認用）" } })
-  tool("Skill", { skill: "owner-doc" })
+  tool("Skill", { skill: "report-style" })
   for (let i = 0; i < 38; i++) tool("Bash", { command: "echo sample" })
   tool("Read", { file_path: path.join(docsDir, "plan.md") })
   for (let i = 0; i < 12; i++) tool("Edit", { file_path: path.join(outDir, "work", "a.ts") })
   for (let i = 0; i < 6; i++) tool("Bash", { command: "echo sample" })
   for (let i = 0; i < 9; i++) tool("Read", { file_path: path.join(outDir, "work", "b.ts") })
   for (let i = 0; i < 3; i++) tool("Grep", { pattern: "sample" })
-  tool("Skill", { skill: "agent-comms" })
-  tool("Agent", { subagent_type: "haiku-explorer", prompt: "合成の依頼" })
+  tool("Skill", { skill: "message-style" })
+  tool("Agent", { subagent_type: "search-helper", prompt: "合成の依頼" })
   tool("Bash", { command: "git commit -m sample" })
   tool("SendMessage", { to: "main", message: "[完了] 合成の報告" })
   return lines

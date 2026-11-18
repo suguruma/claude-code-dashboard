@@ -12,8 +12,8 @@ function index(): MapIndex {
     "task:daily-check",
     GUARD_BOX,
     "group:■試験",
-    "skill:owner-doc",
-    "agent:haiku-explorer",
+    "skill:report-style",
+    "agent:search-helper",
     "mcp:notebooklm-mcp",
     "tool:browser",
     "tool:plugins",
@@ -63,10 +63,10 @@ describe("[A5] 規則3〜12 の写し", () => {
     expect(box("Bash", { command: "git -C /c/x commit -m test" })).toBe("out:commit")
     expect(box("SendMessage", { message: "[完了] 済み" })).toBe("out:report")
     expect(box("SendMessage", { message: "[報告] 途中" })).toBe("tool:cc-comms") // 10
-    expect(box("Skill", { skill: "owner-doc" })).toBe("skill:owner-doc") // 3
+    expect(box("Skill", { skill: "report-style" })).toBe("skill:report-style") // 3
     expect(box("Skill", { skill: "anthropic-skills:pdf" })).toBe("tool:plugins")
     expect(box("Skill", { skill: "unknown" })).toBe("ほか:Skill")
-    expect(box("Agent", { subagent_type: "haiku-explorer" })).toBe("agent:haiku-explorer") // 4
+    expect(box("Agent", { subagent_type: "search-helper" })).toBe("agent:search-helper") // 4
     expect(box("Agent", { subagent_type: "general-purpose" })).toBe("ほか:Agent")
     expect(box("mcp__notebooklm-mcp__notebook_list")).toBe("mcp:notebooklm-mcp") // 5
     expect(box("mcp__Claude_Browser__navigate")).toBe("tool:browser")
@@ -76,7 +76,7 @@ describe("[A5] 規則3〜12 の写し", () => {
     expect(box("PowerShell", { command: "ls" })).toBe("tool:cc-shell")
     expect(box("mcp__terminal__run_in_terminal")).toBe("tool:cc-shell")
     expect(box("mcp__terminal__read_terminal")).toBe("ほか:mcp__terminal__read_terminal")
-    expect(box("Skill", { command: "owner-doc" })).toBe("skill:owner-doc")
+    expect(box("Skill", { command: "report-style" })).toBe("skill:report-style")
     expect(box("Edit", { file_path: "C:\\else\\a.ts" })).toBe("tool:cc-edit")
     expect(box("WebFetch")).toBe("tool:cc-web")
     expect(box("mcp__ccd_session__start_session")).toBe("tool:cc-comms")
@@ -193,10 +193,10 @@ describe("[A6] 指示の区切り", () => {
 
   it("サブエージェントの行(isSidechain)は読まない [A5d]", () => {
     const side = JSON.stringify({ type: "assistant", isSidechain: true, timestamp: ts(), message: { content: [{ type: "tool_use", name: "Bash", input: {} }] } })
-    const r = run([human("x"), tool("Agent", { subagent_type: "haiku-explorer", prompt: MARK }), side])
+    const r = run([human("x"), tool("Agent", { subagent_type: "search-helper", prompt: MARK }), side])
     expect(r[0].calls).toBe(1)
     expect(r[0].agents).toBe(1)
-    expect(r[0].steps.map((s) => s.box)).toContain("agent:haiku-explorer")
+    expect(r[0].steps.map((s) => s.box)).toContain("agent:search-helper")
   })
 
   it("startsInstruction は人の入力の行だけ", () => {

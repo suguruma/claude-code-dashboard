@@ -173,7 +173,12 @@ function EnvMapBody({ res, map, mode, setMode, session, setSession, reload }: Bo
   const reduced = useReducedMotion()
   const sessionItem = res.sessions.find((s) => s.id === session) ?? null
 
-  const choose = (i: number) => setPick({ session, index: i })
+  const choose = (i: number) => {
+    setPick({ session, index: i })
+    setPlay(null)
+  }
+  const [openLayerId, setOpenLayerId] = useState<string | null>(null)
+  const openLayer = useCallback((layer: string) => setOpenLayerId(layer), [])
   const choosePrev = () => index > 1 && choose(index - 1)
   const chooseNext = () => index < instructions.length && choose(index + 1)
 
@@ -191,6 +196,8 @@ function EnvMapBody({ res, map, mode, setMode, session, setSession, reload }: Bo
   useEffect(() => {
     if (play === null) return
     const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA")) return
       if (e.key === "Escape") setPlay(null)
       else if (e.key === "ArrowRight") setPlay((p) => (p === null ? p : Math.min(visits.length, p + 1)))
       else if (e.key === "ArrowLeft") setPlay((p) => (p === null ? p : Math.max(1, p - 1)))
@@ -238,7 +245,7 @@ function EnvMapBody({ res, map, mode, setMode, session, setSession, reload }: Bo
           </button>
         )}
         {withHint ? `。${hint}` : ""}
-        {staleNote && <span className="ml-2 text-muted-foreground">作り直しは AI 環境の整備の担当が行います</span>}
+        {staleNote && <span className="ml-2 text-muted-foreground">地図は、地図を作る仕組みが作り直します</span>}
       </span>
     )
   }
@@ -323,16 +330,23 @@ function EnvMapBody({ res, map, mode, setMode, session, setSession, reload }: Bo
         </div>
       )}
       {mode === "route" && route.isLoading && (
-        <p className="py-2 text-sm text-muted-foreground">読んでいます{sessionItem ? `（${sessionItem.title}）` : ""}...</p>
+        <p className="py-2 text-sm text-muted-foreground">読んでいます{sessionItem ? `（${Math.max(0.1, Math.round(sessionItem.bytes / 1e5) / 10)} MB）` : ""}...</p>
       )}
       {mode === "route" && route.error && (
         <Alert variant="destructive">
           <AlertDescription>{(route.error as Error).message}</AlertDescription>
         </Alert>
       )}
-      {mode === "route" && route.data && !ins && <p className="py-2 text-sm">このセッションには、まだ指示がありません。</p>}
+      {mode === "route" && route.data?.problem && (
+        <Alert variant="destructive">
+          <AlertDescription>{route.data.problem}</AlertDescription>
+        </Alert>
+      )}
+      {mode === "route" && route.data && !route.data.problem && !ins && <p className="py-2 text-sm">このセッションには、まだ指示がありません。</p>}
       <MapCanvas
         note={mode === "route" && ins ? <EmptyNote ins={ins} group={route.data?.group ?? null} nodes={nodes} /> : null}
+        measureKey={`${route.isLoading}|${Boolean(route.error)}|${route.data?.problem ?? ""}|${Boolean(route.data && !ins)}`}
+        onIsolated={openLayer}
         map={map}
         mode={mode}
         ins={mode === "route" ? ins : null}
@@ -351,6 +365,7 @@ function EnvMapBody({ res, map, mode, setMode, session, setSession, reload }: Bo
         setSelected={setSelected}
         ins={mode === "route" ? ins : null}
         reload={reload}
+        openLayerId={openLayerId}
       />
     </div>
   )
@@ -506,6 +521,10 @@ function MapControls({ mode, setMode, canRoute, map, layerFilter, setLayerFilter
 interface CanvasProps {
   /** 地図の右上に重ねる文(空の状態など。縦の予算を使わない) */
   note: React.ReactNode
+  /** 地図の上の行が出入りしたときに測り直すための印 */
+  measureKey: string
+  /** 「つながり無し n」を押したとき(層の id) */
+  onIsolated: (layer: string) => void
   map: EnvMapData
   mode: Mode
   ins: RouteInstruction | null
@@ -544,7 +563,7 @@ function routeView(map: EnvMapData, ins: RouteInstruction) {
   return { data, visits, labels }
 }
 
-function MapCanvas({ note, map, mode, ins, selected, setSelected, layerFilter, play, reduced }: CanvasProps) {
+function MapCanvas({ note, measureKey, onIsolated, map, mode, ins, selected, setSelected, layerFilter, play, reduced }: CanvasProps) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const boxRef = useRef<HTMLDivElement>(null)
   const cyRef = useRef<Core | null>(null)
@@ -552,7 +571,8 @@ function MapCanvas({ note, map, mode, ins, selected, setSelected, layerFilter, p
   const [height, setHeight] = useState(420)
   const [width, setWidth] = useState(720)
   const [bands, setBands] = useState<{ label: string; top: number; h: number; count: number }[]>([])
-  const [ready, setReady] = useState(false)
+  /** cytoscape を作り直した回数。選択と再生の印は、作り直すたびに当て直す(相談役 重1) */
+  const [cyVer, setCyVer] = useState(0)
   const [hover, setHover] = useState<{ label: string; x: number; y: number } | null>(null)
 
   // 地図の高さ:画面の下端−16px まで(縦の予算。A11)。ルートの詰めた表示が 1.0倍で入らなければ伸ばす(ページで送る。低A)。
@@ -573,7 +593,7 @@ function MapCanvas({ note, map, mode, ins, selected, setSelected, layerFilter, p
       ro.disconnect()
       window.removeEventListener("resize", measure)
     }
-  }, [mode, ins])
+  }, [mode, ins, measureKey])
 
   // 色はテーマから。テーマを替えたら読み直す(A19。next-themes は html の class を替える)
   const themeKey = useSyncExternalStore(subscribeTheme, themeSnapshot, () => null)
@@ -596,7 +616,8 @@ function MapCanvas({ note, map, mode, ins, selected, setSelected, layerFilter, p
     if (view.kind === "route") return true
     const byWidth = fitView(view.layout, width, Number.MAX_SAFE_INTEGER, MAP_PADDING).zoom
     const both = fitView(view.layout, width, height, MAP_PADDING).zoom
-    return byWidth >= 1 && both >= 0.85
+    // 幅は 0.97 まで許す(縦のスクロールバーの出入りで幅が少し減っても、判定が行き来しない)
+    return byWidth >= 0.97 && both >= 0.85
   }, [view, width, height])
   const mapHeight = atOne ? Math.max(height, view.layout.height + MAP_PADDING * 2) : height
 
@@ -688,17 +709,21 @@ function MapCanvas({ note, map, mode, ins, selected, setSelected, layerFilter, p
       cy.on("tap", "node", (e) => {
         const id = (e.target as { id(): string }).id()
         if (id === OTHERS_ID) return
+        if (id.startsWith(ISOLATED_PREFIX)) {
+          onIsolated(id.slice(ISOLATED_PREFIX.length))
+          return
+        }
         setSelected(id)
       })
       cy.on("tap", (e) => {
         if (e.target === cy) setSelected(null)
       })
-      setReady(true)
+      setCyVer((v) => v + 1)
     })
     return () => {
       alive = false
     }
-  }, [view, colors, map.edges, setSelected, width, mapHeight, atOne])
+  }, [view, colors, map.edges, setSelected, onIsolated, width, mapHeight, atOne])
 
   useEffect(
     () => () => {
@@ -711,7 +736,7 @@ function MapCanvas({ note, map, mode, ins, selected, setSelected, layerFilter, p
   // 選んだ箱:近傍以外の線を消し、近傍以外の箱を薄く(0.12)、1.0倍で真ん中に寄せる(A2・A21)
   useEffect(() => {
     const cy = cyRef.current
-    if (!cy || !ready || cy.destroyed()) return
+    if (!cy || cyVer === 0 || cy.destroyed()) return
     cy.batch(() => {
       cy.elements().removeClass("faded").removeClass("hidden").removeClass("picked")
       if (!selected) return
@@ -723,6 +748,10 @@ function MapCanvas({ note, map, mode, ins, selected, setSelected, layerFilter, p
       target.addClass("picked")
     })
     const target = cy.getElementById(selected ?? "")
+    if (selected && target && target.length > 0 && atOne && cy.zoom() >= 1) {
+      scrollToMapY(boxRef.current, target.position().y * cy.zoom() + cy.pan().y)
+      return
+    }
     if (selected && target && target.length > 0) {
       const p = target.position()
       const z = Math.max(1, cy.zoom())
@@ -732,12 +761,12 @@ function MapCanvas({ note, map, mode, ins, selected, setSelected, layerFilter, p
         cy.pan(pan)
       } else cy.animate({ zoom: z, pan, duration: 250 })
     }
-  }, [selected, ready, reduced, view])
+  }, [selected, cyVer, reduced, view, atOne])
 
   // 再生の光(初めて通った順)
   useEffect(() => {
     const cy = cyRef.current
-    if (!cy || !ready || cy.destroyed() || view.kind !== "route" || !view.ins) return
+    if (!cy || cyVer === 0 || cy.destroyed() || view.kind !== "route" || !view.ins) return
     cy.batch(() => {
       cy.nodes().removeClass("current").removeClass("dim")
       if (play === null) return
@@ -749,7 +778,7 @@ function MapCanvas({ note, map, mode, ins, selected, setSelected, layerFilter, p
         else if (i + 1 > play) el.addClass("dim")
       })
     })
-  }, [play, ready, view])
+  }, [play, cyVer, view])
 
   // 拡大:Ctrl＋ホイール(passive:false で画面全体の拡大より先に受ける。軽13)・＋／− キー・ボタン
   useEffect(() => {
@@ -820,6 +849,18 @@ function MapCanvas({ note, map, mode, ins, selected, setSelected, layerFilter, p
       <p className="pointer-events-none absolute bottom-1 right-2 rounded bg-background/85 px-1 text-sm text-muted-foreground">ホイールでページを送る・Ctrl＋ホイールで拡大</p>
     </div>
   )
+}
+
+/** 地図の中の y(画面の px)が見える所まで、ページ(いちばん近い縦にスクロールする親)を送る */
+function scrollToMapY(box: HTMLElement | null, y: number): void {
+  if (!box) return
+  let el: HTMLElement | null = box.parentElement
+  while (el && !/(auto|scroll)/.test(getComputedStyle(el).overflowY)) el = el.parentElement
+  const scroller: HTMLElement = el ?? document.scrollingElement as HTMLElement
+  const r = box.getBoundingClientRect()
+  const view = el ? el.getBoundingClientRect() : { top: 0, bottom: window.innerHeight }
+  const abs = r.top + y
+  if (abs < view.top + 40 || abs > view.bottom - 40) scroller.scrollBy({ top: abs - (view.top + view.bottom) / 2 })
 }
 
 function subscribeTheme(cb: () => void): () => void {
@@ -908,10 +949,18 @@ interface PanelProps {
   setSelected: (id: string | null) => void
   ins: RouteInstruction | null
   reload: () => void
+  /** 「つながり無し n」を押したときに開く層 */
+  openLayerId: string | null
 }
 
-function DetailPanel({ map, nodes, layerLabel, selected, setSelected, ins, reload }: PanelProps) {
+function DetailPanel({ map, nodes, layerLabel, selected, setSelected, ins, reload, openLayerId }: PanelProps) {
   const [allSteps, setAllSteps] = useState(false)
+  const listRef = useRef<HTMLDetailsElement>(null)
+  useEffect(() => {
+    if (!openLayerId || !listRef.current) return
+    listRef.current.open = true
+    document.getElementById(`env-map-layer-${openLayerId}`)?.scrollIntoView({ block: "start" })
+  }, [openLayerId])
   const sel = selected ? nodes.get(selected) : null
   const links = useMemo(() => {
     if (!sel) return []
@@ -970,11 +1019,11 @@ function DetailPanel({ map, nodes, layerLabel, selected, setSelected, ins, reloa
           )}
         </section>
       )}
-      <details>
+      <details ref={listRef}>
         <summary className="cursor-pointer">一覧で見る（層ごと。キーボードと読み上げ用）</summary>
         <div className="mt-2 space-y-2">
           {map.layers.map((l) => (
-            <div key={l.id}>
+            <div key={l.id} id={`env-map-layer-${l.id}`}>
               <h4 className="font-medium">
                 {l.label}（{map.nodes.filter((n) => n.layer === l.id).length}）
               </h4>

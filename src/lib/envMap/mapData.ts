@@ -160,8 +160,20 @@ export function parseMap(raw: unknown, home: string, now: number): ParsedMap | E
     degree.set(dst, (degree.get(dst) ?? 0) + 1)
   }
   for (const n of nodes) n.degree = degree.get(n.id) ?? 0
-  // 応答の id も伏せる(rule: の箱は id が丸ごとパスのことがある)。線の両端も同じ写しにする
-  const idMap = new Map(nodes.map((n) => [n.id, maskUserPath(n.id)]))
+  // 応答の id も伏せる(rule: の箱は id が丸ごとパスのことがある)。線の両端も同じ写しにする。
+  // 伏せた後に重なった id(別の利用者の同じ名前のフォルダなど)は、後の箱と、その箱の線を落とす(cytoscape は同じ id で描けない)
+  const idMap = new Map<string, string>()
+  const taken = new Set<string>()
+  for (const n of nodes) {
+    const masked = maskUserPath(n.id)
+    if (taken.has(masked)) continue
+    taken.add(masked)
+    idMap.set(n.id, masked)
+  }
+  for (let i = nodes.length - 1; i >= 0; i--) if (!idMap.has(nodes[i].id)) nodes.splice(i, 1)
+  for (let i = edges.length - 1; i >= 0; i--) if (!idMap.has(edges[i].src) || !idMap.has(edges[i].dst)) edges.splice(i, 1)
+  for (let i = places.length - 1; i >= 0; i--) if (!idMap.has(places[i].id)) places.splice(i, 1)
+  for (let i = groups.length - 1; i >= 0; i--) if (!idMap.has(groups[i].group)) groups.splice(i, 1)
   for (const n of nodes) n.id = idMap.get(n.id) ?? n.id
   for (const e of edges) {
     e.src = idMap.get(e.src) ?? e.src

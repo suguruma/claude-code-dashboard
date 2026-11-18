@@ -129,13 +129,23 @@ export class EnvMapService {
 
   async get(): Promise<EnvMapResponse> {
     const [map, sources] = await Promise.all([this.loadMap(), this.recentSources()])
-    const sessions: EnvMapSessionItem[] = sources.map((s) => ({
-      id: s.summary.id,
-      title: s.summary.title,
-      lastActivityAt: s.summary.lastActivityAt,
-      archived: s.summary.isArchived,
-      running: s.summary.status === "running",
-    }))
+    const sizeOf = async (p: string) => {
+      try {
+        return (await fs.stat(p)).size
+      } catch {
+        return 0
+      }
+    }
+    const sessions: EnvMapSessionItem[] = await Promise.all(
+      sources.map(async (s) => ({
+        id: s.summary.id,
+        title: s.summary.title,
+        lastActivityAt: s.summary.lastActivityAt,
+        archived: s.summary.isArchived,
+        running: s.summary.status === "running",
+        bytes: (await Promise.all(s.transcriptPaths.map(sizeOf))).reduce((a, b) => a + b, 0),
+      }))
+    )
     return {
       generatedAt: this.now(),
       map: isProblem(map) ? null : map.data,
@@ -180,7 +190,7 @@ export class EnvMapService {
     const running = src.summary.status === "running"
     const entry = entryOf(src.taskId, map.index)
     const group = groupOf(src.summary.title, src.summary.cwd, map.index, this.home)
-    const key = [this.mapCache?.mtimeMs ?? 0, entry, group ?? ""].join("\n")
+    const key = [this.mapCache?.path ?? "", this.mapCache?.size ?? 0, this.mapCache?.mtimeMs ?? 0, entry, group ?? ""].join("\n")
     const prev = this.routes.get(sessionId)
     let problem: string | null = null
     let state: RouteReadState

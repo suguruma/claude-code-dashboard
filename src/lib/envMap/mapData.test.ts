@@ -77,6 +77,18 @@ describe("[6章] 個人のフォルダの名前を伏せる", () => {
     const text = JSON.stringify(parsed(raw).data)
     expect(text).not.toContain("someone")
   })
+  it("伏せた後に id が重なったら、後の箱と線を落とす(描けなくならない)", () => {
+    const raw = syntheticMap()
+    const nodes = raw.nodes as Record<string, unknown>[]
+    nodes[0] = { ...nodes[0], id: "rule:C:\\Users\\a\\x" }
+    nodes[7] = { ...nodes[7], id: "rule:C:\\Users\\b\\x" }
+    ;(raw.edges as Record<string, unknown>[]).push({ src: "rule:C:\\Users\\b\\x", dst: "safety:n1", kind: "mention" })
+    const { data } = parsed(raw)
+    const ids = data.nodes.map((n) => n.id)
+    expect(new Set(ids).size).toBe(ids.length)
+    expect(ids.filter((i) => i === "rule:~\\x")).toHaveLength(1)
+    for (const e of data.edges) expect(ids).toContain(e.src)
+  })
 })
 
 describe("[A5c] パスの正規化", () => {
