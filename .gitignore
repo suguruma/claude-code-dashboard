@@ -85,3 +85,5 @@ next-env.d.ts
 
 # electron-builder が sample-data から生成する配布用zip
 /dist-assets/
+# dashboard: 全体マップ(⑲)の地図のファイルの場所(個人の環境のパス)
+/config/env-map.json

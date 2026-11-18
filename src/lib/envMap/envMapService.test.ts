@@ -6,7 +6,7 @@ import type { EnvMapSource } from "@/lib/desktopSessionService"
 import type { DesktopSessionSummary } from "@/lib/desktopSessionTypes"
 import { LAN_HEADER } from "@/lib/lanAccess/config"
 import { EnvMapService, loadEnvMapConfig, type EnvMapConfigResult } from "./envMapService"
-import { syntheticMap } from "./mapData.test"
+import { syntheticMap } from "./envMapFixtures"
 
 const MARK = "ZZ_SECRET_MARK_c41"
 const NOW = Date.UTC(2026, 10, 18, 3, 0)
