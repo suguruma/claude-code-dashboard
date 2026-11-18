@@ -21,6 +21,7 @@ import {
   stepInstruction,
   type MapLayout,
 } from "@/lib/envMap/envMapLayout"
+import { ROUTE_FETCH_OPTIONS, decideSession, liveSkipped, routeSelectionNote, type SkippedSession } from "@/lib/envMap/envMapSelect"
 import { GUARD_BOX, type EnvMapData, type EnvMapNode, type EnvMapResponse, type RouteInstruction, type RouteResponse } from "@/lib/envMap/envMapTypes"
 import { CONFLICT_EDGE, NORMAL_EDGE, STRENGTH_TEXT, readColors, strengthBorder, type EnvMapColors } from "./envMapTheme"
 
@@ -102,16 +103,37 @@ function nameOf(key: string, nodes: Map<string, EnvMapNode>): string {
   return nodes.get(key)?.label ?? key
 }
 
+/**
+ * 既定で選んで指示が無かったセッション(低12)。タブを替える・別のページへ行くと部品は外されるので、部品の外(この窓の中)に覚える(低13)。
+ * 飛ばした時の最後に動いた時刻と組で持ち、その後に動いたセッションは飛ばさない
+ */
+const skippedSessions: SkippedSession[] = []
+
 export function EnvMapView() {
-  const { data, error, isLoading, mutate } = useSWR<EnvMapResponse>("/api/env-map", fetcher, {
+  // 一覧はタブを開くたびに取り直す(窓を開いたまま後から始まったセッションを、古い一覧で「出せません」にしない。中7・低17)
+  const { data, error, isLoading, isValidating, mutate } = useSWR<EnvMapResponse>("/api/env-map", fetcher, {
     revalidateOnFocus: false,
     revalidateIfStale: false,
+    revalidateOnMount: true,
   })
   const [fromUrl] = useState(urlSession)
   const [mode, setModeState] = useState<Mode>(() => (fromUrl ? "route" : (readMode() ?? "route")))
   const [session, setSession] = useState<string | null>(fromUrl)
-  /** 既定で選んで指示が無かったセッション(低12。id で持つ。5つまで) */
-  const [skipped, setSkipped] = useState<string[]>([])
+  const [skippedAll, setSkipped] = useState<SkippedSession[]>(() => [...skippedSessions])
+  const skipped = data ? liveSkipped(skippedAll, data.sessions) : []
+  /** 一覧に無いセッションを頼まれて、一覧を取り直し終えた id(中7) */
+  const [refreshedFor, setRefreshedFor] = useState<string | null>(null)
+  const decision = data
+    ? decideSession({ requested: session, sessions: data.sessions, defaultSession: data.defaultSession, skipped, validating: isValidating, refreshedFor })
+    : null
+  const needRefresh = decision?.kind === "checking" && !isValidating && refreshedFor !== session
+  /** 取り直しを始めた id(同じ id では1回だけ。取り直しの途中に後片付けが走っても、終わりの印は付ける) */
+  const refreshing = useRef<string | null>(null)
+  useEffect(() => {
+    if (!needRefresh || refreshing.current === session) return
+    refreshing.current = session
+    void mutate().finally(() => setRefreshedFor(session))
+  }, [needRefresh, mutate, session])
 
   const setMode = useCallback((m: Mode) => {
     setModeState(m)
@@ -126,22 +148,29 @@ export function EnvMapView() {
       </Alert>
     )
   }
-  if (isLoading || !data) return <p className="text-sm text-muted-foreground">地図を読み込んでいます...</p>
+  if (isLoading || !data || !decision) return <p className="text-sm text-muted-foreground">地図を読み込んでいます...</p>
   if (!data.map) {
     return (
       <Alert>
         <AlertTitle>地図を描けません</AlertTitle>
-        <AlertDescription>{data.problem?.message ?? "地図のデータがありません"}</AlertDescription>
+        <AlertDescription>
+          <p>{data.problem?.message ?? "地図のデータがありません"}</p>
+          {/* 設定を書いた後に、窓を読み込み直さずに読み直せる(低17) */}
+          <Button variant="outline" size="sm" className="mt-2 text-sm" onClick={() => void mutate()} disabled={isValidating}>
+            <RefreshCw className="size-4" />
+            地図を読み直す
+          </Button>
+        </AlertDescription>
       </Alert>
     )
   }
+  if (decision.kind === "checking") return <p className="text-sm text-muted-foreground">セッションの一覧を取り直しています...</p>
   const hasSessions = data.sessions.length > 0
-  const inList = session !== null && data.sessions.some((s) => s.id === session)
-  // URL のセッションが一覧(直近30日・会話記録あり・WSL を除く)に無いときは、別のセッションに差し替えない(中5)
-  const missing = session !== null && !inList
-  const auto = session === null
-  const autoPick = data.sessions.find((s) => !skipped.includes(s.id))?.id ?? data.defaultSession
-  const chosen = inList ? session : missing ? null : autoPick
+  // URL のセッションが、取り直した一覧(直近30日・会話記録あり・WSL を除く)にも無いときは、別のセッションに差し替えない(中5・中7)
+  const missing = decision.kind === "missing"
+  const auto = decision.kind === "chosen" && decision.auto
+  const autoPick = decision.kind === "chosen" && decision.auto ? decision.id : null
+  const chosen = decision.kind === "chosen" ? decision.id : null
   const effectiveMode: Mode = hasSessions ? mode : "now"
   return (
     <EnvMapBody
@@ -154,7 +183,12 @@ export function EnvMapView() {
       setSession={setSession}
       onEmptyDefault={
         auto && autoPick && skipped.length < 5 && skipped.length < data.sessions.length - 1
-          ? () => setSkipped((ids) => (ids.includes(autoPick) ? ids : [...ids, autoPick]))
+          ? () => {
+              const entry = { id: autoPick, at: data.sessions.find((s) => s.id === autoPick)?.lastActivityAt ?? null }
+              const rest = skippedSessions.filter((k) => k.id !== autoPick)
+              skippedSessions.splice(0, skippedSessions.length, ...rest, entry)
+              setSkipped((ks) => [...ks.filter((k) => k.id !== autoPick), entry])
+            }
           : undefined
       }
       reload={() => void mutate()}
@@ -179,8 +213,7 @@ interface BodyProps {
 function EnvMapBody({ res, map, mode, setMode, session, missing, setSession, onEmptyDefault, reload }: BodyProps) {
   const routeKey = mode === "route" && session ? `/api/env-map/route?session=${encodeURIComponent(session)}` : null
   const route = useSWR<RouteResponse>(routeKey, fetcher, {
-    revalidateOnFocus: false,
-    revalidateIfStale: false,
+    ...ROUTE_FETCH_OPTIONS,
     onSuccess: (d) => {
       if (d.instructions.length === 0 && !d.problem) onEmptyDefault?.()
     },
@@ -248,7 +281,7 @@ function EnvMapBody({ res, map, mode, setMode, session, missing, setSession, onE
           {mode === "now" && sel.degree === 0 && layerFilter !== "linked"
             ? `（つながり無し ${map.nodes.filter((n) => n.layer === sel.layer && n.degree === 0).length} の中）`
             : ""}
-          {mode === "route" && ins && !ins.visits.some((v) => v.box === sel.id) ? "（この指示では通っていません）" : ""}
+          {mode === "route" ? routeSelectionNote(sel.id, GUARD_BOX, ins) : ""}
         </span>
         <button type="button" className="ml-2 rounded px-1 text-muted-foreground hover:bg-muted" onClick={() => setSelected(null)} aria-label="選んだ箱を外す">
           <X className="inline size-4" />
@@ -804,6 +837,7 @@ function MapCanvas({ note, measureKey, onIsolated, map, mode, ins, selected, set
     if (!cy || cyVer === 0 || cy.destroyed()) return
     // まとめた中の箱(つながり無し n)を選んだときは、その「つながり無し n」の箱に印を付けて寄せ、一覧のその層を開く(中1)
     let targetId = selected
+    if (!selected) openedFor.current = null
     if (selected && cy.getElementById(selected).length === 0) {
       for (const [groupId, members] of layoutRef.current?.isolated ?? []) {
         if (members.includes(selected)) {
@@ -953,8 +987,7 @@ export function mapBudgetHeight(el: HTMLElement): number {
 /** 地図の中の y(画面の px)が見える所まで、ページ(いちばん近い縦にスクロールする親)を送る */
 function scrollToMapY(box: HTMLElement | null, y: number): void {
   if (!box) return
-  let el: HTMLElement | null = box.parentElement
-  while (el && !/(auto|scroll)/.test(getComputedStyle(el).overflowY)) el = el.parentElement
+  const el = scrollParentOf(box)
   const scroller: HTMLElement = el ?? document.scrollingElement as HTMLElement
   const r = box.getBoundingClientRect()
   const view = el ? el.getBoundingClientRect() : { top: 0, bottom: window.innerHeight }
@@ -992,6 +1025,9 @@ function styleOf(c: EnvMapColors): unknown {
         "border-color": c.fg,
         "border-width": "data(bw)",
         "border-style": "data(bs)",
+        // 重なりは z-index だけで決める(箱 10・ふつうの線 0・食い違いの線 20)。曲げた食い違いの線が箱に隠れないように(低14 の後の相談役 低3)
+        "z-index-compare": "manual",
+        "z-index": 10,
       },
     },
     { selector: "node.weak", style: { "border-color": c.muted } },
@@ -1007,7 +1043,7 @@ function styleOf(c: EnvMapColors): unknown {
     { selector: "node.nolabel", style: { "text-opacity": 0 } },
     {
       selector: "edge",
-      style: { width: NORMAL_EDGE.width, "line-style": NORMAL_EDGE.style, "line-color": c.muted, "curve-style": "bezier", "target-arrow-shape": "triangle", "target-arrow-color": c.muted, "arrow-scale": 0.8 },
+      style: { width: NORMAL_EDGE.width, "line-style": NORMAL_EDGE.style, "line-color": c.muted, "curve-style": "bezier", "target-arrow-shape": "triangle", "target-arrow-color": c.muted, "arrow-scale": 0.8, "z-index-compare": "manual", "z-index": 0 },
     },
     {
       selector: "edge.conflict",
@@ -1018,6 +1054,10 @@ function styleOf(c: EnvMapColors): unknown {
         width: CONFLICT_EDGE.width,
         "line-style": CONFLICT_EDGE.style,
         "line-dash-pattern": CONFLICT_EDGE.dash,
+        "curve-style": "unbundled-bezier",
+        "control-point-distances": [CONFLICT_EDGE.bend],
+        "control-point-weights": [0.5],
+        "z-index": 20,
       },
     },
     { selector: "edge.route", style: { "line-color": c.route, "target-arrow-color": c.route, width: 2.5 } },
@@ -1029,7 +1069,7 @@ function Legend({ map, now }: { map: EnvMapData; now: number }) {
   const items: { label: string; border: string }[] = [
     { label: "止める", border: "border-4 border-solid border-foreground" },
     { label: "判定する", border: "border-[5px] border-double border-foreground" },
-    { label: "記録だけ", border: "border-2 border-dashed border-foreground" },
+    { label: "記録だけ", border: "border-2 border-dotted border-foreground" },
     { label: "読ませるだけ", border: "border-2 border-solid border-foreground" },
     { label: "強さなし", border: "border border-solid border-muted-foreground" },
   ]

@@ -92,7 +92,7 @@ Electron + electron-builder で、ユーザーごとに入れるインストー�
 npm run dist:win
 ```
 
-`release/ClaudeCodeDashboard-<version>-Setup.exe`（v0.5.0 なら `ClaudeCodeDashboard-0.5.0-Setup.exe`。版は `package.json` の `version`）が生成される。入れたアプリを起動すると、Next.jsのstandaloneサーバーを
+`release/ClaudeCodeDashboard-<version>-Setup.exe`（v0.6.0 なら `ClaudeCodeDashboard-0.6.0-Setup.exe`。版は `package.json` の `version`）が生成される。入れたアプリを起動すると、Next.jsのstandaloneサーバーを
 Electronの内部プロセスとして起動し、ネイティブウィンドウでダッシュボードを表示する（外部ブラウザ不要）。
 
 - 初回起動時のみ、`config/projects.example.json`（個人パスを含まない空のテンプレート）を、OSごとの
@@ -122,7 +122,7 @@ Electronの内部プロセスとして起動し、ネイティブウィンドウ
 ### サンプルデータを試す
 
 アプリにはサンプルデータを同梱していない（本体を必要最低限に保つため）。試したい場合は、Releaseページから
-`sample-data-v<version>.zip`（v0.5.0 なら `sample-data-v0.5.0.zip`）を別途ダウンロードして展開し、「ルール管理」の右上の「+」からその展開先フォルダを
+`sample-data-v<version>.zip`（v0.6.0 なら `sample-data-v0.6.0.zip`）を別途ダウンロードして展開し、「ルール管理」の右上の「+」からその展開先フォルダを
 プロジェクトとして登録する。`npm run package:sample-data` でこのzipをリポジトリの `sample-data/` から生成できる。
 
 ## テスト・検証

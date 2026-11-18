@@ -42,12 +42,33 @@ describe("[A3] 設定とファイルの問題", () => {
     const none = await loadEnvMapConfig(dir)
     // 実際の置き場を文に出す(exe でも置き場が分かる。中6)
     expect("problem" in none && none.problem.message).toContain(path.join(dir, "config", "env-map.json"))
+    // 見本の円記号は2つ(そのまま写しても JSON が壊れない。低16)
+    const sample = ("problem" in none && none.problem.message.match(/\{"mapPath": "[^"]*"\}/)?.[0]) || ""
+    expect(() => JSON.parse(sample.replace("…", "x"))).not.toThrow()
     const missing = await service({ config: { mapPath: path.join(dir, "nothing.json") } }, []).get()
     expect(missing.problem?.kind).toBe("missing")
+    // 直す設定ファイルの実際の場所を添える(低15)
+    expect(missing.problem?.message).toContain(path.join("config", "env-map.json"))
     await fs.writeFile(path.join(dir, "broken.json"), "{ not json")
     const broken = await service({ config: { mapPath: path.join(dir, "broken.json") } }, []).get()
     expect(broken.problem?.kind).toBe("broken")
     expect(new Set([none, missing.problem, broken.problem].map((p) => JSON.stringify(p))).size).toBe(3)
+  })
+})
+
+describe("[低15・完了前の相談役 低4] 地図が無い文に、設定ファイルの実際の場所", () => {
+  it("渡した設定ファイルの絶対の場所が、そのまま文に入る(OS によらない)", async () => {
+    const place = "/x/y/config/env-map.json"
+    const svc = new EnvMapService({
+      config: async () => ({ config: { mapPath: path.join(dir, "nothing.json") } }),
+      configPath: () => place,
+      sources: async () => [],
+      home: "C:\\Users\\tester",
+      now: () => NOW,
+    })
+    const r = await svc.get()
+    expect(r.problem?.kind).toBe("missing")
+    expect(r.problem?.message).toContain(place)
   })
 })
 

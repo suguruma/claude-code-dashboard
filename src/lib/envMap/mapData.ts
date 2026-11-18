@@ -12,11 +12,9 @@ export const SUPPORTED_SCHEMA = 1
 export const STALE_DAYS = 7
 const DAY_MS = 24 * 60 * 60 * 1000
 
+/** 地図の形の問題の文。設定・場所の問題(no-config・missing・unreadable)の文は、設定ファイルの実際の場所を添えて envMapService が作る(低15) */
 export const PROBLEM_TEXT = {
-  "no-config": "設定がありません。config/env-map.json に地図のファイルの場所(mapPath)を書いてください",
-  missing: "地図のファイルが見つかりません。config/env-map.json の mapPath を確かめてください",
   broken: "地図のファイルを読めません(JSON の形が壊れています)。地図を作り直すと直ります",
-  unreadable: "地図のファイルを読めません(大きすぎるか、開けない場所です)。config/env-map.json の mapPath を確かめてください",
   "newer-schema": "地図の形が新しくなりました。Dashboard の更新が要ります",
 } as const
 
