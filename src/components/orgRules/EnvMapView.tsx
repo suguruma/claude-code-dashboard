@@ -21,6 +21,7 @@ import {
   stepInstruction,
   type MapLayout,
 } from "@/lib/envMap/envMapLayout"
+import { decideSession } from "@/lib/envMap/envMapSelect"
 import { GUARD_BOX, type EnvMapData, type EnvMapNode, type EnvMapResponse, type RouteInstruction, type RouteResponse } from "@/lib/envMap/envMapTypes"
 import { CONFLICT_EDGE, NORMAL_EDGE, STRENGTH_TEXT, readColors, strengthBorder, type EnvMapColors } from "./envMapTheme"
 
@@ -102,16 +103,35 @@ function nameOf(key: string, nodes: Map<string, EnvMapNode>): string {
   return nodes.get(key)?.label ?? key
 }
 
+/**
+ * 既定で選んで指示が無かったセッション(低12)。タブを替える・別のページへ行くと部品は外されるので、部品の外(この窓の中)に覚える(低13)
+ */
+const skippedSessions: string[] = []
+
 export function EnvMapView() {
-  const { data, error, isLoading, mutate } = useSWR<EnvMapResponse>("/api/env-map", fetcher, {
+  // 一覧はタブを開くたびに取り直す(窓を開いたまま後から始まったセッションを、古い一覧で「出せません」にしない。中7・低17)
+  const { data, error, isLoading, isValidating, mutate } = useSWR<EnvMapResponse>("/api/env-map", fetcher, {
     revalidateOnFocus: false,
     revalidateIfStale: false,
+    revalidateOnMount: true,
   })
   const [fromUrl] = useState(urlSession)
   const [mode, setModeState] = useState<Mode>(() => (fromUrl ? "route" : (readMode() ?? "route")))
   const [session, setSession] = useState<string | null>(fromUrl)
-  /** 既定で選んで指示が無かったセッション(低12。id で持つ。5つまで) */
-  const [skipped, setSkipped] = useState<string[]>([])
+  const [skipped, setSkipped] = useState<string[]>(() => [...skippedSessions])
+  /** 一覧に無いセッションを頼まれて、一覧を取り直し終えた id(中7) */
+  const [refreshedFor, setRefreshedFor] = useState<string | null>(null)
+  const decision = data
+    ? decideSession({ requested: session, sessions: data.sessions, defaultSession: data.defaultSession, skipped, validating: isValidating, refreshedFor })
+    : null
+  const needRefresh = decision?.kind === "checking" && !isValidating && refreshedFor !== session
+  /** 取り直しを始めた id(同じ id では1回だけ。取り直しの途中に後片付けが走っても、終わりの印は付ける) */
+  const refreshing = useRef<string | null>(null)
+  useEffect(() => {
+    if (!needRefresh || refreshing.current === session) return
+    refreshing.current = session
+    void mutate().finally(() => setRefreshedFor(session))
+  }, [needRefresh, mutate, session])
 
   const setMode = useCallback((m: Mode) => {
     setModeState(m)
@@ -126,7 +146,7 @@ export function EnvMapView() {
       </Alert>
     )
   }
-  if (isLoading || !data) return <p className="text-sm text-muted-foreground">地図を読み込んでいます...</p>
+  if (isLoading || !data || !decision) return <p className="text-sm text-muted-foreground">地図を読み込んでいます...</p>
   if (!data.map) {
     return (
       <Alert>
@@ -135,13 +155,13 @@ export function EnvMapView() {
       </Alert>
     )
   }
+  if (decision.kind === "checking") return <p className="text-sm text-muted-foreground">セッションの一覧を取り直しています...</p>
   const hasSessions = data.sessions.length > 0
-  const inList = session !== null && data.sessions.some((s) => s.id === session)
-  // URL のセッションが一覧(直近30日・会話記録あり・WSL を除く)に無いときは、別のセッションに差し替えない(中5)
-  const missing = session !== null && !inList
-  const auto = session === null
-  const autoPick = data.sessions.find((s) => !skipped.includes(s.id))?.id ?? data.defaultSession
-  const chosen = inList ? session : missing ? null : autoPick
+  // URL のセッションが、取り直した一覧(直近30日・会話記録あり・WSL を除く)にも無いときは、別のセッションに差し替えない(中5・中7)
+  const missing = decision.kind === "missing"
+  const auto = decision.kind === "chosen" && decision.auto
+  const autoPick = decision.kind === "chosen" && decision.auto ? decision.id : null
+  const chosen = decision.kind === "chosen" ? decision.id : null
   const effectiveMode: Mode = hasSessions ? mode : "now"
   return (
     <EnvMapBody
@@ -154,7 +174,10 @@ export function EnvMapView() {
       setSession={setSession}
       onEmptyDefault={
         auto && autoPick && skipped.length < 5 && skipped.length < data.sessions.length - 1
-          ? () => setSkipped((ids) => (ids.includes(autoPick) ? ids : [...ids, autoPick]))
+          ? () => {
+              if (!skippedSessions.includes(autoPick)) skippedSessions.push(autoPick)
+              setSkipped((ids) => (ids.includes(autoPick) ? ids : [...ids, autoPick]))
+            }
           : undefined
       }
       reload={() => void mutate()}
