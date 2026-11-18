@@ -1066,7 +1066,7 @@ function Legend({ map, now }: { map: EnvMapData; now: number }) {
   const items: { label: string; border: string }[] = [
     { label: "止める", border: "border-4 border-solid border-foreground" },
     { label: "判定する", border: "border-[5px] border-double border-foreground" },
-    { label: "記録だけ", border: "border-2 border-dashed border-foreground" },
+    { label: "記録だけ", border: "border-2 border-dotted border-foreground" },
     { label: "読ませるだけ", border: "border-2 border-solid border-foreground" },
     { label: "強さなし", border: "border border-solid border-muted-foreground" },
   ]

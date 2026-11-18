@@ -17,6 +17,10 @@ describe("[A18・中2・低1] 形で見分ける", () => {
     expect(strengthBorder("none").muted).toBe(true)
     expect(strengthBorder("read").muted).toBe(false)
   })
+  it("記録だけの枠は点線で、食い違いの線(破線)と線の種類が違う", () => {
+    expect(strengthBorder("watch").style).toBe("dotted")
+    expect(strengthBorder("watch").style).not.toBe(CONFLICT_EDGE.style)
+  })
   it("凡例の言葉に英語が無い", () => {
     for (const t of Object.values(STRENGTH_TEXT)) expect(t).not.toMatch(/[A-Za-z]/)
   })
